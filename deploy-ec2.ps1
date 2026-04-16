@@ -29,7 +29,7 @@ $repoFiles = @(
     ".gitignore"
 )
 
-& $plink -batch -i $KeyPath "${User}@${ServerHost}" @"
+$backupScript = @"
 set -e
 ts=`$(date +%Y%m%d_%H%M%S)
 if [ -f ${RemoteRepoDir}/tinki-bot.py ]; then
@@ -39,6 +39,7 @@ if [ -d ${RemoteDataDir} ]; then
   tar -czf /opt/apps/tinki-bot/data_backup_`$ts.tar.gz -C /opt/apps/tinki-bot data
 fi
 "@
+$backupScript | & $plink -batch -i $KeyPath "${User}@${ServerHost}" "bash -s"
 
 foreach ($file in $repoFiles) {
     $localPath = Join-Path $projectRoot $file
