@@ -48,10 +48,9 @@ class Uma(commands.Cog):
         return ("R", random.choice(UMA_R), pity + 1)
 
     def _featured_pull(self, pulls):
-        for rarity in ("SSR", "SR", "R"):
-            for pull_rarity, name in pulls:
-                if pull_rarity == rarity:
-                    return pull_rarity, name
+        for pull_rarity, name in pulls:
+            if pull_rarity == "SSR":
+                return pull_rarity, name
         return None
 
     def _gif_query(self, horse_name: Optional[str] = None) -> str:
@@ -111,7 +110,7 @@ class Uma(commands.Cog):
 
         result = "\n".join(lines) if lines else "- [R] x10"
         featured_pull = self._featured_pull(pulls)
-        gif = await self._gif(featured_pull[1] if featured_pull else None)
+        gif = await self._gif(featured_pull[1]) if featured_pull else None
 
         if ssrs:
             footer = f"\nSSR! You got: **{', '.join(ssrs)}** (pity reset to 0)"

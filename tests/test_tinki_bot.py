@@ -415,13 +415,13 @@ class TestUmaGifSelection:
         pulls = [("R", "Haru Urara"), ("SSR", "Tokai Teio"), ("SR", "Nice Nature")]
         assert self.cog._featured_pull(pulls) == ("SSR", "Tokai Teio")
 
-    def test_featured_pull_falls_back_to_sr(self):
+    def test_featured_pull_ignores_sr_when_no_ssr(self):
         pulls = [("R", "Haru Urara"), ("SR", "Nice Nature"), ("R", "Biko Pegasus")]
-        assert self.cog._featured_pull(pulls) == ("SR", "Nice Nature")
+        assert self.cog._featured_pull(pulls) is None
 
-    def test_featured_pull_falls_back_to_r(self):
+    def test_featured_pull_ignores_r_when_no_ssr(self):
         pulls = [("R", "Haru Urara"), ("R", "Biko Pegasus")]
-        assert self.cog._featured_pull(pulls) == ("R", "Haru Urara")
+        assert self.cog._featured_pull(pulls) is None
 
     def test_featured_pull_returns_none_when_empty(self):
         assert self.cog._featured_pull([]) is None
