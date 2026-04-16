@@ -1,8 +1,11 @@
 import asyncio
 import io
 import logging
+import shutil
 import subprocess
 import sys
+import tempfile
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -157,6 +160,23 @@ class Admin(commands.Cog):
                     await ctx.send(f"{name}: {type(e).__name__}: {e}")
         return results
 
+    def _deploy_files(self):
+        return [
+            "tinki-bot.py",
+            "config.py",
+            "README.md",
+            "INSTALL.md",
+            "CLAUDE.md",
+            "AGENTS.md",
+            "requirements.txt",
+            "pytest.ini",
+            ".env.example",
+            ".gitignore",
+        ]
+
+    def _deploy_dirs(self):
+        return ["assets", "cogs", "utils", "tests"]
+
     @commands.command(name="restart")
     @commands.has_permissions(administrator=True)
     async def restart_bot(self, ctx):
@@ -167,22 +187,62 @@ class Admin(commands.Cog):
     @commands.command(name="deploy")
     @commands.has_permissions(administrator=True)
     async def deploy_latest(self, ctx):
-        raw_url = GITHUB_REPO_URL.replace("github.com", "raw.githubusercontent.com") + "/main/tinki-bot.py"
-        await ctx.send("Pulling latest from GitHub...")
+        archive_url = GITHUB_REPO_URL.replace("https://github.com/", "https://codeload.github.com/") + "/zip/refs/heads/main"
+        await ctx.send("Pulling latest repo snapshot from GitHub...")
         try:
             import aiohttp
 
+            repo_root = Path(__file__).resolve().parent.parent
             async with aiohttp.ClientSession() as session:
-                async with session.get(raw_url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                async with session.get(archive_url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
                     resp.raise_for_status()
                     content = await resp.read()
-            if len(content) < 500:
+            if len(content) < 5000:
                 await ctx.send(f"Deploy aborted: download looks truncated ({len(content)} bytes).")
                 return
-            target = Path(__file__).resolve().parent.parent / "tinki-bot.py"
-            tmp = target.with_suffix(".py.tmp")
-            tmp.write_bytes(content)
-            tmp.replace(target)
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                archive_path = Path(tmpdir) / "repo.zip"
+                archive_path.write_bytes(content)
+                with zipfile.ZipFile(archive_path) as zf:
+                    zf.extractall(tmpdir)
+
+                extracted_roots = [path for path in Path(tmpdir).iterdir() if path.is_dir()]
+                if not extracted_roots:
+                    await ctx.send("Deploy failed: extracted archive was empty.")
+                    return
+                extracted_root = extracted_roots[0]
+
+                for file_name in self._deploy_files():
+                    source = extracted_root / file_name
+                    target = repo_root / file_name
+                    if source.exists():
+                        shutil.copy2(source, target)
+
+                for dir_name in self._deploy_dirs():
+                    source_dir = extracted_root / dir_name
+                    target_dir = repo_root / dir_name
+                    if source_dir.exists():
+                        shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
+
+            install = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-r",
+                str(repo_root / "requirements.txt"),
+                cwd=str(repo_root),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, install_stderr = await install.communicate()
+            if install.returncode != 0:
+                error_text = install_stderr.decode("utf-8", errors="replace").strip().splitlines()
+                detail = error_text[-1] if error_text else f"exit code {install.returncode}"
+                await ctx.send(f"Deploy failed during dependency install: {detail}")
+                return
+
             await ctx.send("Updated. Restarting... brb")
             await asyncio.sleep(1)
             subprocess.Popen(["sudo", "systemctl", "restart", "tinki-bot"])

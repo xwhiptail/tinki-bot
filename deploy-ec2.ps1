@@ -25,12 +25,16 @@ $repoFiles = @(
     "tinki-bot.py",
     "config.py",
     "README.md",
+    "INSTALL.md",
+    "CLAUDE.md",
+    "AGENTS.md",
     "requirements.txt",
+    "pytest.ini",
     ".env.example",
     ".gitignore"
 )
 
-$repoDirs = @("utils", "cogs")
+$repoDirs = @("utils", "cogs", "tests", "assets")
 
 $backupScript = @"
 set -e
