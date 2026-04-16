@@ -1628,6 +1628,11 @@ async def currenttime(ctx):
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
+        attempted = ctx.invoked_with
+        names = [cmd.name for cmd in bot.commands]
+        match, score = process.extractOne(attempted, names)
+        if score >= 60:
+            await ctx.send(f"❓ `!{attempted}` isn't a thing. Did you mean `!{match}`?")
         return
     raise error
 
