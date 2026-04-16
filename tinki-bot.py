@@ -89,8 +89,14 @@ def get_openai_client() -> OpenAI:
     return OpenAI()
 
 
-def fetch_openai_balance() -> Optional[str]:
-    return "https://platform.openai.com/settings/organization/billing/overview"
+def fetch_openai_balance() -> str:
+    billing_url = "https://platform.openai.com/settings/organization/billing/overview"
+    try:
+        client = get_openai_client()
+        client.models.list()
+        return f"✅ API key live — {billing_url}"
+    except Exception as e:
+        return f"❌ API key error ({e}) — {billing_url}"
 
 
 async def gpt_wrap_fact(fact: str, user_text: str, system_prompt) -> str:
@@ -2042,8 +2048,7 @@ async def run_startup_tests():
         f"🔤 **Letter gnome:** {letter_passed}/{letter_total} tests passed\n"
     )
 
-    if openai_balance is not None:
-        summary += f"💸 **OpenAI billing:** {openai_balance}\n"
+    summary += f"💸 **OpenAI:** {openai_balance}\n"
 
     if failures:
         summary += "\n⚠️ **Anomalies detected:**\n"
