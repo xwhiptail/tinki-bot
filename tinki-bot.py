@@ -2130,6 +2130,15 @@ async def show_commands(ctx):
 `!randomai on | off | status` - turns on random posting for Tinki
 `!testurls` - tests the urls
 `!runtests` - unit tests for the commands
+`!restart` - restarts the bot (admin only)
+`!deploy` - pulls latest from GitHub and restarts (admin only)
+
+**Uma Musume**
+`!gacha [1|10]` - simulate pulls (3% SSR, pity at 200)
+`!pity [@user]` - show pity counter and progress bar
+`!uma [@user]` - assign a random horse girl
+`!race @user1 @user2 ...` - GPT-narrated race between members
+`!umagif` - random Uma Musume gif
     """
 
     try:
