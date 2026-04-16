@@ -1961,6 +1961,8 @@ async def run_startup_tests():
 
     cmd_results = await run_command_selftests(ctx=None)
     url_results = run_url_selftests()
+    calc_results = run_calculate_selftests()
+    letter_results = run_letter_count_selftests()
 
     cmd_total = len(cmd_results)
     cmd_passed = sum(1 for (_, ok, _) in cmd_results if ok)
@@ -1968,9 +1970,15 @@ async def run_startup_tests():
     url_total = len(url_results)
     url_passed = sum(1 for (_, ok, _) in url_results if ok)
 
+    calc_total = len(calc_results)
+    calc_passed = sum(1 for (_, ok, _) in calc_results if ok)
+
+    letter_total = len(letter_results)
+    letter_passed = sum(1 for (_, ok, _) in letter_results if ok)
+
     failures = [
         f"{name}: {reason}"
-        for (name, ok, reason) in cmd_results + url_results
+        for (name, ok, reason) in cmd_results + url_results + calc_results + letter_results
         if not ok
     ]
 
@@ -1981,6 +1989,8 @@ async def run_startup_tests():
         "```\n"
         f"🧪 **Command grid:** {cmd_passed}/{cmd_total} tests passed\n"
         f"🌐 **URL filter matrix:** {url_passed}/{url_total} tests passed\n"
+        f"🔢 **Calculator goblin:** {calc_passed}/{calc_total} tests passed\n"
+        f"🔤 **Letter goblin:** {letter_passed}/{letter_total} tests passed\n"
     )
 
     if failures:
@@ -2005,6 +2015,20 @@ async def run_startup_tests():
 
     txt_output.append(f"\nURL Tests: {url_passed}/{url_total} passed\n")
     for name, ok, reason in url_results:
+        if ok:
+            txt_output.append(f"  [PASS] {name}\n")
+        else:
+            txt_output.append(f"  [FAIL] {name} — {reason}\n")
+
+    txt_output.append(f"\nCalculator Tests: {calc_passed}/{calc_total} passed\n")
+    for name, ok, reason in calc_results:
+        if ok:
+            txt_output.append(f"  [PASS] {name}\n")
+        else:
+            txt_output.append(f"  [FAIL] {name} — {reason}\n")
+
+    txt_output.append(f"\nLetter Count Tests: {letter_passed}/{letter_total} passed\n")
+    for name, ok, reason in letter_results:
         if ok:
             txt_output.append(f"  [PASS] {name}\n")
         else:
@@ -2132,6 +2156,50 @@ def run_url_selftests():
         else:
             reason = f"expected `{expected}` but got `{got}`"
             results.append((name, False, reason))
+    return results
+
+
+def run_calculate_selftests():
+    cases = [
+        ("calc addition",       "2 + 2",          "4"),
+        ("calc what-is prefix", "what is 10 + 5", "15"),
+        ("calc x-multiply",     "3x4",             "12"),
+        ("calc division",       "10 / 4",          "2.5"),
+        ("calc large number",   "1000000 + 1",     "1,000,001"),
+        ("calc non-expression", "hello world",      None),
+        ("calc div-by-zero",    "5 / 0",            None),
+    ]
+    results = []
+    for name, inp, expected in cases:
+        got = maybe_calculate_reply(inp)
+        if expected is None:
+            ok = got is None
+            reason = None if ok else f"expected None but got `{got}`"
+        else:
+            ok = got is not None and expected in got
+            reason = None if ok else f"expected `{expected}` in result but got `{got}`"
+        results.append((name, ok, reason))
+    return results
+
+
+def run_letter_count_selftests():
+    cases = [
+        ("letter r in strawberry",  "how many r's in strawberry",  "3"),
+        ("letter s in mississippi", "how many s's in mississippi", "4"),
+        ("letter e in cheese",      "how many e's in cheese?",     "3"),
+        ("letter zero count",       "how many z's in apple",       "0"),
+        ("letter no match",         "what time is it",              None),
+    ]
+    results = []
+    for name, inp, expected in cases:
+        got = maybe_count_letter_reply(inp)
+        if expected is None:
+            ok = got is None
+            reason = None if ok else f"expected None but got `{got}`"
+        else:
+            ok = got is not None and expected in got
+            reason = None if ok else f"expected `{expected}` in result but got `{got}`"
+        results.append((name, ok, reason))
     return results
 
 
