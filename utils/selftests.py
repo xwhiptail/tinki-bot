@@ -1,6 +1,7 @@
 from utils.url_rewriter import rewrite_social_urls
 from utils.calculator import maybe_calculate_reply
 from utils.letter_counter import maybe_count_letter_reply
+from utils.bot_insight import maybe_bot_insight_reply
 
 
 def run_url_selftests():
@@ -57,6 +58,28 @@ def run_letter_count_selftests():
     results = []
     for name, inp, expected in cases:
         got = maybe_count_letter_reply(inp)
+        if expected is None:
+            ok = got is None
+            reason = None if ok else f"expected None but got `{got}`"
+        else:
+            ok = got is not None and expected in got
+            reason = None if ok else f"expected `{expected}` in result but got `{got}`"
+        results.append((name, ok, reason))
+    return results
+
+
+def run_bot_insight_selftests():
+    cases = [
+        ("insight model", "what gpt model do you use", "I run on"),
+        ("insight architecture", "how do you work", "Discord bot"),
+        ("insight commands", "what commands do you have", "!commands"),
+        ("insight hosting", "how are you hosted", "EC2"),
+        ("insight repo", "what is your github", "github.com/xwhiptail/tinki-bot"),
+        ("insight no match", "tell me a joke", None),
+    ]
+    results = []
+    for name, inp, expected in cases:
+        got = maybe_bot_insight_reply(inp)
         if expected is None:
             ok = got is None
             reason = None if ok else f"expected None but got `{got}`"

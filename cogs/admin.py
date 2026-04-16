@@ -15,6 +15,7 @@ from discord.ext import commands
 from config import GITHUB_REPO_URL
 from utils.openai_helpers import fetch_openai_balance
 from utils.selftests import (
+    run_bot_insight_selftests,
     run_calculate_selftests,
     run_letter_count_selftests,
     run_url_selftests,
@@ -48,6 +49,7 @@ class Admin(commands.Cog):
         url_results = run_url_selftests()
         calc_results = run_calculate_selftests()
         letter_results = run_letter_count_selftests()
+        insight_results = run_bot_insight_selftests()
         pytest_results = await self._run_pytest_suite()
         openai_balance = await fetch_openai_balance()
 
@@ -58,9 +60,10 @@ class Admin(commands.Cog):
         url_p, url_t = _counts(url_results)
         calc_p, calc_t = _counts(calc_results)
         let_p, let_t = _counts(letter_results)
+        ins_p, ins_t = _counts(insight_results)
         py_p, py_t = _counts(pytest_results)
 
-        all_results = cmd_results + url_results + calc_results + letter_results + pytest_results
+        all_results = cmd_results + url_results + calc_results + letter_results + insight_results + pytest_results
         failures = [f"{name}: {reason}" for name, ok, reason in all_results if not ok]
 
         summary = (
@@ -70,6 +73,7 @@ class Admin(commands.Cog):
             f"URL filter matrix: {url_p}/{url_t} tests passed\n"
             f"Calculator gnome: {calc_p}/{calc_t} tests passed\n"
             f"Letter gnome: {let_p}/{let_t} tests passed\n"
+            f"Bot insight gnome: {ins_p}/{ins_t} tests passed\n"
             f"Pytest suite: {py_p}/{py_t} passed\n"
             f"OpenAI: {openai_balance}\n"
         )
@@ -85,6 +89,7 @@ class Admin(commands.Cog):
             ("URL Tests", url_results),
             ("Calculator Tests", calc_results),
             ("Letter Count Tests", letter_results),
+            ("Bot Insight Tests", insight_results),
             ("Pytest", pytest_results),
         ]:
             passed, total = _counts(results)

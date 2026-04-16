@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from utils.url_rewriter import rewrite_social_urls
 from utils.calculator import maybe_calculate_reply
+from utils.bot_insight import maybe_bot_insight_reply
 from utils.letter_counter import maybe_count_letter_reply
 import config
 
@@ -208,6 +209,31 @@ class TestMaybeCountLetterReply:
     def test_with_the_word_phrasing(self):
         r = maybe_count_letter_reply("how many letter e's in the word sleep")
         assert r is not None and "2" in r
+
+
+class TestMaybeBotInsightReply:
+    def test_model_question_returns_configured_model(self):
+        r = maybe_bot_insight_reply("what gpt model do you use")
+        assert r is not None and config.OPENAI_MODEL in r
+
+    def test_architecture_question_describes_cogs(self):
+        r = maybe_bot_insight_reply("how do you work")
+        assert r is not None and "Discord bot" in r and "cogs" in r
+
+    def test_commands_question_mentions_commands_and_repo(self):
+        r = maybe_bot_insight_reply("what commands do you have")
+        assert r is not None and "!commands" in r and "!github" in r
+
+    def test_hosting_question_mentions_ec2(self):
+        r = maybe_bot_insight_reply("how are you hosted")
+        assert r is not None and "EC2" in r and ".deploy-commit" in r
+
+    def test_repo_question_returns_github_repo(self):
+        r = maybe_bot_insight_reply("what is your github")
+        assert r is not None and config.GITHUB_REPO_URL in r
+
+    def test_unrelated_message_returns_none(self):
+        assert maybe_bot_insight_reply("tell me a joke") is None
 
 
 # ── score commands ────────────────────────────────────────────────────────────

@@ -6,9 +6,10 @@ import discord
 from discord.ext import commands
 
 from config import GREMLIN_SYSTEM_STYLE, OPENAI_MODEL
-from utils.openai_helpers import get_openai_client, gpt_wrap_fact
+from utils.bot_insight import maybe_bot_insight_reply
 from utils.calculator import maybe_calculate_reply
 from utils.letter_counter import maybe_count_letter_reply
+from utils.openai_helpers import get_openai_client, gpt_wrap_fact
 
 
 class AI(commands.Cog):
@@ -49,7 +50,7 @@ class AI(commands.Cog):
                         "No disclaimers, no greetings, no hashtags. Just the line itself."
                     ),
                 },
-                {"role": "user", "content": "Give me one chaotic gremlin thought."},
+                {"role": "user", "content": "Give me one chaotic gnome thought."},
             ],
             max_tokens=50,
             temperature=1.2,
@@ -66,7 +67,7 @@ class AI(commands.Cog):
                     "content": (
                         GREMLIN_SYSTEM_STYLE + " "
                         "You are reacting to someone reacting to your message. "
-                        "Make a short roast or snarky remark about their reaction or vibe. 1–2 sentences max."
+                        "Make a short roast or snarky remark about their reaction or vibe. 1-2 sentences max."
                     ),
                 },
                 {
@@ -93,7 +94,7 @@ class AI(commands.Cog):
                     "content": (
                         GREMLIN_SYSTEM_STYLE + " "
                         "You are replying to someone who replied to your earlier message. "
-                        "Make it sound like a gremlin roasting their take. 1–2 sentences. No serious advice."
+                        "Make it sound like a feral gnome roasting their take. 1-2 sentences. No serious advice."
                     ),
                 },
                 {
@@ -115,7 +116,6 @@ class AI(commands.Cog):
         if message.author.bot:
             return
 
-        # Random AI thread: reply to replies in tracked AI threads
         if message.reference is not None and not message.content.startswith('!'):
             try:
                 replied_to = await message.channel.fetch_message(message.reference.message_id)
@@ -131,7 +131,6 @@ class AI(commands.Cog):
                 self.random_ai_message_ids.add(bot_reply.id)
                 return
 
-        # Bot mention handler
         if message.reference is None and self.bot.user in message.mentions:
             text = (
                 message.content
@@ -144,11 +143,11 @@ class AI(commands.Cog):
 
             personas_cog = self.bot.cogs.get('Personas')
             current_persona = personas_cog.current_persona if personas_cog else None
-            system_prompt = (personas_cog.personas.get(current_persona, []) if personas_cog else [])
+            system_prompt = personas_cog.personas.get(current_persona, []) if personas_cog else []
             user_id = str(message.author.id)
             persona_key = current_persona or 'default'
 
-            user_convos = (personas_cog.conversations.setdefault(user_id, {}) if personas_cog else {})
+            user_convos = personas_cog.conversations.setdefault(user_id, {}) if personas_cog else {}
             persona_history = user_convos.setdefault(persona_key, [])
             history = " ".join(m["content"] for m in persona_history)
 
@@ -156,6 +155,17 @@ class AI(commands.Cog):
                 letter_fact = maybe_count_letter_reply(text)
                 if letter_fact:
                     reply = await gpt_wrap_fact(letter_fact, text, system_prompt)
+                    await message.channel.send(f'{message.author.mention} {reply}')
+                    if personas_cog:
+                        persona_history.append({"role": "user", "content": text})
+                        persona_history.append({"role": "assistant", "content": reply})
+                        user_convos[persona_key] = persona_history[-20:]
+                        personas_cog.save_conversations()
+                    return
+
+                insight_fact = maybe_bot_insight_reply(text)
+                if insight_fact:
+                    reply = await gpt_wrap_fact(insight_fact, text, system_prompt)
                     await message.channel.send(f'{message.author.mention} {reply}')
                     if personas_cog:
                         persona_history.append({"role": "user", "content": text})
@@ -187,7 +197,7 @@ class AI(commands.Cog):
                     messages=[
                         {"role": "system", "content": combined_system},
                         {"role": "user", "content": text},
-                    ]
+                    ],
                 )
                 bot_response = completion.choices[0].message.content if completion.choices else "No response generated."
                 if not bot_response.strip():
@@ -200,7 +210,7 @@ class AI(commands.Cog):
                 if len(bot_response) > limit:
                     chunks = [bot_response[i:i + max_chunk] for i in range(0, len(bot_response), max_chunk)]
                     for i, chunk in enumerate(chunks):
-                        part = f" (Part {i+1} of {len(chunks)})" if len(chunks) > 1 else ""
+                        part = f" (Part {i + 1} of {len(chunks)})" if len(chunks) > 1 else ""
                         await message.channel.send(f'{mention}{chunk}{part}')
                         await asyncio.sleep(1)
                 else:
