@@ -6,6 +6,10 @@
   <img src="assets/branding/tinki-avatar.png" alt="Tinki avatar" width="160">
 </p>
 
+<p align="center">
+  <img src="assets/branding/tink.gif" alt="Tinki" width="160">
+</p>
+
 # tinki-bot
 
 Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered gremlin replies, and Uma Musume gacha.
