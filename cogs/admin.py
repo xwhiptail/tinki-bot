@@ -177,6 +177,24 @@ class Admin(commands.Cog):
     def _deploy_dirs(self):
         return ["assets", "cogs", "utils", "tests"]
 
+    def _deploy_commit_file(self, repo_root: Path) -> Path:
+        return repo_root / ".deploy-commit"
+
+    def _read_deployed_commit(self, repo_root: Path) -> str:
+        commit_file = self._deploy_commit_file(repo_root)
+        if not commit_file.exists():
+            return ""
+        return commit_file.read_text(encoding="utf-8").strip()
+
+    def _write_deployed_commit(self, repo_root: Path, commit: str) -> None:
+        self._deploy_commit_file(repo_root).write_text(commit.strip() + "\n", encoding="utf-8")
+
+    def _short_commit(self, commit: str) -> str:
+        return commit[:7] if commit else "unknown"
+
+    def _github_commit_api_url(self) -> str:
+        return GITHUB_REPO_URL.replace("https://github.com/", "https://api.github.com/repos/") + "/commits/main"
+
     @commands.command(name="restart")
     @commands.has_permissions(administrator=True)
     async def restart_bot(self, ctx):
@@ -188,12 +206,29 @@ class Admin(commands.Cog):
     @commands.has_permissions(administrator=True)
     async def deploy_latest(self, ctx):
         archive_url = GITHUB_REPO_URL.replace("https://github.com/", "https://codeload.github.com/") + "/zip/refs/heads/main"
-        await ctx.send("Pulling latest repo snapshot from GitHub...")
         try:
             import aiohttp
 
             repo_root = Path(__file__).resolve().parent.parent
+            current_commit = self._read_deployed_commit(repo_root)
             async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    self._github_commit_api_url(),
+                    timeout=aiohttp.ClientTimeout(total=30),
+                    headers={"Accept": "application/vnd.github+json", "User-Agent": "tinki-bot"},
+                ) as resp:
+                    resp.raise_for_status()
+                    github_commit = (await resp.json())["sha"]
+
+                await ctx.send(
+                    f"Deploy check: current `{self._short_commit(current_commit)}` vs GitHub main `{self._short_commit(github_commit)}`"
+                )
+
+                if current_commit == github_commit:
+                    await ctx.send("Already at GitHub main. No deploy needed.")
+                    return
+
+                await ctx.send("Pulling latest repo snapshot from GitHub...")
                 async with session.get(archive_url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
                     resp.raise_for_status()
                     content = await resp.read()
@@ -224,6 +259,8 @@ class Admin(commands.Cog):
                     target_dir = repo_root / dir_name
                     if source_dir.exists():
                         shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
+
+            self._write_deployed_commit(repo_root, github_commit)
 
             install = await asyncio.create_subprocess_exec(
                 sys.executable,
