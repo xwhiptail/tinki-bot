@@ -1,0 +1,15 @@
+aiohttp
+discord.py==1.7.3
+discord-ext-menus
+fuzzywuzzy
+matplotlib
+numpy
+openai
+opencv-python
+Pillow
+pyfiglet
+pytz
+requests
+scipy
+seaborn
+seventv
