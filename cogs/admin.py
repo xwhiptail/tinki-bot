@@ -17,6 +17,12 @@ class Admin(commands.Cog):
         self.bot = bot
 
     async def run_startup_tests(self):
+        try:
+            await self._run_startup_tests_inner()
+        except Exception as e:
+            print(f"[startup tests] unhandled exception: {type(e).__name__}: {e}")
+
+    async def _run_startup_tests_inner(self):
         await self.bot.wait_until_ready()
         test_channel = discord.utils.get(self.bot.get_all_channels(), name="bot-test")
         if not test_channel:
@@ -69,7 +75,10 @@ class Admin(commands.Cog):
                 lines.append(f"  {tag} {name}\n")
 
         buf = io.BytesIO("".join(lines).encode("utf-8"))
-        await test_channel.send(content=summary, file=discord.File(buf, filename="startup_test_results.txt"))
+        try:
+            await test_channel.send(content=summary, file=discord.File(buf, filename="startup_test_results.txt"))
+        except discord.Forbidden:
+            await test_channel.send(content=summary)
 
     async def _run_command_selftests(self, ctx=None):
         tests = [
