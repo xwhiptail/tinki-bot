@@ -150,7 +150,7 @@ def maybe_count_letter_reply(text: str) -> Optional[str]:
     times = "time" if count == 1 else "times"
     return (
         f"{count} - '{target_letter}' shows up in '{target_word}' {count} {times}. "
-        f"Letter goblin actually counted."
+        f"Letter gnome actually counted."
     )
 
 
@@ -168,7 +168,7 @@ def maybe_calculate_reply(text: str) -> Optional[str]:
         parsed = ast.parse(candidate, mode='eval')
         result = _evaluate_decimal_expression(parsed)
         formatted = _format_decimal_result(result)
-        return f"{formatted} - calculator goblin used the real numbers this time."
+        return f"{formatted} - calculator gnome used the real numbers this time."
     except (SyntaxError, ValueError, InvalidOperation, ZeroDivisionError):
         return None
 
@@ -1989,8 +1989,8 @@ async def run_startup_tests():
         "```\n"
         f"🧪 **Command grid:** {cmd_passed}/{cmd_total} tests passed\n"
         f"🌐 **URL filter matrix:** {url_passed}/{url_total} tests passed\n"
-        f"🔢 **Calculator goblin:** {calc_passed}/{calc_total} tests passed\n"
-        f"🔤 **Letter goblin:** {letter_passed}/{letter_total} tests passed\n"
+        f"🔢 **Calculator gnome:** {calc_passed}/{calc_total} tests passed\n"
+        f"🔤 **Letter gnome:** {letter_passed}/{letter_total} tests passed\n"
     )
 
     if failures:

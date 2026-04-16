@@ -141,9 +141,9 @@ class TestMaybeCalculateReply:
     def test_division_by_zero_returns_none(self):
         assert tb.maybe_calculate_reply("5 / 0") is None
 
-    def test_result_has_goblin_flavour(self):
+    def test_result_has_gnome_flavour(self):
         r = tb.maybe_calculate_reply("1 + 1")
-        assert r is not None and "goblin" in r.lower()
+        assert r is not None and "gnome" in r.lower()
 
 
 # ── maybe_count_letter_reply ─────────────────────────────────────────────────
@@ -180,9 +180,9 @@ class TestMaybeCountLetterReply:
     def test_no_match_returns_none(self):
         assert tb.maybe_count_letter_reply("tell me something") is None
 
-    def test_result_has_goblin_flavour(self):
+    def test_result_has_gnome_flavour(self):
         r = tb.maybe_count_letter_reply("how many t's in butter")
-        assert r is not None and "goblin" in r.lower()
+        assert r is not None and "gnome" in r.lower()
 
     def test_with_the_word_phrasing(self):
         r = tb.maybe_count_letter_reply("how many letter e's in the word sleep")
