@@ -6,6 +6,7 @@ myenv/
 .idea/
 __pycache__/
 *.pyc
+pytest-cache-files-*/
 *.png
 !assets/
 !assets/branding/
