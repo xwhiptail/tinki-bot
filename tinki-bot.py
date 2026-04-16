@@ -1032,8 +1032,8 @@ async def graph_scores(ctx):
         plt.gca().xaxis.set_major_locator(mdates.MonthLocator())
         plt.gcf().autofmt_xdate()
 
-        plt.savefig("scores_graph.png")
-        await ctx.send(file=discord.File("scores_graph.png"))
+        plt.savefig(str(DATA_DIR / "scores_graph.png"))
+        await ctx.send(file=discord.File(str(DATA_DIR / "scores_graph.png")))
         plt.close()
 
     except Exception as e:
@@ -1051,7 +1051,7 @@ async def distribution_graph(ctx):
     plt.ylabel('Frequency')
     plt.tight_layout()
 
-    file_name = "distribution_graph.png"
+    file_name = str(DATA_DIR / "distribution_graph.png")
     plt.savefig(file_name)
     plt.close()
 
@@ -1118,8 +1118,8 @@ async def sussy_graph(ctx):
         plt.ylabel('Cumulative Count')
         plt.title('Lhea "sus" Usage Over Time')
 
-        plt.savefig('sussy_usage_graph.png')
-        await ctx.send(file=discord.File('sussy_usage_graph.png'))
+        plt.savefig(str(DATA_DIR / 'sussy_usage_graph.png'))
+        await ctx.send(file=discord.File(str(DATA_DIR / 'sussy_usage_graph.png')))
         plt.close()
 
     except Exception as e:
@@ -1184,8 +1184,8 @@ async def explode_graph(ctx):
         plt.ylabel('Cumulative Count')
         plt.title("Whiptail's Explosions Over Time")
 
-        plt.savefig('explode_usage_graph.png')
-        await ctx.send(file=discord.File('explode_usage_graph.png'))
+        plt.savefig(str(DATA_DIR / 'explode_usage_graph.png'))
+        await ctx.send(file=discord.File(str(DATA_DIR / 'explode_usage_graph.png')))
         plt.close()
 
     except Exception as e:
@@ -1219,8 +1219,8 @@ async def spinny_graph(ctx):
         plt.ylabel('Cumulative Count')
         plt.title('Grinding Usage Over Time')
 
-        plt.savefig('spinny_usage_graph.png')
-        await ctx.send(file=discord.File('spinny_usage_graph.png'))
+        plt.savefig(str(DATA_DIR / 'spinny_usage_graph.png'))
+        await ctx.send(file=discord.File(str(DATA_DIR / 'spinny_usage_graph.png')))
         plt.close()
 
     except Exception as e:

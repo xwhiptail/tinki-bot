@@ -38,6 +38,8 @@ fi
 if [ -d ${RemoteDataDir} ]; then
   tar -czf /opt/apps/tinki-bot/data_backup_`$ts.tar.gz -C /opt/apps/tinki-bot data
 fi
+ls -1t ${RemoteRepoDir}/tinki-bot.py.backup_* 2>/dev/null | tail -n +4 | xargs -r rm --
+ls -1t /opt/apps/tinki-bot/data_backup_*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm --
 "@
 $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(($backupScript -replace "`r`n", "`n")))
 & $plink -batch -i $KeyPath "${User}@${ServerHost}" "echo '$b64' | base64 -d | bash"
