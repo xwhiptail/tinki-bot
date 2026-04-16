@@ -90,22 +90,7 @@ def get_openai_client() -> OpenAI:
 
 
 def fetch_openai_balance() -> Optional[str]:
-    api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        return None
-    try:
-        resp = requests.get(
-            'https://api.openai.com/dashboard/billing/credit_grants',
-            headers={'Authorization': f'Bearer {api_key}'},
-            timeout=5,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            available = float(data.get('total_available', 0))
-            return f"${available:.2f}"
-        return None
-    except Exception:
-        return None
+    return "https://platform.openai.com/settings/organization/billing/overview"
 
 
 async def gpt_wrap_fact(fact: str, user_text: str, system_prompt) -> str:
@@ -2058,7 +2043,7 @@ async def run_startup_tests():
     )
 
     if openai_balance is not None:
-        summary += f"💸 **OpenAI balance:** {openai_balance}\n"
+        summary += f"💸 **OpenAI billing:** {openai_balance}\n"
 
     if failures:
         summary += "\n⚠️ **Anomalies detected:**\n"
