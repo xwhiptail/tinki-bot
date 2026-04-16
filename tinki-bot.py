@@ -1168,17 +1168,19 @@ async def uma_gacha(ctx, count: int = 10):
     pity_data[uid] = pity
     save_uma_pity(pity_data)
 
-    ssrs = [name for r, name in pulls if r == "SSR"]
-    lines = []
-    for rarity, name in pulls:
-        if rarity == "SSR":
-            lines.append(f"✨ **[SSR] {name}**")
-        elif rarity == "SR":
-            lines.append(f"⭐ [SR] {name}")
-        else:
-            lines.append(f"· [R] {name}")
+    ssrs  = [name for r, name in pulls if r == "SSR"]
+    srs   = [name for r, name in pulls if r == "SR"]
+    r_count = sum(1 for r, _ in pulls if r == "R")
 
-    result = "\n".join(lines)
+    lines = []
+    for name in ssrs:
+        lines.append(f"✨ **[SSR] {name}**")
+    for name in srs:
+        lines.append(f"⭐ [SR] {name}")
+    if r_count:
+        lines.append(f"· [R] ×{r_count}")
+
+    result = "\n".join(lines) if lines else "· [R] ×10"
     if ssrs:
         footer = f"\n🎉 SSR! You got: **{', '.join(ssrs)}** (pity reset to 0)"
         gif = await _uma_gif()
@@ -1632,7 +1634,7 @@ async def on_command_error(ctx, error):
         names = [cmd.name for cmd in bot.commands]
         match, score = process.extractOne(attempted, names)
         if score >= 60:
-            await ctx.send(f"❓ `!{attempted}` isn't a thing. Did you mean `!{match}`?")
+            await ctx.send(f"`!{attempted}` doesn't exist, genius. Did you mean `!{match}`?")
         return
     raise error
 

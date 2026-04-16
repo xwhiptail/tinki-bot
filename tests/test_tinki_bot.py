@@ -291,3 +291,95 @@ class TestPersonaCommands:
         ctx = make_ctx()
         await tb.current_persona_cmd.callback(ctx)
         assert "pirate" in ctx.send.call_args[0][0]
+
+
+# ── Uma Musume gacha ──────────────────────────────────────────────────────────
+
+class TestUmaSinglePull:
+    def test_ssr_forced_at_pity_cap(self):
+        # pity = CAP-1 means next pull must be SSR
+        rarity, name, new_pity = tb._uma_single_pull(tb.UMA_PITY_CAP - 1)
+        assert rarity == "SSR"
+        assert name in tb.UMA_SSR
+        assert new_pity == 0
+
+    def test_pity_resets_to_zero_on_ssr(self):
+        with patch.object(tb.random, "random", return_value=0.0):  # always SSR
+            _, _, new_pity = tb._uma_single_pull(50)
+        assert new_pity == 0
+
+    def test_pity_increments_on_non_ssr(self):
+        with patch.object(tb.random, "random", return_value=0.99):  # always R
+            _, _, new_pity = tb._uma_single_pull(10)
+        assert new_pity == 11
+
+    def test_sr_rarity_within_rate_window(self):
+        # roll just above SSR rate = SR
+        roll = tb.UMA_SSR_RATE + 0.001
+        with patch.object(tb.random, "random", return_value=roll):
+            rarity, name, _ = tb._uma_single_pull(0)
+        assert rarity == "SR"
+        assert name in tb.UMA_SR
+
+    def test_r_rarity_above_sr_window(self):
+        roll = tb.UMA_SSR_RATE + tb.UMA_SR_RATE + 0.001
+        with patch.object(tb.random, "random", return_value=roll):
+            rarity, name, _ = tb._uma_single_pull(0)
+        assert rarity == "R"
+        assert name in tb.UMA_R
+
+    def test_ssr_name_comes_from_ssr_pool(self):
+        with patch.object(tb.random, "random", return_value=0.0):
+            _, name, _ = tb._uma_single_pull(0)
+        assert name in tb.UMA_SSR
+
+    def test_pity_cap_defined_at_200(self):
+        assert tb.UMA_PITY_CAP == 200
+
+    def test_ssr_rate_is_three_percent(self):
+        assert tb.UMA_SSR_RATE == pytest.approx(0.03)
+
+    def test_full_pity_run_guarantees_ssr(self):
+        # simulate UMA_PITY_CAP pulls all returning roll=0.99 (R) — last must be SSR
+        pity = 0
+        last_rarity = None
+        with patch.object(tb.random, "random", return_value=0.99):
+            for _ in range(tb.UMA_PITY_CAP):
+                last_rarity, _, pity = tb._uma_single_pull(pity)
+        assert last_rarity == "SSR"
+        assert pity == 0
+
+    def test_pity_does_not_exceed_cap_minus_one(self):
+        # after CAP-1 non-SSR pulls, pity should be CAP-1
+        pity = 0
+        with patch.object(tb.random, "random", return_value=0.99):
+            for _ in range(tb.UMA_PITY_CAP - 1):
+                _, _, pity = tb._uma_single_pull(pity)
+        assert pity == tb.UMA_PITY_CAP - 1
+
+
+class TestUmaPityPersistence:
+    def setup_method(self):
+        self._original = tb.UMA_PITY_FILE
+        tb.UMA_PITY_FILE = ":memory_test:"  # sentinel; we'll patch open
+
+    def teardown_method(self):
+        tb.UMA_PITY_FILE = self._original
+
+    def test_load_returns_empty_dict_when_file_missing(self):
+        with patch("builtins.open", side_effect=FileNotFoundError):
+            result = tb.load_uma_pity()
+        assert result == {}
+
+    def test_load_returns_empty_dict_on_bad_json(self):
+        from unittest.mock import mock_open
+        with patch("builtins.open", mock_open(read_data="not json")):
+            result = tb.load_uma_pity()
+        assert result == {}
+
+    def test_save_and_load_roundtrip(self, tmp_path):
+        path = str(tmp_path / "uma_pity.json")
+        tb.UMA_PITY_FILE = path
+        data = {"123": 42, "456": 0}
+        tb.save_uma_pity(data)
+        assert tb.load_uma_pity() == data
