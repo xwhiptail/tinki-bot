@@ -670,7 +670,7 @@ async def on_message(message):
 
     # Check if the message is not a reply and the bot is mentioned
     if message.reference is None and bot.user in message.mentions:
-        text = message.content.replace(f'<@!{bot.user.id}>', '').strip()
+        text = message.content.replace(f'<@!{bot.user.id}>', '').replace(f'<@{bot.user.id}>', '').strip()
         user_id = str(message.author.id)
         system_prompt = personas.get(current_persona, [])
 
