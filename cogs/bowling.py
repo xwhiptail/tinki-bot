@@ -16,8 +16,6 @@ class Bowling(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.scores = []
-
-    async def cog_load(self):
         self._load()
 
     def _load(self):
@@ -186,5 +184,5 @@ class Bowling(commands.Cog):
         await ctx.send(file=discord.File(path))
 
 
-async def setup(bot):
-    await bot.add_cog(Bowling(bot))
+def setup(bot):
+    bot.add_cog(Bowling(bot))

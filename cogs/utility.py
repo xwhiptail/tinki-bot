@@ -275,5 +275,5 @@ class Utility(commands.Cog):
         await ctx.send(SERVER_FEATURE_REMOVED_MESSAGE)
 
 
-async def setup(bot):
-    await bot.add_cog(Utility(bot))
+def setup(bot):
+    bot.add_cog(Utility(bot))

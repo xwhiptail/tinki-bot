@@ -10,8 +10,6 @@ class Personas(commands.Cog):
         self.personas = {}
         self.current_persona = None
         self.conversations = {}
-
-    async def cog_load(self):
         self._load_personas()
         self._load_conversations()
 
@@ -101,5 +99,5 @@ class Personas(commands.Cog):
             await ctx.send("No conversation history found for you.")
 
 
-async def setup(bot):
-    await bot.add_cog(Personas(bot))
+def setup(bot):
+    bot.add_cog(Personas(bot))

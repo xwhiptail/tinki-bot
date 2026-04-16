@@ -359,5 +359,5 @@ class Emotes(commands.Cog):
             retry = 0
 
 
-async def setup(bot):
-    await bot.add_cog(Emotes(bot))
+def setup(bot):
+    bot.add_cog(Emotes(bot))

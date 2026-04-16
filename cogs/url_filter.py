@@ -54,5 +54,5 @@ class URLFilter(commands.Cog):
             await message.delete()
 
 
-async def setup(bot):
-    await bot.add_cog(URLFilter(bot))
+def setup(bot):
+    bot.add_cog(URLFilter(bot))

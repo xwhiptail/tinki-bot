@@ -1,5 +1,6 @@
 import asyncio
 import io
+import logging
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -11,23 +12,29 @@ from config import GITHUB_REPO_URL
 from utils.openai_helpers import fetch_openai_balance
 from utils.selftests import run_url_selftests, run_calculate_selftests, run_letter_count_selftests
 
+log = logging.getLogger('discord.cogs.admin')
+
 
 class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     async def run_startup_tests(self):
+        log.warning("[startup tests] task started")
         try:
             await self._run_startup_tests_inner()
         except Exception as e:
-            print(f"[startup tests] unhandled exception: {type(e).__name__}: {e}")
+            log.error("[startup tests] unhandled exception: %s: %s", type(e).__name__, e)
 
     async def _run_startup_tests_inner(self):
         await self.bot.wait_until_ready()
-        test_channel = discord.utils.get(self.bot.get_all_channels(), name="bot-test")
+        all_channels = list(self.bot.get_all_channels())
+        log.info("[startup tests] bot sees %d channels: %s", len(all_channels), [c.name for c in all_channels])
+        test_channel = discord.utils.get(all_channels, name="bot-test")
         if not test_channel:
-            print("No #bot-test channel found; skipping startup tests.")
+            log.warning("[startup tests] No #bot-test channel found; skipping.")
             return
+        log.info("[startup tests] found #bot-test, running tests...")
 
         cmd_results = await self._run_command_selftests(ctx=None)
         url_results = run_url_selftests()
@@ -157,5 +164,5 @@ class Admin(commands.Cog):
         await ctx.send(f"URL tests complete: {passed}/{len(results)} passed.")
 
 
-async def setup(bot):
-    await bot.add_cog(Admin(bot))
+def setup(bot):
+    bot.add_cog(Admin(bot))

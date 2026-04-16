@@ -16,8 +16,6 @@ class Tracking(commands.Cog):
         self.sus_and_sticker_usage = []
         self.explode = []
         self.spinny = []
-
-    async def cog_load(self):
         self._load_sus()
         self._load_explode()
         self._load_spinny()
@@ -188,5 +186,5 @@ class Tracking(commands.Cog):
             await ctx.send(f"Error: {e}")
 
 
-async def setup(bot):
-    await bot.add_cog(Tracking(bot))
+def setup(bot):
+    bot.add_cog(Tracking(bot))

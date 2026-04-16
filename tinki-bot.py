@@ -1,8 +1,11 @@
+import logging
 import discord
 from discord.ext import commands
 from fuzzywuzzy import process
 
 import config
+
+logging.basicConfig(level=logging.INFO)
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='!', intents=intents)
@@ -21,18 +24,16 @@ COGS = [
 ]
 
 
-async def _setup_hook():
-    for cog in COGS:
-        await bot.load_extension(cog)
-
-
-bot.setup_hook = _setup_hook
+for cog in COGS:
+    bot.load_extension(cog)
 
 
 @bot.event
 async def on_ready():
+    logging.info("on_ready: cogs loaded = %s", list(bot.cogs.keys()))
     await bot.change_presence(activity=discord.Game(name="!commands"))
     admin_cog = bot.cogs.get('Admin')
+    logging.info("on_ready: admin_cog = %s", admin_cog)
     if admin_cog:
         bot.loop.create_task(admin_cog.run_startup_tests())
 

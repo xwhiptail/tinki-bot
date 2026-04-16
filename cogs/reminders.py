@@ -13,10 +13,12 @@ from config import DATABASE_FILE
 class Reminders(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-    async def cog_load(self):
         self._create_table()
-        self.check_reminders.start()
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        if not self.check_reminders.is_running():
+            self.check_reminders.start()
 
     def cog_unload(self):
         self.check_reminders.cancel()
@@ -164,5 +166,5 @@ class Reminders(commands.Cog):
         await ctx.send(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
 
-async def setup(bot):
-    await bot.add_cog(Reminders(bot))
+def setup(bot):
+    bot.add_cog(Reminders(bot))
