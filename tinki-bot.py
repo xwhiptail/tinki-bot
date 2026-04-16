@@ -115,12 +115,21 @@ def get_openai_client() -> OpenAI:
     return OpenAI()
 
 
-def fetch_openai_balance() -> str:
+async def fetch_openai_balance() -> str:
     billing_url = "https://platform.openai.com/settings/organization/billing/overview"
+    api_key = os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        return f"❌ OPENAI_API_KEY not set — {billing_url}"
     try:
-        client = get_openai_client()
-        client.models.list()
-        return f"✅ API key live — {billing_url}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status == 200:
+                    return f"✅ API key live — {billing_url}"
+                return f"❌ API key error (HTTP {resp.status}) — {billing_url}"
     except Exception as e:
         return f"❌ API key error ({e}) — {billing_url}"
 
@@ -141,8 +150,11 @@ async def gpt_wrap_fact(fact: str, user_text: str, system_prompt) -> str:
             {"role": "assistant", "content": f"{fact} —"},
         ],
     )
-    tail = completion.choices[0].message.content if completion.choices else ""
-    return f"{fact} — {tail.lstrip('— ').strip()}" if tail else fact
+    try:
+        tail = completion.choices[0].message.content if completion.choices else ""
+        return f"{fact} — {tail.lstrip('— ').strip()}" if tail else fact
+    except Exception:
+        return fact
 
 
 CALCULATION_OPERATORS = {
@@ -1797,12 +1809,22 @@ async def restart_bot(ctx):
 @commands.has_permissions(administrator=True)
 async def deploy_latest(ctx):
     raw_url = GITHUB_REPO_URL.replace('github.com', 'raw.githubusercontent.com') + '/main/tinki-bot.py'
-    await ctx.send(f"Pulling latest from GitHub…")
+    await ctx.send("Pulling latest from GitHub…")
     try:
-        resp = requests.get(raw_url, timeout=15)
-        resp.raise_for_status()
-        with open(__file__, 'wb') as f:
-            f.write(resp.content)
+        async with aiohttp.ClientSession() as session:
+            async with session.get(raw_url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                resp.raise_for_status()
+                content = await resp.read()
+
+        if len(content) < 10_000:
+            await ctx.send(f"Deploy aborted: download looks truncated ({len(content)} bytes).")
+            return
+
+        target = Path(__file__)
+        tmp = target.with_suffix('.py.tmp')
+        tmp.write_bytes(content)
+        tmp.replace(target)
+
         await ctx.send("Updated. Restarting… brb 👾")
         await asyncio.sleep(1)
         subprocess.Popen(['sudo', 'systemctl', 'restart', 'tinki-bot'])
@@ -2201,7 +2223,7 @@ async def run_startup_tests():
     url_results = run_url_selftests()
     calc_results = run_calculate_selftests()
     letter_results = run_letter_count_selftests()
-    openai_balance = fetch_openai_balance()
+    openai_balance = await fetch_openai_balance()
 
     cmd_total = len(cmd_results)
     cmd_passed = sum(1 for (_, ok, _) in cmd_results if ok)
