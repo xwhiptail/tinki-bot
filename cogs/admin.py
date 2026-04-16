@@ -116,7 +116,7 @@ class Admin(commands.Cog):
                 async with session.get(raw_url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                     resp.raise_for_status()
                     content = await resp.read()
-            if len(content) < 10_000:
+            if len(content) < 500:
                 await ctx.send(f"Deploy aborted: download looks truncated ({len(content)} bytes).")
                 return
             target = Path(__file__).resolve().parent.parent / 'tinki-bot.py'
