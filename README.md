@@ -80,7 +80,10 @@ That script:
 
 - backs up the live server copy of `tinki-bot.py`
 - creates a timestamped archive of `/opt/apps/tinki-bot/data`
+- compares local `HEAD` against GitHub `main` and aborts if they differ
+- shows the currently deployed commit from `/opt/apps/tinki-bot/repo/.deploy-commit`
 - uploads the tracked app files to the EC2 `repo/` directory
+- writes the deployed commit to `/opt/apps/tinki-bot/repo/.deploy-commit`
 - restarts the systemd service
 
 ### Deploy Steps
@@ -206,9 +209,9 @@ Run locally with:
 pytest
 ```
 
-61 tests covering pure functions and isolated command helpers. No live Discord calls needed.
+67 tests covering pure functions and isolated command helpers. No live Discord calls needed.
 
-Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-test`, alongside the command, URL, calculator, and letter-count self-tests.
+Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-test`, alongside the command, URL, calculator, and letter-count self-tests. Pytest cache-provider warnings are disabled in this repo so the startup run stays clean on Windows.
 
 ## Commands
 
@@ -277,7 +280,7 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 ### Admin
 
 - `!restart` - restart the bot service, admin only
-- `!deploy` - pull the latest single-file entrypoint and restart, admin only
+- `!deploy` - compare current deployed commit to GitHub `main`, sync the modular repo snapshot if newer, install dependencies, and restart, admin only
 - `!runtests` - run command smoke tests, admin only
 - `!testurls` - run URL rewrite self-tests, admin only
 
@@ -307,3 +310,4 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 - Minecraft and SkyFactory commands are retired and return a removal notice.
 - Do not commit secrets, local databases, generated JSON files, or virtual environments.
 - Deploy backups are pruned to the 3 most recent automatically.
+- Deploy state is tracked in `/opt/apps/tinki-bot/repo/.deploy-commit`.

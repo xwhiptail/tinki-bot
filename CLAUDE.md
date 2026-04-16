@@ -46,7 +46,10 @@ The deploy script:
 
 - backs up `/opt/apps/tinki-bot/repo/tinki-bot.py`
 - snapshots `/opt/apps/tinki-bot/data`
+- compares local `HEAD` with GitHub `main` before uploading
+- reports the currently deployed commit from `/opt/apps/tinki-bot/repo/.deploy-commit`
 - uploads repo files to `/opt/apps/tinki-bot/repo`
+- writes the deployed commit to `/opt/apps/tinki-bot/repo/.deploy-commit`
 - restarts `tinki-bot.service`
 
 ## Project Structure
@@ -89,9 +92,9 @@ cogs/
 pytest
 ```
 
-61 tests in `tests/test_tinki_bot.py`. Tests import directly from `utils/` modules and instantiate cog classes without a live Discord connection. `_wire_cog(cog)` sets `cmd.cog` on each `Command` so direct method calls work in tests.
+67 tests in `tests/test_tinki_bot.py`. Tests import directly from `utils/` modules and instantiate cog classes without a live Discord connection. `_wire_cog(cog)` sets `cmd.cog` on each `Command` so direct method calls work in tests.
 
-Startup diagnostics in `cogs/admin.py` also run `pytest -q` and post the result to `#bot-test` with the other startup self-tests.
+Startup diagnostics in `cogs/admin.py` also run `pytest -q` and post the result to `#bot-test` with the other startup self-tests. `pytest.ini` disables the cache provider so Windows cache-path noise does not pollute deploy or startup output.
 
 ## Operational Rules
 
@@ -102,6 +105,7 @@ Startup diagnostics in `cogs/admin.py` also run `pytest -q` and post the result 
 - Prefer updating repo files locally and deploying via `deploy-ec2.ps1`, rather than editing directly on the EC2 instance.
 - Deploy prunes backups to 3 most recent automatically - do not disable this.
 - `!restart` and `!deploy` are admin-only Discord commands that control the live service.
+- `!deploy` compares `/opt/apps/tinki-bot/repo/.deploy-commit` to GitHub `main` and skips the deploy when already current.
 
 ## Common Checks
 
