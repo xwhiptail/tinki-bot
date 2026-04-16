@@ -105,18 +105,18 @@ async def gpt_wrap_fact(fact: str, user_text: str, system_prompt) -> str:
     system = (
         GREMLIN_SYSTEM_STYLE + " "
         f"Your name is @Tinki-bot. "
-        f"Use this persona description as extra flavor: {system_prompt} "
-        f"The correct answer to the user's question is: {fact}. "
-        f"You MUST include this exact answer in your reply. Keep it short (1–2 sentences)."
+        f"Use this persona description as extra flavor: {system_prompt}"
     )
     completion = client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user_text},
+            {"role": "assistant", "content": f"{fact} —"},
         ],
     )
-    return completion.choices[0].message.content if completion.choices else fact
+    tail = completion.choices[0].message.content if completion.choices else ""
+    return f"{fact} — {tail.lstrip('— ').strip()}" if tail else fact
 
 
 CALCULATION_OPERATORS = {
