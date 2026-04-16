@@ -89,6 +89,26 @@ def get_openai_client() -> OpenAI:
     return OpenAI()
 
 
+async def gpt_wrap_fact(fact: str, user_text: str, system_prompt) -> str:
+    """Call GPT to deliver a pre-computed factual answer in Tinki's personality."""
+    client = get_openai_client()
+    system = (
+        GREMLIN_SYSTEM_STYLE + " "
+        f"Your name is @Tinki-bot. "
+        f"Use this persona description as extra flavor: {system_prompt} "
+        f"The correct answer to the user's question is: {fact}. "
+        f"You MUST include this exact answer in your reply. Keep it short (1–2 sentences)."
+    )
+    completion = client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_text},
+        ],
+    )
+    return completion.choices[0].message.content if completion.choices else fact
+
+
 CALCULATION_OPERATORS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -148,10 +168,7 @@ def maybe_count_letter_reply(text: str) -> Optional[str]:
     target_letter, target_word = match.groups()
     count = target_word.count(target_letter)
     times = "time" if count == 1 else "times"
-    return (
-        f"{count} - '{target_letter}' shows up in '{target_word}' {count} {times}. "
-        f"Letter gnome actually counted."
-    )
+    return f"'{target_letter}' appears {count} {times} in '{target_word}'"
 
 
 def maybe_calculate_reply(text: str) -> Optional[str]:
@@ -168,7 +185,7 @@ def maybe_calculate_reply(text: str) -> Optional[str]:
         parsed = ast.parse(candidate, mode='eval')
         result = _evaluate_decimal_expression(parsed)
         formatted = _format_decimal_result(result)
-        return f"{formatted} - calculator gnome used the real numbers this time."
+        return formatted
     except (SyntaxError, ValueError, InvalidOperation, ZeroDivisionError):
         return None
 
@@ -681,8 +698,9 @@ async def on_message(message):
 
         if text:
             try:
-                letter_count_reply = maybe_count_letter_reply(text)
-                if letter_count_reply:
+                letter_count_fact = maybe_count_letter_reply(text)
+                if letter_count_fact:
+                    letter_count_reply = await gpt_wrap_fact(letter_count_fact, text, system_prompt)
                     await message.channel.send(f'{message.author.mention} {letter_count_reply}')
                     persona_history.append({"role": "user", "content": text})
                     persona_history.append({"role": "assistant", "content": letter_count_reply})
@@ -690,8 +708,9 @@ async def on_message(message):
                     save_conversations()
                     return
 
-                calculation_reply = maybe_calculate_reply(text)
-                if calculation_reply:
+                calc_fact = maybe_calculate_reply(text)
+                if calc_fact:
+                    calculation_reply = await gpt_wrap_fact(calc_fact, text, system_prompt)
                     await message.channel.send(f'{message.author.mention} {calculation_reply}')
                     persona_history.append({"role": "user", "content": text})
                     persona_history.append({"role": "assistant", "content": calculation_reply})
