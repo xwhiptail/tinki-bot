@@ -1,5 +1,5 @@
 param(
-    [string]$Host = "52.91.60.81",
+    [string]$ServerHost = "52.91.60.81",
     [string]$User = "ec2-user",
     [string]$KeyPath = "I:\mybotserver.ppk",
     [string]$RemoteRepoDir = "/opt/apps/tinki-bot/repo",
@@ -20,7 +20,7 @@ $repoFiles = @(
     ".gitignore"
 )
 
-& $plink -batch -i $KeyPath "${User}@${Host}" @"
+& $plink -batch -i $KeyPath "${User}@${ServerHost}" @"
 set -e
 ts=`$(date +%Y%m%d_%H%M%S)
 if [ -f ${RemoteRepoDir}/tinki-bot.py ]; then
@@ -33,7 +33,7 @@ fi
 
 foreach ($file in $repoFiles) {
     $localPath = Join-Path $projectRoot $file
-    & $pscp -batch -i $KeyPath $localPath "${User}@${Host}:${RemoteRepoDir}/"
+    & $pscp -batch -i $KeyPath $localPath "${User}@${ServerHost}:${RemoteRepoDir}/"
 }
 
-& $plink -batch -i $KeyPath "${User}@${Host}" "sudo systemctl restart tinki-bot && sleep 3 && sudo systemctl status tinki-bot --no-pager"
+& $plink -batch -i $KeyPath "${User}@${ServerHost}" "sudo systemctl restart tinki-bot && sleep 3 && sudo systemctl status tinki-bot --no-pager"

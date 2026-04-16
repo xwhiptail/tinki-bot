@@ -33,7 +33,7 @@ pip install -r requirements.txt
 - `DISCORD`
 - `GIPHY`
 - `OPENAI_API_KEY`
-- `OPENAI_MODEL` optional, defaults to `gpt-5.4-mini`
+- `OPENAI_MODEL` optional, defaults to `gpt-5.4`
 - `TINKI_DATA_DIR` optional, defaults to `./data`
 
 4. Run the bot:
