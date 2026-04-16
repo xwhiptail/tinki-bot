@@ -53,28 +53,85 @@ class Uma(commands.Cog):
                 return pull_rarity, name
         return None
 
-    def _gif_query(self, horse_name: Optional[str] = None) -> str:
-        if horse_name:
-            return f"{horse_name} uma musume"
-        return "uma musume"
+    def _gif_queries(self, horse_name: Optional[str] = None):
+        if not horse_name:
+            return ["uma musume"]
+
+        aliases = {
+            "Vodka": [
+                "ウオッカ ウマ娘",
+                "Uma Musume Vodka",
+                "Vodka uma musume",
+            ],
+            "T.M. Opera O": [
+                "T M Opera O uma musume",
+                "TM Opera O uma musume",
+                "T.M. Opera O uma musume",
+            ],
+        }
+
+        base_queries = [
+            f"{horse_name} uma musume",
+            f"uma musume {horse_name}",
+            f"{horse_name} anime",
+        ]
+
+        seen = set()
+        ordered = []
+        for query in aliases.get(horse_name, []) + base_queries:
+            key = query.casefold()
+            if key not in seen:
+                seen.add(key)
+                ordered.append(query)
+        return ordered
+
+    def _gif_match_terms(self, horse_name: str):
+        terms = {horse_name.casefold(), "uma musume", "umamusume"}
+        special_terms = {
+            "Vodka": {"ウオッカ", "vodka", "uma musume", "umamusume"},
+            "T.M. Opera O": {"t.m. opera o", "tm opera o", "t m opera o", "uma musume", "umamusume"},
+        }
+        return special_terms.get(horse_name, terms)
+
+    def _gif_matches_horse(self, item: dict, horse_name: Optional[str]) -> bool:
+        if not horse_name:
+            return True
+
+        text = " ".join(
+            str(item.get(key, ""))
+            for key in ("title", "slug", "username")
+        ).casefold()
+
+        terms = self._gif_match_terms(horse_name)
+        has_horse = any(term in text for term in terms if term not in {"uma musume", "umamusume"})
+        has_series = "uma musume" in text or "umamusume" in text or "ウマ娘" in text
+        return has_horse and has_series
 
     async def _gif(self, horse_name: Optional[str] = None) -> Optional[str]:
         if not GIPHY_API_KEY:
             return None
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    "https://api.giphy.com/v1/gifs/search",
-                    params={
-                        "api_key": GIPHY_API_KEY,
-                        "q": self._gif_query(horse_name),
-                        "limit": 25,
-                        "rating": "g",
-                    },
-                ) as resp:
-                    data = await resp.json()
-                    items = data.get("data", [])
-                    if items:
+                for query in self._gif_queries(horse_name):
+                    async with session.get(
+                        "https://api.giphy.com/v1/gifs/search",
+                        params={
+                            "api_key": GIPHY_API_KEY,
+                            "q": query,
+                            "limit": 25,
+                            "rating": "g",
+                        },
+                    ) as resp:
+                        data = await resp.json()
+                        items = data.get("data", [])
+                        if not items:
+                            continue
+
+                        if horse_name:
+                            items = [item for item in items if self._gif_matches_horse(item, horse_name)]
+                            if not items:
+                                continue
+
                         return random.choice(items)["images"]["original"]["url"]
         except Exception:
             pass

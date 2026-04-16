@@ -426,8 +426,23 @@ class TestUmaGifSelection:
     def test_featured_pull_returns_none_when_empty(self):
         assert self.cog._featured_pull([]) is None
 
-    def test_gif_query_uses_horse_name(self):
-        assert self.cog._gif_query("Tokai Teio") == "Tokai Teio uma musume"
+    def test_gif_queries_use_horse_name(self):
+        queries = self.cog._gif_queries("Tokai Teio")
+        assert "Tokai Teio uma musume" in queries
+        assert "uma musume Tokai Teio" in queries
 
-    def test_gif_query_defaults_to_generic_search(self):
-        assert self.cog._gif_query() == "uma musume"
+    def test_gif_queries_default_to_generic_search(self):
+        assert self.cog._gif_queries() == ["uma musume"]
+
+    def test_vodka_has_special_gif_aliases(self):
+        queries = self.cog._gif_queries("Vodka")
+        assert "Uma Musume Vodka" in queries
+        assert "ウオッカ ウマ娘" in queries
+
+    def test_gif_match_rejects_generic_vodka_result(self):
+        item = {"title": "vodka cocktail time", "slug": "vodka-drink", "username": ""}
+        assert self.cog._gif_matches_horse(item, "Vodka") is False
+
+    def test_gif_match_accepts_vodka_uma_result(self):
+        item = {"title": "Vodka Uma Musume", "slug": "vodka-uma-musume", "username": ""}
+        assert self.cog._gif_matches_horse(item, "Vodka") is True
