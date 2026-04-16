@@ -44,14 +44,39 @@ The deploy script currently:
 - uploads repo files to `/opt/apps/tinki-bot/repo`
 - restarts `tinki-bot.service`
 
+## Project Structure
+
+```
+tinki-bot.py          entry point — bot setup, cog loading, on_message, on_command_error
+config.py             all constants, DATA_DIR, paths, UMA data, URL patterns
+utils/
+  calculator.py       maybe_calculate_reply + AST eval helpers
+  letter_counter.py   maybe_count_letter_reply
+  url_rewriter.py     rewrite_social_urls
+  openai_helpers.py   get_openai_client, gpt_wrap_fact, fetch_openai_balance
+  selftests.py        run_url_selftests, run_calculate_selftests, run_letter_count_selftests
+cogs/
+  bowling.py          Bowling cog — score data + commands + on_message score detection
+  uma.py              Uma cog — gacha, pity, race, uma assign
+  personas.py         Personas cog — persona/conversation data + commands
+  reminders.py        Reminders cog — sqlite DB + commands + check_reminders loop
+  emotes.py           Emotes cog — $ commands, !emote, !allemotes, spinny grinding
+  tracking.py         Tracking cog — sus/explode/spinny tracking + graph commands
+  ai.py               AI cog — @mention handler, random AI posting, reaction replies
+  utility.py          Utility cog — cat, dog, gif, roulette, purge, retired server stubs
+  admin.py            Admin cog — restart, deploy, runtests, testurls, startup diagnostics
+  url_filter.py       URLFilter cog — URL rewrites and Twitch clip embed fix
+```
+
 ## Bot Architecture
 
-- Personality: `GREMLIN_SYSTEM_STYLE` constant — chaotic gnome shitposter, short replies, no therapy talk.
-- AI mention handler: strips `<@ID>` and `<@!ID>` variants before processing. Falls through to OpenAI if no pure-function handler matches.
-- Pure function handlers (deterministic, no GPT): `maybe_calculate_reply`, `maybe_count_letter_reply`. Both return a bare fact string; `gpt_wrap_fact` wraps it with personality using assistant prefill to prevent prompt leakage.
-- URL rewriting: `rewrite_social_urls` maps Twitter/X/Instagram/TikTok/Reddit to fix-embed proxies.
+- Personality: `GREMLIN_SYSTEM_STYLE` constant in `config.py` — chaotic gnome shitposter, short replies, no therapy talk.
+- AI mention handler: in `cogs/ai.py`. Strips `<@ID>` and `<@!ID>` variants. Falls through to OpenAI if no pure-function handler matches. Accesses persona data via `bot.cogs['Personas']`.
+- Pure function handlers (deterministic, no GPT): `utils/calculator.py` → `maybe_calculate_reply`, `utils/letter_counter.py` → `maybe_count_letter_reply`. Both return a bare fact string; `gpt_wrap_fact` wraps it with personality using assistant prefill to prevent prompt leakage.
+- URL rewriting: `utils/url_rewriter.py` → `rewrite_social_urls`. Triggered by `cogs/url_filter.py` on_message listener.
 - Graph PNGs: all saved to `DATA_DIR`, not the repo working directory.
-- Uma Musume gacha: pity tracked per Discord user ID in `data/uma_pity.json`. SSR 3%, SR 18.75%, R 78.25%, hard pity at 200 pulls.
+- Uma Musume gacha: in `cogs/uma.py`. Pity stored in `cog.pity_file` (default `data/uma_pity.json`). SSR 3%, SR 18.75%, R 78.25%, hard pity at 200 pulls.
+- Cog data: each cog loads its own persistent data in `cog_load()` and exposes `_save()` helpers. No global mutable state.
 
 ## Tests
 
@@ -59,7 +84,7 @@ The deploy script currently:
 pytest
 ```
 
-48 tests in `tests/test_tinki_bot.py`. Covers `rewrite_social_urls`, `maybe_calculate_reply`, `maybe_count_letter_reply`, score commands, and persona commands. The module is loaded via `importlib` (hyphen in filename); `Bot.run` is patched to a no-op so the bot does not connect.
+61 tests in `tests/test_tinki_bot.py`. Tests import directly from `utils/` modules and instantiate cog classes without a live Discord connection. `_wire_cog(cog)` sets `cmd.cog` on each Command so direct method calls work in tests.
 
 ## Operational Rules
 

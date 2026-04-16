@@ -7,28 +7,19 @@ Install test deps (once):
 Run:
     pytest
 """
-import importlib.util
-import os
 import sys
+import os
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# ── load module (hyphen in filename prevents normal import) ──────────────────
+# ── ensure project root is on sys.path ──────────────────────────────────────
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-def _load_bot():
-    import discord.ext.commands
-    # Prevent bot.run(TOKEN) at module bottom from actually connecting
-    discord.ext.commands.Bot.run = lambda *a, **kw: None
-
-    path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tinki-bot.py"))
-    spec = importlib.util.spec_from_file_location("tinki_bot", path)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["tinki_bot"] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-tb = _load_bot()
+from utils.url_rewriter import rewrite_social_urls
+from utils.calculator import maybe_calculate_reply
+from utils.letter_counter import maybe_count_letter_reply
+import config
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -38,55 +29,86 @@ def make_ctx():
     return ctx
 
 
+def _wire_cog(cog):
+    """Attach the cog instance to all its Command objects so direct calls work."""
+    for cmd in cog.get_commands():
+        cmd.cog = cog
+    return cog
+
+
+def make_bowling_cog():
+    from cogs.bowling import Bowling
+    cog = Bowling(MagicMock())
+    cog.scores.clear()
+    return _wire_cog(cog)
+
+
+def make_personas_cog():
+    from cogs.personas import Personas
+    cog = Personas(MagicMock())
+    cog.personas.clear()
+    cog.current_persona = None
+    cog.conversations.clear()
+    return _wire_cog(cog)
+
+
+def make_uma_cog(pity_file=None):
+    from cogs.uma import Uma
+    cog = Uma(MagicMock())
+    if pity_file is not None:
+        cog.pity_file = pity_file
+    return cog
+
+
 # ── rewrite_social_urls ──────────────────────────────────────────────────────
 
 class TestRewriteSocialUrls:
     def test_twitter_rewritten_to_vxtwitter(self):
-        out = tb.rewrite_social_urls("https://twitter.com/foo/status/123")
+        out = rewrite_social_urls("https://twitter.com/foo/status/123")
         assert "vxtwitter.com/foo/status/123" in out
         assert "//twitter.com" not in out
 
     def test_twitter_preserves_user_and_status(self):
-        out = tb.rewrite_social_urls("https://www.twitter.com/alice/status/999")
+        out = rewrite_social_urls("https://www.twitter.com/alice/status/999")
         assert "alice" in out
         assert "999" in out
 
     def test_x_com_rewritten_to_fixvx(self):
-        out = tb.rewrite_social_urls("https://x.com/user/status/1")
+        out = rewrite_social_urls("https://x.com/user/status/1")
         assert "fixvx.com" in out
         assert "//x.com" not in out
 
     def test_instagram_rewritten_to_eeinstagram(self):
-        out = tb.rewrite_social_urls("https://www.instagram.com/p/abc123/")
+        out = rewrite_social_urls("https://www.instagram.com/p/abc123/")
         assert "eeinstagram.com" in out
         assert "//www.instagram.com" not in out
 
     def test_tiktok_rewritten_to_tnktok(self):
-        out = tb.rewrite_social_urls("https://www.tiktok.com/@user/video/1")
+        out = rewrite_social_urls("https://www.tiktok.com/@user/video/1")
         assert "tnktok.com" in out
         assert "tiktok.com" not in out
 
     def test_reddit_rewritten_to_rxddit(self):
-        out = tb.rewrite_social_urls("https://www.reddit.com/r/python/comments/abc/")
+        out = rewrite_social_urls("https://www.reddit.com/r/python/comments/abc/")
         assert "rxddit.com" in out
         assert "reddit.com" not in out
 
     def test_github_url_unchanged(self):
         msg = "see https://github.com/some/repo for details"
-        assert tb.rewrite_social_urls(msg) == msg
+        assert rewrite_social_urls(msg) == msg
 
     def test_plain_text_unchanged(self):
         msg = "no links here at all"
-        assert tb.rewrite_social_urls(msg) == msg
+        assert rewrite_social_urls(msg) == msg
 
     def test_surrounding_text_preserved(self):
-        out = tb.rewrite_social_urls("hey https://twitter.com/x/status/1 lol")
+        out = rewrite_social_urls("hey https://twitter.com/x/status/1 lol")
         assert out.startswith("hey ")
         assert out.endswith(" lol")
 
     def test_multiple_social_urls_in_one_message(self):
         msg = "https://twitter.com/a/status/1 and https://instagram.com/p/2/"
-        out = tb.rewrite_social_urls(msg)
+        out = rewrite_social_urls(msg)
         assert "vxtwitter.com" in out
         assert "eeinstagram.com" in out
         assert "//twitter.com" not in out
@@ -97,94 +119,94 @@ class TestRewriteSocialUrls:
 
 class TestMaybeCalculateReply:
     def test_bare_addition(self):
-        r = tb.maybe_calculate_reply("2 + 2")
+        r = maybe_calculate_reply("2 + 2")
         assert r is not None and "4" in r
 
     def test_what_is_prefix_stripped(self):
-        r = tb.maybe_calculate_reply("what is 10 + 5")
+        r = maybe_calculate_reply("what is 10 + 5")
         assert r is not None and "15" in r
 
     def test_whats_prefix_stripped(self):
-        r = tb.maybe_calculate_reply("what's 3 + 3")
+        r = maybe_calculate_reply("what's 3 + 3")
         assert r is not None and "6" in r
 
     def test_calculate_prefix_stripped(self):
-        r = tb.maybe_calculate_reply("calculate 3 * 7")
+        r = maybe_calculate_reply("calculate 3 * 7")
         assert r is not None and "21" in r
 
     def test_x_as_multiplication(self):
-        r = tb.maybe_calculate_reply("3x4")
+        r = maybe_calculate_reply("3x4")
         assert r is not None and "12" in r
 
     def test_subtraction(self):
-        r = tb.maybe_calculate_reply("100 - 37")
+        r = maybe_calculate_reply("100 - 37")
         assert r is not None and "63" in r
 
     def test_float_division(self):
-        r = tb.maybe_calculate_reply("10 / 4")
+        r = maybe_calculate_reply("10 / 4")
         assert r is not None and "2.5" in r
 
     def test_large_number_comma_formatted(self):
-        r = tb.maybe_calculate_reply("1000000 + 1")
+        r = maybe_calculate_reply("1000000 + 1")
         assert r is not None and "1,000,001" in r
 
     def test_trailing_question_mark_ok(self):
-        r = tb.maybe_calculate_reply("5 + 5?")
+        r = maybe_calculate_reply("5 + 5?")
         assert r is not None and "10" in r
 
     def test_plain_text_returns_none(self):
-        assert tb.maybe_calculate_reply("hello world") is None
+        assert maybe_calculate_reply("hello world") is None
 
     def test_words_with_digits_returns_none(self):
-        assert tb.maybe_calculate_reply("give me 5 reasons") is None
+        assert maybe_calculate_reply("give me 5 reasons") is None
 
     def test_division_by_zero_returns_none(self):
-        assert tb.maybe_calculate_reply("5 / 0") is None
+        assert maybe_calculate_reply("5 / 0") is None
 
     def test_result_is_just_the_number(self):
-        assert tb.maybe_calculate_reply("1 + 1") == "2"
+        assert maybe_calculate_reply("1 + 1") == "2"
 
 
 # ── maybe_count_letter_reply ─────────────────────────────────────────────────
 
 class TestMaybeCountLetterReply:
     def test_count_r_in_strawberry(self):
-        r = tb.maybe_count_letter_reply("how many r's in strawberry")
+        r = maybe_count_letter_reply("how many r's in strawberry")
         assert r is not None and "3" in r
 
     def test_count_s_in_mississippi(self):
-        r = tb.maybe_count_letter_reply("how many s's in mississippi")
+        r = maybe_count_letter_reply("how many s's in mississippi")
         assert r is not None and "4" in r
 
     def test_singular_time_when_count_is_one(self):
-        r = tb.maybe_count_letter_reply("how many b's in cob")
+        r = maybe_count_letter_reply("how many b's in cob")
         assert r is not None
         assert " time" in r and "times" not in r
 
     def test_plural_times_when_count_gt_one(self):
-        r = tb.maybe_count_letter_reply("how many l's in hello")
+        r = maybe_count_letter_reply("how many l's in hello")
         assert r is not None and "times" in r
 
     def test_zero_occurrences(self):
-        r = tb.maybe_count_letter_reply("how many z's in apple")
+        r = maybe_count_letter_reply("how many z's in apple")
         assert r is not None and "0" in r
 
     def test_trailing_question_mark_stripped(self):
-        r = tb.maybe_count_letter_reply("how many e's in cheese?")
+        r = maybe_count_letter_reply("how many e's in cheese?")
         assert r is not None and "3" in r
 
     def test_unrelated_message_returns_none(self):
-        assert tb.maybe_count_letter_reply("what time is it") is None
+        assert maybe_count_letter_reply("what time is it") is None
 
     def test_no_match_returns_none(self):
-        assert tb.maybe_count_letter_reply("tell me something") is None
+        assert maybe_count_letter_reply("tell me something") is None
 
     def test_result_is_factual_only(self):
-        r = tb.maybe_count_letter_reply("how many t's in butter")
+        r = maybe_count_letter_reply("how many t's in butter")
         assert r is not None and "2" in r and "butter" in r
 
     def test_with_the_word_phrasing(self):
-        r = tb.maybe_count_letter_reply("how many letter e's in the word sleep")
+        r = maybe_count_letter_reply("how many letter e's in the word sleep")
         assert r is not None and "2" in r
 
 
@@ -192,46 +214,46 @@ class TestMaybeCountLetterReply:
 
 class TestScoreCommands:
     def setup_method(self):
-        tb.scores.clear()
+        self.cog = make_bowling_cog()
 
     async def test_pb_empty_scores(self):
         ctx = make_ctx()
-        await tb.personal_best.callback(ctx)
+        await self.cog.personal_best(ctx)
         ctx.send.assert_awaited_once()
         assert "No scores" in ctx.send.call_args[0][0]
 
     async def test_pb_returns_max(self):
-        tb.scores[:] = [(10, "a"), (50, "b"), (30, "c")]
+        self.cog.scores[:] = [(10, "a"), (50, "b"), (30, "c")]
         ctx = make_ctx()
-        await tb.personal_best.callback(ctx)
+        await self.cog.personal_best(ctx)
         assert "50" in ctx.send.call_args[0][0]
 
     async def test_avg_empty_scores(self):
         ctx = make_ctx()
-        await tb.average_score.callback(ctx)
+        await self.cog.average_score(ctx)
         assert "No scores" in ctx.send.call_args[0][0]
 
     async def test_avg_correct_value(self):
-        tb.scores[:] = [(10, "a"), (20, "b"), (30, "c")]
+        self.cog.scores[:] = [(10, "a"), (20, "b"), (30, "c")]
         ctx = make_ctx()
-        await tb.average_score.callback(ctx)
+        await self.cog.average_score(ctx)
         assert "20.00" in ctx.send.call_args[0][0]
 
     async def test_median_odd_list(self):
-        tb.scores[:] = [(10, "a"), (30, "b"), (20, "c")]
+        self.cog.scores[:] = [(10, "a"), (30, "b"), (20, "c")]
         ctx = make_ctx()
-        await tb.median_score.callback(ctx)
+        await self.cog.median_score(ctx)
         assert "20" in ctx.send.call_args[0][0]
 
     async def test_median_even_list(self):
-        tb.scores[:] = [(10, "a"), (20, "b"), (30, "c"), (40, "d")]
+        self.cog.scores[:] = [(10, "a"), (20, "b"), (30, "c"), (40, "d")]
         ctx = make_ctx()
-        await tb.median_score.callback(ctx)
+        await self.cog.median_score(ctx)
         assert "25" in ctx.send.call_args[0][0]
 
     async def test_median_empty_scores(self):
         ctx = make_ctx()
-        await tb.median_score.callback(ctx)
+        await self.cog.median_score(ctx)
         assert "No scores" in ctx.send.call_args[0][0]
 
 
@@ -239,147 +261,147 @@ class TestScoreCommands:
 
 class TestPersonaCommands:
     def setup_method(self):
-        tb.personas.clear()
-        tb.current_persona = None
+        self.cog = make_personas_cog()
 
     async def test_create_persona_stores_it(self):
         ctx = make_ctx()
-        with patch.object(tb, "save_personas"):
-            await tb.create_persona.callback(ctx, "pirate", persona_description="talks like a pirate")
-        assert tb.personas.get("pirate") == "talks like a pirate"
+        with patch.object(self.cog, "save_personas"):
+            await self.cog.create_persona(ctx, "pirate", persona_description="talks like a pirate")
+        assert self.cog.personas.get("pirate") == "talks like a pirate"
 
     async def test_create_persona_confirms_in_message(self):
         ctx = make_ctx()
-        with patch.object(tb, "save_personas"):
-            await tb.create_persona.callback(ctx, "robot", persona_description="beep boop")
+        with patch.object(self.cog, "save_personas"):
+            await self.cog.create_persona(ctx, "robot", persona_description="beep boop")
         assert "robot" in ctx.send.call_args[0][0]
 
     async def test_switch_to_existing_persona(self):
-        tb.personas["pirate"] = "arr"
+        self.cog.personas["pirate"] = "arr"
         ctx = make_ctx()
-        await tb.switch_persona.callback(ctx, "pirate")
-        assert tb.current_persona == "pirate"
+        await self.cog.switch_persona(ctx, "pirate")
+        assert self.cog.current_persona == "pirate"
         ctx.send.assert_awaited_once()
 
     async def test_switch_to_missing_persona(self):
         ctx = make_ctx()
-        await tb.switch_persona.callback(ctx, "ghost")
+        await self.cog.switch_persona(ctx, "ghost")
         assert "not found" in ctx.send.call_args[0][0].lower()
-        assert tb.current_persona is None
+        assert self.cog.current_persona is None
 
     async def test_list_personas_when_empty(self):
         ctx = make_ctx()
-        await tb.list_personas.callback(ctx)
+        await self.cog.list_personas(ctx)
         assert "No personas" in ctx.send.call_args[0][0]
 
     async def test_list_personas_shows_all_names(self):
-        tb.personas["pirate"] = "arr"
-        tb.personas["robot"] = "beep"
+        self.cog.personas["pirate"] = "arr"
+        self.cog.personas["robot"] = "beep"
         ctx = make_ctx()
-        await tb.list_personas.callback(ctx)
+        await self.cog.list_personas(ctx)
         msg = ctx.send.call_args[0][0]
         assert "pirate" in msg and "robot" in msg
 
     async def test_current_persona_when_none_active(self):
         ctx = make_ctx()
-        await tb.current_persona_cmd.callback(ctx)
+        await self.cog.current_persona_cmd(ctx)
         assert "No specific persona" in ctx.send.call_args[0][0]
 
     async def test_current_persona_shows_active_name(self):
-        tb.personas["pirate"] = "arr"
-        tb.current_persona = "pirate"
+        self.cog.personas["pirate"] = "arr"
+        self.cog.current_persona = "pirate"
         ctx = make_ctx()
-        await tb.current_persona_cmd.callback(ctx)
+        await self.cog.current_persona_cmd(ctx)
         assert "pirate" in ctx.send.call_args[0][0]
 
 
 # ── Uma Musume gacha ──────────────────────────────────────────────────────────
 
 class TestUmaSinglePull:
+    def setup_method(self):
+        self.cog = make_uma_cog()
+
     def test_ssr_forced_at_pity_cap(self):
-        # pity = CAP-1 means next pull must be SSR
-        rarity, name, new_pity = tb._uma_single_pull(tb.UMA_PITY_CAP - 1)
+        rarity, name, new_pity = self.cog._single_pull(config.UMA_PITY_CAP - 1)
         assert rarity == "SSR"
-        assert name in tb.UMA_SSR
+        assert name in config.UMA_SSR
         assert new_pity == 0
 
     def test_pity_resets_to_zero_on_ssr(self):
-        with patch.object(tb.random, "random", return_value=0.0):  # always SSR
-            _, _, new_pity = tb._uma_single_pull(50)
+        import random as _random
+        with patch.object(_random, "random", return_value=0.0):
+            _, _, new_pity = self.cog._single_pull(50)
         assert new_pity == 0
 
     def test_pity_increments_on_non_ssr(self):
-        with patch.object(tb.random, "random", return_value=0.99):  # always R
-            _, _, new_pity = tb._uma_single_pull(10)
+        import random as _random
+        with patch.object(_random, "random", return_value=0.99):
+            _, _, new_pity = self.cog._single_pull(10)
         assert new_pity == 11
 
     def test_sr_rarity_within_rate_window(self):
-        # roll just above SSR rate = SR
-        roll = tb.UMA_SSR_RATE + 0.001
-        with patch.object(tb.random, "random", return_value=roll):
-            rarity, name, _ = tb._uma_single_pull(0)
+        import random as _random
+        roll = config.UMA_SSR_RATE + 0.001
+        with patch.object(_random, "random", return_value=roll):
+            rarity, name, _ = self.cog._single_pull(0)
         assert rarity == "SR"
-        assert name in tb.UMA_SR
+        assert name in config.UMA_SR
 
     def test_r_rarity_above_sr_window(self):
-        roll = tb.UMA_SSR_RATE + tb.UMA_SR_RATE + 0.001
-        with patch.object(tb.random, "random", return_value=roll):
-            rarity, name, _ = tb._uma_single_pull(0)
+        import random as _random
+        roll = config.UMA_SSR_RATE + config.UMA_SR_RATE + 0.001
+        with patch.object(_random, "random", return_value=roll):
+            rarity, name, _ = self.cog._single_pull(0)
         assert rarity == "R"
-        assert name in tb.UMA_R
+        assert name in config.UMA_R
 
     def test_ssr_name_comes_from_ssr_pool(self):
-        with patch.object(tb.random, "random", return_value=0.0):
-            _, name, _ = tb._uma_single_pull(0)
-        assert name in tb.UMA_SSR
+        import random as _random
+        with patch.object(_random, "random", return_value=0.0):
+            _, name, _ = self.cog._single_pull(0)
+        assert name in config.UMA_SSR
 
     def test_pity_cap_defined_at_200(self):
-        assert tb.UMA_PITY_CAP == 200
+        assert config.UMA_PITY_CAP == 200
 
     def test_ssr_rate_is_three_percent(self):
-        assert tb.UMA_SSR_RATE == pytest.approx(0.03)
+        assert config.UMA_SSR_RATE == pytest.approx(0.03)
 
     def test_full_pity_run_guarantees_ssr(self):
-        # simulate UMA_PITY_CAP pulls all returning roll=0.99 (R) — last must be SSR
+        import random as _random
         pity = 0
         last_rarity = None
-        with patch.object(tb.random, "random", return_value=0.99):
-            for _ in range(tb.UMA_PITY_CAP):
-                last_rarity, _, pity = tb._uma_single_pull(pity)
+        with patch.object(_random, "random", return_value=0.99):
+            for _ in range(config.UMA_PITY_CAP):
+                last_rarity, _, pity = self.cog._single_pull(pity)
         assert last_rarity == "SSR"
         assert pity == 0
 
     def test_pity_does_not_exceed_cap_minus_one(self):
-        # after CAP-1 non-SSR pulls, pity should be CAP-1
+        import random as _random
         pity = 0
-        with patch.object(tb.random, "random", return_value=0.99):
-            for _ in range(tb.UMA_PITY_CAP - 1):
-                _, _, pity = tb._uma_single_pull(pity)
-        assert pity == tb.UMA_PITY_CAP - 1
+        with patch.object(_random, "random", return_value=0.99):
+            for _ in range(config.UMA_PITY_CAP - 1):
+                _, _, pity = self.cog._single_pull(pity)
+        assert pity == config.UMA_PITY_CAP - 1
 
 
 class TestUmaPityPersistence:
-    def setup_method(self):
-        self._original = tb.UMA_PITY_FILE
-        tb.UMA_PITY_FILE = ":memory_test:"  # sentinel; we'll patch open
-
-    def teardown_method(self):
-        tb.UMA_PITY_FILE = self._original
-
     def test_load_returns_empty_dict_when_file_missing(self):
+        cog = make_uma_cog(pity_file=":memory_test:")
         with patch("builtins.open", side_effect=FileNotFoundError):
-            result = tb.load_uma_pity()
+            result = cog.load_pity()
         assert result == {}
 
     def test_load_returns_empty_dict_on_bad_json(self):
         from unittest.mock import mock_open
+        cog = make_uma_cog(pity_file=":memory_test:")
         with patch("builtins.open", mock_open(read_data="not json")):
-            result = tb.load_uma_pity()
+            result = cog.load_pity()
         assert result == {}
 
     def test_save_and_load_roundtrip(self, tmp_path):
         path = str(tmp_path / "uma_pity.json")
-        tb.UMA_PITY_FILE = path
+        cog = make_uma_cog(pity_file=path)
         data = {"123": 42, "456": 0}
-        tb.save_uma_pity(data)
-        assert tb.load_uma_pity() == data
+        cog.save_pity(data)
+        assert cog.load_pity() == data

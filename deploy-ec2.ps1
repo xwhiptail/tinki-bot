@@ -23,11 +23,14 @@ if (-not $ServerHost) {
 
 $repoFiles = @(
     "tinki-bot.py",
+    "config.py",
     "README.md",
     "requirements.txt",
     ".env.example",
     ".gitignore"
 )
+
+$repoDirs = @("utils", "cogs")
 
 $backupScript = @"
 set -e
@@ -44,9 +47,18 @@ ls -1t /opt/apps/tinki-bot/data_backup_*.tar.gz 2>/dev/null | tail -n +4 | xargs
 $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(($backupScript -replace "`r`n", "`n")))
 & $plink -batch -i $KeyPath "${User}@${ServerHost}" "echo '$b64' | base64 -d | bash"
 
+# Create remote subdirectories
+$mkdirScript = "mkdir -p " + ($repoDirs | ForEach-Object { "${RemoteRepoDir}/$_" }) -join " "
+& $plink -batch -i $KeyPath "${User}@${ServerHost}" $mkdirScript
+
 foreach ($file in $repoFiles) {
     $localPath = Join-Path $projectRoot $file
     & $pscp -batch -i $KeyPath $localPath "${User}@${ServerHost}:${RemoteRepoDir}/"
+}
+
+foreach ($dir in $repoDirs) {
+    $localDir = Join-Path $projectRoot $dir
+    & $pscp -batch -i $KeyPath -r $localDir "${User}@${ServerHost}:${RemoteRepoDir}/"
 }
 
 & $plink -batch -i $KeyPath "${User}@${ServerHost}" "sudo systemctl restart tinki-bot && sleep 3 && sudo systemctl status tinki-bot --no-pager"
