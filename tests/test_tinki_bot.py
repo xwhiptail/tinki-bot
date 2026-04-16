@@ -439,6 +439,11 @@ class TestUmaGifSelection:
         assert "Uma Musume Vodka" in queries
         assert "ウオッカ ウマ娘" in queries
 
+    def test_curren_chan_has_special_gif_aliases(self):
+        queries = self.cog._gif_queries("Curren Chan")
+        assert "Uma Musume Curren Chan" in queries
+        assert "カレンチャン ウマ娘" in queries
+
     def test_gif_match_rejects_generic_vodka_result(self):
         item = {"title": "vodka cocktail time", "slug": "vodka-drink", "username": ""}
         assert self.cog._gif_matches_horse(item, "Vodka") is False
@@ -446,3 +451,7 @@ class TestUmaGifSelection:
     def test_gif_match_accepts_vodka_uma_result(self):
         item = {"title": "Vodka Uma Musume", "slug": "vodka-uma-musume", "username": ""}
         assert self.cog._gif_matches_horse(item, "Vodka") is True
+
+    def test_gif_match_accepts_curren_chan_alias(self):
+        item = {"title": "Karen Chan Uma Musume", "slug": "karen-chan-uma-musume", "username": ""}
+        assert self.cog._gif_matches_horse(item, "Curren Chan") is True

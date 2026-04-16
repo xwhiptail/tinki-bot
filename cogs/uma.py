@@ -63,6 +63,11 @@ class Uma(commands.Cog):
                 "Uma Musume Vodka",
                 "Vodka uma musume",
             ],
+            "Curren Chan": [
+                "Curren Chan uma musume",
+                "Uma Musume Curren Chan",
+                "カレンチャン ウマ娘",
+            ],
             "T.M. Opera O": [
                 "T M Opera O uma musume",
                 "TM Opera O uma musume",
@@ -89,6 +94,7 @@ class Uma(commands.Cog):
         terms = {horse_name.casefold(), "uma musume", "umamusume"}
         special_terms = {
             "Vodka": {"ウオッカ", "vodka", "uma musume", "umamusume"},
+            "Curren Chan": {"curren chan", "karen chan", "カレンチャン", "uma musume", "umamusume"},
             "T.M. Opera O": {"t.m. opera o", "tm opera o", "t m opera o", "uma musume", "umamusume"},
         }
         return special_terms.get(horse_name, terms)
