@@ -78,7 +78,8 @@ ls -1t /opt/apps/tinki-bot/data_backup_*.tar.gz 2>/dev/null | tail -n +4 | xargs
 $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(($backupScript -replace "`r`n", "`n")))
 & $plink -batch -i $KeyPath "${User}@${ServerHost}" "echo '$b64' | base64 -d | bash"
 
-$deployedCommit = ([string](& $plink -batch -i $KeyPath "${User}@${ServerHost}" "cat ${RemoteRepoDir}/.deploy-commit 2>/dev/null || true")).Trim()
+$deployedCommitRaw = & $plink -batch -i $KeyPath "${User}@${ServerHost}" "cat ${RemoteRepoDir}/.deploy-commit 2>/dev/null || true"
+$deployedCommit = [string]::Concat($deployedCommitRaw).Trim()
 if ($deployedCommit) {
     Write-Host ("Deployed now:  {0}" -f $deployedCommit.Substring(0, [Math]::Min(7, $deployedCommit.Length)))
 } else {
