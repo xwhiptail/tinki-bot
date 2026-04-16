@@ -10,6 +10,8 @@ __pycache__/
 data/*
 !data/.gitkeep
 github-export-clean/
+github-export-sync/
+deploy-ec2.local.ps1
 backup_*.txt
 *.bak
 *.db

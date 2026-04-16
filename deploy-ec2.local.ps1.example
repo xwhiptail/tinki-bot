@@ -1,0 +1,3 @@
+$ServerHost = "your-ec2-host-or-ip"
+$User = "ec2-user"
+$KeyPath = "I:\mybotserver.ppk"

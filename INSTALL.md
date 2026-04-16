@@ -71,6 +71,8 @@ cd i:\botserver\tinki-bot
 .\deploy-ec2.ps1
 ```
 
+Before the first deploy, copy `deploy-ec2.local.ps1.example` to `deploy-ec2.local.ps1` and set your real EC2 host there, or set `TINKI_EC2_HOST` in your local environment.
+
 ## Production Rollback
 
 Code rollback:

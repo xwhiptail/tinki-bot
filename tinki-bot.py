@@ -1,4 +1,6 @@
+import ast
 import json
+import operator
 import random
 import re
 import sqlite3
@@ -28,10 +30,11 @@ from discord.utils import get
 from fuzzywuzzy import process
 from scipy.stats import linregress
 from datetime import datetime, timezone, timedelta
+from decimal import Decimal, InvalidOperation
 from math import ceil
 from openai import OpenAI
 from PIL import Image, ImageSequence
-from typing import Set  # put this with your other imports at the top
+from typing import Optional, Set  # put this with your other imports at the top
 
 intents = discord.Intents.all()
 BASE_DIR = Path(__file__).resolve().parent
@@ -86,6 +89,14 @@ def get_openai_client() -> OpenAI:
     return OpenAI()
 
 
+CALCULATION_OPERATORS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+}
+
+
 SERVER_FEATURE_REMOVED_MESSAGE = (
     "Minecraft and SkyFactory server controls have been retired. "
     "These commands are placeholders and no longer manage any live servers."
@@ -94,6 +105,72 @@ SERVER_FEATURE_REMOVED_MESSAGE = (
 
 async def send_server_feature_removed(ctx):
     await ctx.send(SERVER_FEATURE_REMOVED_MESSAGE)
+
+
+def _evaluate_decimal_expression(node):
+    if isinstance(node, ast.Expression):
+        return _evaluate_decimal_expression(node.body)
+
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return Decimal(str(node.value))
+
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        operand = _evaluate_decimal_expression(node.operand)
+        return operand if isinstance(node.op, ast.UAdd) else -operand
+
+    if isinstance(node, ast.BinOp) and type(node.op) in CALCULATION_OPERATORS:
+        left = _evaluate_decimal_expression(node.left)
+        right = _evaluate_decimal_expression(node.right)
+        return CALCULATION_OPERATORS[type(node.op)](left, right)
+
+    raise ValueError("Unsupported expression")
+
+
+def _format_decimal_result(value: Decimal) -> str:
+    normalized = format(value.normalize(), 'f')
+    if '.' in normalized:
+        integer_part, fractional_part = normalized.split('.', 1)
+        fractional_part = fractional_part.rstrip('0')
+        if fractional_part:
+            return f"{int(integer_part):,}.{fractional_part}"
+    return f"{int(Decimal(normalized)):,}"
+
+
+def maybe_count_letter_reply(text: str) -> Optional[str]:
+    lowered = text.strip().lower().rstrip(' ?!.')
+    match = re.search(
+        r'how many\s+(?:letter\s+)?([a-z])(?:\'s|s)?\s+(?:are\s+)?in\s+(?:the word\s+)?([a-z]+)',
+        lowered,
+    )
+    if not match:
+        return None
+
+    target_letter, target_word = match.groups()
+    count = target_word.count(target_letter)
+    times = "time" if count == 1 else "times"
+    return (
+        f"{count} - '{target_letter}' shows up in '{target_word}' {count} {times}. "
+        f"Letter goblin actually counted."
+    )
+
+
+def maybe_calculate_reply(text: str) -> Optional[str]:
+    candidate = text.strip().lower()
+    candidate = re.sub(r'^(what(?:\'s| is)|calculate|compute|solve)\s+', '', candidate)
+    candidate = candidate.rstrip(' ?!.')
+    candidate = re.sub(r'(?<=\d)\s*[x×]\s*(?=\d)', '*', candidate)
+    candidate = re.sub(r'(?<=\d)\s*[÷]\s*(?=\d)', '/', candidate)
+
+    if not candidate or not re.fullmatch(r'[\d\s\.\+\-\*\/\(\)]+', candidate):
+        return None
+
+    try:
+        parsed = ast.parse(candidate, mode='eval')
+        result = _evaluate_decimal_expression(parsed)
+        formatted = _format_decimal_result(result)
+        return f"{formatted} - calculator goblin used the real numbers this time."
+    except (SyntaxError, ValueError, InvalidOperation, ZeroDivisionError):
+        return None
 
 def rewrite_social_urls(content: str) -> str:
     """
@@ -604,6 +681,24 @@ async def on_message(message):
 
         if text:
             try:
+                letter_count_reply = maybe_count_letter_reply(text)
+                if letter_count_reply:
+                    await message.channel.send(f'{message.author.mention} {letter_count_reply}')
+                    persona_history.append({"role": "user", "content": text})
+                    persona_history.append({"role": "assistant", "content": letter_count_reply})
+                    user_conversations[current_persona] = persona_history[-20:]
+                    save_conversations()
+                    return
+
+                calculation_reply = maybe_calculate_reply(text)
+                if calculation_reply:
+                    await message.channel.send(f'{message.author.mention} {calculation_reply}')
+                    persona_history.append({"role": "user", "content": text})
+                    persona_history.append({"role": "assistant", "content": calculation_reply})
+                    user_conversations[current_persona] = persona_history[-20:]
+                    save_conversations()
+                    return
+
                 client = get_openai_client()
                 combined_system_message = (
                         GREMLIN_SYSTEM_STYLE + " "

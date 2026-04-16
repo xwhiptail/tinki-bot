@@ -53,13 +53,15 @@ Current server layout:
 - service unit file: `/etc/systemd/system/tinki-bot.service`
 - live secrets file: `/etc/tinki-bot.env`
 - deploy helper on this Windows machine: `deploy-ec2.ps1`
-- SSH key currently used from this Windows machine: `I:\mybotserver.ppk`
+- local deploy config on this Windows machine: `deploy-ec2.local.ps1`
 
 From this Windows machine, deploy updated repo files with:
 
 ```powershell
 .\deploy-ec2.ps1
 ```
+
+Create a local-only `deploy-ec2.local.ps1` from `deploy-ec2.local.ps1.example` and set the real host there. Keep that file out of git.
 
 That script now:
 

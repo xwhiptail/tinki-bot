@@ -1,5 +1,5 @@
 param(
-    [string]$ServerHost = "52.91.60.81",
+    [string]$ServerHost = $env:TINKI_EC2_HOST,
     [string]$User = "ec2-user",
     [string]$KeyPath = "I:\mybotserver.ppk",
     [string]$RemoteRepoDir = "/opt/apps/tinki-bot/repo",
@@ -11,6 +11,15 @@ $ErrorActionPreference = "Stop"
 $plink = "C:\Program Files\PuTTY\plink.exe"
 $pscp = "C:\Program Files\PuTTY\pscp.exe"
 $projectRoot = $PSScriptRoot
+$localConfigPath = Join-Path $projectRoot "deploy-ec2.local.ps1"
+
+if (Test-Path $localConfigPath) {
+    . $localConfigPath
+}
+
+if (-not $ServerHost) {
+    throw "Set ServerHost in deploy-ec2.local.ps1 or set the TINKI_EC2_HOST environment variable."
+}
 
 $repoFiles = @(
     "tinki-bot.py",

@@ -6,7 +6,7 @@ This repository contains a Discord bot deployed to a single EC2 instance.
 
 - Main bot entrypoint: `tinki-bot.py`
 - Live GitHub repo: `https://github.com/xwhiptail/tinki-bot`
-- Primary deploy target: EC2 host `52.91.60.81`
+- Primary deploy target: a single EC2 instance configured locally for deploys
 
 ## Important Paths
 
@@ -34,6 +34,8 @@ Preferred deploy flow from this Windows machine:
 cd i:\botserver\tinki-bot
 .\deploy-ec2.ps1
 ```
+
+Local deploy host configuration should live in `deploy-ec2.local.ps1` or the `TINKI_EC2_HOST` environment variable, not in committed repo files.
 
 The deploy script currently:
 
