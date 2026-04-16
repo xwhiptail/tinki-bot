@@ -39,7 +39,8 @@ if [ -d ${RemoteDataDir} ]; then
   tar -czf /opt/apps/tinki-bot/data_backup_`$ts.tar.gz -C /opt/apps/tinki-bot data
 fi
 "@
-$backupScript | & $plink -batch -i $KeyPath "${User}@${ServerHost}" "bash -s"
+$b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(($backupScript -replace "`r`n", "`n")))
+& $plink -batch -i $KeyPath "${User}@${ServerHost}" "echo '$b64' | base64 -d | bash"
 
 foreach ($file in $repoFiles) {
     $localPath = Join-Path $projectRoot $file
