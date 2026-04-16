@@ -79,7 +79,10 @@ $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(($backupS
 & $plink -batch -i $KeyPath "${User}@${ServerHost}" "echo '$b64' | base64 -d | bash"
 
 $deployedCommitRaw = & $plink -batch -i $KeyPath "${User}@${ServerHost}" "cat ${RemoteRepoDir}/.deploy-commit 2>/dev/null || true"
-$deployedCommit = [string]::Concat($deployedCommitRaw).Trim()
+$deployedCommit = ""
+if ($null -ne $deployedCommitRaw) {
+    $deployedCommit = [string]::Concat($deployedCommitRaw).Trim()
+}
 if ($deployedCommit) {
     Write-Host ("Deployed now:  {0}" -f $deployedCommit.Substring(0, [Math]::Min(7, $deployedCommit.Length)))
 } else {
