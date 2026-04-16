@@ -405,3 +405,29 @@ class TestUmaPityPersistence:
         data = {"123": 42, "456": 0}
         cog.save_pity(data)
         assert cog.load_pity() == data
+
+
+class TestUmaGifSelection:
+    def setup_method(self):
+        self.cog = make_uma_cog()
+
+    def test_featured_pull_prefers_ssr(self):
+        pulls = [("R", "Haru Urara"), ("SSR", "Tokai Teio"), ("SR", "Nice Nature")]
+        assert self.cog._featured_pull(pulls) == ("SSR", "Tokai Teio")
+
+    def test_featured_pull_falls_back_to_sr(self):
+        pulls = [("R", "Haru Urara"), ("SR", "Nice Nature"), ("R", "Biko Pegasus")]
+        assert self.cog._featured_pull(pulls) == ("SR", "Nice Nature")
+
+    def test_featured_pull_falls_back_to_r(self):
+        pulls = [("R", "Haru Urara"), ("R", "Biko Pegasus")]
+        assert self.cog._featured_pull(pulls) == ("R", "Haru Urara")
+
+    def test_featured_pull_returns_none_when_empty(self):
+        assert self.cog._featured_pull([]) is None
+
+    def test_gif_query_uses_horse_name(self):
+        assert self.cog._gif_query("Tokai Teio") == "Tokai Teio uma musume"
+
+    def test_gif_query_defaults_to_generic_search(self):
+        assert self.cog._gif_query() == "uma musume"
