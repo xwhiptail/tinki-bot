@@ -1619,6 +1619,31 @@ async def uptime(ctx):
     await send_server_feature_removed(ctx)
 
 
+@bot.command(name='restart')
+@commands.has_permissions(administrator=True)
+async def restart_bot(ctx):
+    await ctx.send("Restarting… brb 👾")
+    await asyncio.sleep(1)
+    subprocess.Popen(['sudo', 'systemctl', 'restart', 'tinki-bot'])
+
+
+@bot.command(name='deploy')
+@commands.has_permissions(administrator=True)
+async def deploy_latest(ctx):
+    raw_url = GITHUB_REPO_URL.replace('github.com', 'raw.githubusercontent.com') + '/main/tinki-bot.py'
+    await ctx.send(f"Pulling latest from GitHub…")
+    try:
+        resp = requests.get(raw_url, timeout=15)
+        resp.raise_for_status()
+        with open(__file__, 'wb') as f:
+            f.write(resp.content)
+        await ctx.send("Updated. Restarting… brb 👾")
+        await asyncio.sleep(1)
+        subprocess.Popen(['sudo', 'systemctl', 'restart', 'tinki-bot'])
+    except Exception as e:
+        await ctx.send(f"Deploy failed: {e}")
+
+
 @bot.command()
 async def emote(ctx, emote_name: str, size: int = 2):
     if size not in [1, 2, 3, 4]:
