@@ -89,6 +89,25 @@ def get_openai_client() -> OpenAI:
     return OpenAI()
 
 
+def fetch_openai_balance() -> Optional[str]:
+    api_key = os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        return None
+    try:
+        resp = requests.get(
+            'https://api.openai.com/dashboard/billing/credit_grants',
+            headers={'Authorization': f'Bearer {api_key}'},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            available = float(data.get('total_available', 0))
+            return f"${available:.2f}"
+        return None
+    except Exception:
+        return None
+
+
 async def gpt_wrap_fact(fact: str, user_text: str, system_prompt) -> str:
     """Call GPT to deliver a pre-computed factual answer in Tinki's personality."""
     client = get_openai_client()
@@ -1982,6 +2001,7 @@ async def run_startup_tests():
     url_results = run_url_selftests()
     calc_results = run_calculate_selftests()
     letter_results = run_letter_count_selftests()
+    openai_balance = fetch_openai_balance()
 
     cmd_total = len(cmd_results)
     cmd_passed = sum(1 for (_, ok, _) in cmd_results if ok)
@@ -2011,6 +2031,9 @@ async def run_startup_tests():
         f"🔢 **Calculator gnome:** {calc_passed}/{calc_total} tests passed\n"
         f"🔤 **Letter gnome:** {letter_passed}/{letter_total} tests passed\n"
     )
+
+    if openai_balance is not None:
+        summary += f"💸 **OpenAI balance:** {openai_balance}\n"
 
     if failures:
         summary += "\n⚠️ **Anomalies detected:**\n"
