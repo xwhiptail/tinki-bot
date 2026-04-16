@@ -2,6 +2,7 @@ import asyncio
 import io
 import logging
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -10,9 +11,13 @@ from discord.ext import commands
 
 from config import GITHUB_REPO_URL
 from utils.openai_helpers import fetch_openai_balance
-from utils.selftests import run_url_selftests, run_calculate_selftests, run_letter_count_selftests
+from utils.selftests import (
+    run_calculate_selftests,
+    run_letter_count_selftests,
+    run_url_selftests,
+)
 
-log = logging.getLogger('discord.cogs.admin')
+log = logging.getLogger("discord.cogs.admin")
 
 
 class Admin(commands.Cog):
@@ -40,6 +45,7 @@ class Admin(commands.Cog):
         url_results = run_url_selftests()
         calc_results = run_calculate_selftests()
         letter_results = run_letter_count_selftests()
+        pytest_results = await self._run_pytest_suite()
         openai_balance = await fetch_openai_balance()
 
         def _counts(results):
@@ -49,43 +55,80 @@ class Admin(commands.Cog):
         url_p, url_t = _counts(url_results)
         calc_p, calc_t = _counts(calc_results)
         let_p, let_t = _counts(letter_results)
+        py_p, py_t = _counts(pytest_results)
 
-        all_results = cmd_results + url_results + calc_results + letter_results
+        all_results = cmd_results + url_results + calc_results + letter_results + pytest_results
         failures = [f"{name}: {reason}" for name, ok, reason in all_results if not ok]
 
         summary = (
-            "🤖 **Bot restarted — running startup diagnostics…**\n"
+            "Bot restarted - running startup diagnostics...\n"
             "```ini\n[BOOT SEQUENCE COMPLETED]\n```\n"
-            f"🧪 **Command grid:** {cmd_p}/{cmd_t} tests passed\n"
-            f"🌐 **URL filter matrix:** {url_p}/{url_t} tests passed\n"
-            f"🔢 **Calculator gnome:** {calc_p}/{calc_t} tests passed\n"
-            f"🔤 **Letter gnome:** {let_p}/{let_t} tests passed\n"
-            f"💸 **OpenAI:** {openai_balance}\n"
+            f"Command grid: {cmd_p}/{cmd_t} tests passed\n"
+            f"URL filter matrix: {url_p}/{url_t} tests passed\n"
+            f"Calculator gnome: {calc_p}/{calc_t} tests passed\n"
+            f"Letter gnome: {let_p}/{let_t} tests passed\n"
+            f"Pytest suite: {py_p}/{py_t} passed\n"
+            f"OpenAI: {openai_balance}\n"
         )
         if failures:
-            summary += "\n⚠️ **Anomalies detected:**\n" + "".join(f"• {f}\n" for f in failures)
+            summary += "\nAnomalies detected:\n" + "".join(f"- {failure}\n" for failure in failures)
         else:
-            summary += "\n✨ **All systems fully operational.**"
+            summary += "\nAll systems fully operational."
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        lines = [f"Startup Diagnostic Results — {timestamp}\n", "=" * 60 + "\n"]
+        lines = [f"Startup Diagnostic Results - {timestamp}\n", "=" * 60 + "\n"]
         for section, results in [
             ("Command Tests", cmd_results),
             ("URL Tests", url_results),
             ("Calculator Tests", calc_results),
             ("Letter Count Tests", letter_results),
+            ("Pytest", pytest_results),
         ]:
-            p, t = _counts(results)
-            lines.append(f"\n{section}: {p}/{t} passed\n")
+            passed, total = _counts(results)
+            lines.append(f"\n{section}: {passed}/{total} passed\n")
             for name, ok, reason in results:
-                tag = "[PASS]" if ok else f"[FAIL] — {reason}"
-                lines.append(f"  {tag} {name}\n")
+                if ok:
+                    lines.append(f"  [PASS] {name}\n")
+                else:
+                    lines.append(f"  [FAIL] {name} - {reason}\n")
 
         buf = io.BytesIO("".join(lines).encode("utf-8"))
         try:
             await test_channel.send(content=summary, file=discord.File(buf, filename="startup_test_results.txt"))
         except discord.Forbidden:
             await test_channel.send(content=summary)
+
+    async def _run_pytest_suite(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                cwd=str(repo_root),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except Exception as e:
+            return [("pytest", False, f"unable to start: {type(e).__name__}: {e}")]
+
+        stdout, stderr = await proc.communicate()
+        output = "\n".join(
+            part.strip()
+            for part in (
+                stdout.decode("utf-8", errors="replace"),
+                stderr.decode("utf-8", errors="replace"),
+            )
+            if part.strip()
+        )
+
+        if proc.returncode == 0:
+            summary = output.splitlines()[-1] if output else "passed"
+            return [("pytest", True, summary)]
+
+        failure = output.splitlines()[-1] if output else f"exit code {proc.returncode}"
+        return [("pytest", False, failure)]
 
     async def _run_command_selftests(self, ctx=None):
         tests = [
@@ -101,33 +144,34 @@ class Admin(commands.Cog):
             if cmd is None:
                 results.append((name, False, "command not found"))
                 if ctx:
-                    await ctx.send(f"{name}: ❌ command not found")
+                    await ctx.send(f"{name}: command not found")
                 continue
             try:
                 if ctx:
                     await ctx.invoke(cmd)
-                    await ctx.send(f"{name}: ✅ passed")
+                    await ctx.send(f"{name}: passed")
                 results.append((name, True, None))
             except Exception as e:
                 results.append((name, False, f"{type(e).__name__}: {e}"))
                 if ctx:
-                    await ctx.send(f"{name}: ❌ {type(e).__name__}: {e}")
+                    await ctx.send(f"{name}: {type(e).__name__}: {e}")
         return results
 
-    @commands.command(name='restart')
+    @commands.command(name="restart")
     @commands.has_permissions(administrator=True)
     async def restart_bot(self, ctx):
-        await ctx.send("Restarting… brb 👾")
+        await ctx.send("Restarting... brb")
         await asyncio.sleep(1)
-        subprocess.Popen(['sudo', 'systemctl', 'restart', 'tinki-bot'])
+        subprocess.Popen(["sudo", "systemctl", "restart", "tinki-bot"])
 
-    @commands.command(name='deploy')
+    @commands.command(name="deploy")
     @commands.has_permissions(administrator=True)
     async def deploy_latest(self, ctx):
-        raw_url = GITHUB_REPO_URL.replace('github.com', 'raw.githubusercontent.com') + '/main/tinki-bot.py'
-        await ctx.send("Pulling latest from GitHub…")
+        raw_url = GITHUB_REPO_URL.replace("github.com", "raw.githubusercontent.com") + "/main/tinki-bot.py"
+        await ctx.send("Pulling latest from GitHub...")
         try:
             import aiohttp
+
             async with aiohttp.ClientSession() as session:
                 async with session.get(raw_url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                     resp.raise_for_status()
@@ -135,20 +179,20 @@ class Admin(commands.Cog):
             if len(content) < 500:
                 await ctx.send(f"Deploy aborted: download looks truncated ({len(content)} bytes).")
                 return
-            target = Path(__file__).resolve().parent.parent / 'tinki-bot.py'
-            tmp = target.with_suffix('.py.tmp')
+            target = Path(__file__).resolve().parent.parent / "tinki-bot.py"
+            tmp = target.with_suffix(".py.tmp")
             tmp.write_bytes(content)
             tmp.replace(target)
-            await ctx.send("Updated. Restarting… brb 👾")
+            await ctx.send("Updated. Restarting... brb")
             await asyncio.sleep(1)
-            subprocess.Popen(['sudo', 'systemctl', 'restart', 'tinki-bot'])
+            subprocess.Popen(["sudo", "systemctl", "restart", "tinki-bot"])
         except Exception as e:
             await ctx.send(f"Deploy failed: {e}")
 
     @commands.command(name="runtests")
     @commands.has_permissions(administrator=True)
     async def runtests(self, ctx):
-        await ctx.send("Starting command self-tests…")
+        await ctx.send("Starting command self-tests...")
         results = await self._run_command_selftests(ctx)
         passed = sum(1 for _, ok, _ in results if ok)
         await ctx.send(f"Command tests complete: {passed}/{len(results)} passed.")
@@ -156,10 +200,10 @@ class Admin(commands.Cog):
     @commands.command(name="testurls")
     @commands.has_permissions(administrator=True)
     async def testurls(self, ctx):
-        await ctx.send("Starting URL rewrite tests…")
+        await ctx.send("Starting URL rewrite tests...")
         results = run_url_selftests()
         for name, ok, reason in results:
-            await ctx.send(f"{name}: {'✅ passed' if ok else f'❌ {reason}'}")
+            await ctx.send(f"{name}: {'passed' if ok else reason}")
         passed = sum(1 for _, ok, _ in results if ok)
         await ctx.send(f"URL tests complete: {passed}/{len(results)} passed.")
 

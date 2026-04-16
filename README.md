@@ -208,6 +208,99 @@ pytest
 
 61 tests covering pure functions and isolated command helpers. No live Discord calls needed.
 
+Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-test`, alongside the command, URL, calculator, and letter-count self-tests.
+
+## Commands
+
+### Bowling
+
+- `!pb` - show Jun's personal best score
+- `!avg` - show Jun's average score
+- `!median` - show Jun's median score
+- `!all` - list all saved bowling scores
+- `!add <score> <YYYY-MM-DD HH:MM:SS>` - manually add a bowling score
+- `!delete <YYYY-MM-DD HH:MM:SS>` - delete a bowling score by timestamp
+- `!bowlinggraph` - generate the bowling score trend graph
+- `!bowlingdistgraph` - generate the bowling score distribution graph
+
+### Personas And AI
+
+- `!createpersona <name> <prompt>` - create a persona
+- `!switchpersona <name>` - switch the active persona
+- `!listpersonas` - list available personas
+- `!currentpersona` - show the active persona
+- `!deletepersona <name>` - delete a persona
+- `!erasememory [count]` - erase saved conversation memory for the active persona
+- `!randomai on|off|status` - control random AI posting
+- `@Tinki-bot <message>` - get a reply from Tinki
+
+### Reminders
+
+- `!remind` - show reminder usage help
+- `!remindme in ...` - create a reminder
+- `!remindme` - list your upcoming and missed reminders
+- `!deletereminder <id>` - delete a reminder by ID
+- `!currenttime` - show the current server time
+
+### Emotes And Stickers
+
+- `$<emote_name> [count]` - send a named emote as the bot
+- `$randomemote [count]` - send a random emote as the bot
+- `!allemotes` - list the current server's emotes
+- `!emote <name> [1-4]` - search 7TV and pick an emote size
+- `!spinny @user` - enable SPINNY sticker grinding for a user
+- `!stopspinny @user|username` - disable SPINNY sticker grinding
+- `!silentspinny <username>` - enable silent grinding by username for whiptail only
+
+### Tracking And Stats
+
+- `!sussy` - show total sus usage
+- `!sussygraph` - graph sus usage over time
+- `!explode` - show total explode usage
+- `!explodegraph` - graph explode usage over time
+- `!grindcount` - show total SPINNY grind count
+- `!grindgraph` - graph SPINNY grinding over time
+
+### Utility
+
+- `!gif` - post a random bowling gif
+- `!random` - post a random pinned message
+- `!roulette` - post a random gif
+- `!cat` - post a random cat image
+- `!dog` - post a random dog image
+- `!dogbark` - post a random bark in ASCII art
+- `!ss` - post the redirect image
+- `!github` - link the source repository
+- `!commands` - DM the built-in command list
+- `!purge` - purge bot messages and command messages, whiptail only
+
+### Admin
+
+- `!restart` - restart the bot service, admin only
+- `!deploy` - pull the latest single-file entrypoint and restart, admin only
+- `!runtests` - run command smoke tests, admin only
+- `!testurls` - run URL rewrite self-tests, admin only
+
+### Uma Musume
+
+- `!gacha [1|10]` - simulate pulls with pity tracking
+- `!pity [@user]` - show pity counter and progress bar
+- `!uma [@user]` - assign a random horse girl
+- `!race @user1 @user2 ...` - generate a narrated race
+- `!umagif` - post a random Uma Musume gif
+
+### Retired Server Commands
+
+- `!startminecraft` - retired placeholder
+- `!stopminecraft` - retired placeholder
+- `!minecraftstatus` - retired placeholder
+- `!minecraftserver` - retired placeholder
+- `!startskyfactory` - retired placeholder
+- `!stopskyfactory` - retired placeholder
+- `!skyfactorystatus` - retired placeholder
+- `!skyfactoryserver` - retired placeholder
+- `!uptime` - retired placeholder
+
 ## Notes
 
 - Runtime files live in `data/` by default (set `TINKI_DATA_DIR` to override).

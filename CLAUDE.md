@@ -91,6 +91,8 @@ pytest
 
 61 tests in `tests/test_tinki_bot.py`. Tests import directly from `utils/` modules and instantiate cog classes without a live Discord connection. `_wire_cog(cog)` sets `cmd.cog` on each `Command` so direct method calls work in tests.
 
+Startup diagnostics in `cogs/admin.py` also run `pytest -q` and post the result to `#bot-test` with the other startup self-tests.
+
 ## Operational Rules
 
 - Do not commit real secrets to the repo.
