@@ -6,27 +6,27 @@
   <img src="assets/branding/tinki-avatar.png" alt="Tinki avatar" width="160">
 </p>
 
-<p align="center">
-  <img src="assets/branding/tink.gif" alt="Tinki" width="160">
-</p>
-
 # tinki-bot
 
 Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered gremlin replies, and Uma Musume gacha.
 
 ## Requirements
 
-- Python 3.10+ recommended
+- Python 3.10+ recommended for local development
 - A Discord bot token
 - A Giphy API key
 - An OpenAI API key
 
 ## Project Files
 
-- `tinki-bot.py` - main bot entrypoint
+- `tinki-bot.py` - thin bot entrypoint and cog loader
+- `config.py` - shared config, file paths, patterns, and constants
+- `cogs/` - Discord bot features split by domain
+- `utils/` - deterministic helpers, OpenAI helpers, and self-tests
+- `tests/` - local pytest suite for pure functions and isolated command helpers
 - `requirements.txt` - Python dependencies
 - `.env.example` - environment variable template
-- `assets/branding/` - repo art for README, GitHub, and bot branding
+- `assets/branding/` - repo art for README, GitHub social preview, and bot branding
 - `data/` - local runtime data directory for sqlite/json files
 - `INSTALL.md` - local setup and production install notes
 - `CLAUDE.md` - repo context for Claude-style agents
@@ -76,7 +76,7 @@ From this Windows machine, deploy updated repo files with:
 
 Create a local-only `deploy-ec2.local.ps1` from `deploy-ec2.local.ps1.example` and set the real host there. Keep that file out of git.
 
-That script now:
+That script:
 
 - backs up the live server copy of `tinki-bot.py`
 - creates a timestamped archive of `/opt/apps/tinki-bot/data`
@@ -84,8 +84,6 @@ That script now:
 - restarts the systemd service
 
 ### Deploy Steps
-
-Normal deploy flow:
 
 1. Edit the code locally.
 2. Run:
@@ -181,27 +179,34 @@ Live runtime data on EC2 is stored in:
 ## Features
 
 ### AI replies
-Tinki responds when mentioned (`@Tinki-bot`). She has a chaotic gnome personality powered by OpenAI. Math questions and letter-count questions are answered deterministically and then wrapped by GPT for flavour.
+
+Tinki responds when mentioned (`@Tinki-bot`). She has a chaotic gremlin personality powered by OpenAI. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
 
 ### Bowling score tracking
+
 Commands: `!pb`, `!avg`, `!median`, `!all`, `!bowlinggraph`, `!bowlingdistgraph`, `!add`
 
 ### Uma Musume gacha
-- `!gacha [1|10]` — simulate pulls at real SSR/SR/R rates (3% SSR, pity at 200)
-- `!pity [@user]` — show current pity counter with progress bar
-- `!uma [@user]` — assign a random horse girl to someone
-- `!race @u1 @u2 ...` — GPT-narrated race between mentioned members
+
+- `!gacha [1|10]` - simulate pulls at real SSR/SR/R rates (3% SSR, pity at 200)
+- `!pity [@user]` - show current pity counter with progress bar
+- `!uma [@user]` - assign a random horse girl to someone
+- `!race @u1 @u2 ...` - GPT-narrated race between mentioned members
 
 ### Utility
-- `!remindme` — set a reminder
-- `!restart` / `!deploy` — admin-only service control and self-update from GitHub
+
+- `!remindme` - set a reminder
+- `!restart` / `!deploy` - admin-only service control and self-update from GitHub
 
 ### Tests
+
 Run locally with:
+
 ```bash
 pytest
 ```
-48 tests covering pure functions and isolated command helpers. No live Discord calls needed.
+
+61 tests covering pure functions and isolated command helpers. No live Discord calls needed.
 
 ## Notes
 

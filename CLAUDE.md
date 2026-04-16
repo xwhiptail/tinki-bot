@@ -12,7 +12,12 @@ This repository contains a Discord bot deployed to a single EC2 instance.
 
 Local workspace:
 
-- `tinki-bot.py` - main bot code
+- `tinki-bot.py` - thin entrypoint and cog loader
+- `config.py` - shared constants, paths, patterns, and defaults
+- `cogs/` - feature modules grouped by domain
+- `utils/` - deterministic helpers, OpenAI wrappers, and self-tests
+- `tests/` - local pytest suite
+- `assets/branding/` - avatar, banner, and branding assets
 - `deploy-ec2.ps1` - Windows deploy helper
 - `requirements.txt` - Python dependencies
 - `.env.example` - local environment variable template
@@ -37,7 +42,7 @@ cd i:\botserver\tinki-bot
 
 Local deploy host configuration should live in `deploy-ec2.local.ps1` or the `TINKI_EC2_HOST` environment variable, not in committed repo files.
 
-The deploy script currently:
+The deploy script:
 
 - backs up `/opt/apps/tinki-bot/repo/tinki-bot.py`
 - snapshots `/opt/apps/tinki-bot/data`
@@ -46,8 +51,8 @@ The deploy script currently:
 
 ## Project Structure
 
-```
-tinki-bot.py          entry point — bot setup, cog loading, on_message, on_command_error
+```text
+tinki-bot.py          entry point - bot setup, cog loading, on_message, on_command_error
 config.py             all constants, DATA_DIR, paths, UMA data, URL patterns
 utils/
   calculator.py       maybe_calculate_reply + AST eval helpers
@@ -56,24 +61,24 @@ utils/
   openai_helpers.py   get_openai_client, gpt_wrap_fact, fetch_openai_balance
   selftests.py        run_url_selftests, run_calculate_selftests, run_letter_count_selftests
 cogs/
-  bowling.py          Bowling cog — score data + commands + on_message score detection
-  uma.py              Uma cog — gacha, pity, race, uma assign
-  personas.py         Personas cog — persona/conversation data + commands
-  reminders.py        Reminders cog — sqlite DB + commands + check_reminders loop
-  emotes.py           Emotes cog — $ commands, !emote, !allemotes, spinny grinding
-  tracking.py         Tracking cog — sus/explode/spinny tracking + graph commands
-  ai.py               AI cog — @mention handler, random AI posting, reaction replies
-  utility.py          Utility cog — cat, dog, gif, roulette, purge, retired server stubs
-  admin.py            Admin cog — restart, deploy, runtests, testurls, startup diagnostics
-  url_filter.py       URLFilter cog — URL rewrites and Twitch clip embed fix
+  bowling.py          Bowling cog - score data + commands + on_message score detection
+  uma.py              Uma cog - gacha, pity, race, uma assign
+  personas.py         Personas cog - persona/conversation data + commands
+  reminders.py        Reminders cog - sqlite DB + commands + check_reminders loop
+  emotes.py           Emotes cog - $ commands, !emote, !allemotes, spinny grinding
+  tracking.py         Tracking cog - sus/explode/spinny tracking + graph commands
+  ai.py               AI cog - @mention handler, random AI posting, reaction replies
+  utility.py          Utility cog - cat, dog, gif, roulette, purge, retired server stubs
+  admin.py            Admin cog - restart, deploy, runtests, testurls, startup diagnostics
+  url_filter.py       URLFilter cog - URL rewrites and Twitch clip embed fix
 ```
 
 ## Bot Architecture
 
-- Personality: `GREMLIN_SYSTEM_STYLE` constant in `config.py` — chaotic gnome shitposter, short replies, no therapy talk.
+- Personality: `GREMLIN_SYSTEM_STYLE` constant in `config.py` - chaotic gremlin shitposter, short replies, no therapy talk.
 - AI mention handler: in `cogs/ai.py`. Strips `<@ID>` and `<@!ID>` variants. Falls through to OpenAI if no pure-function handler matches. Accesses persona data via `bot.cogs['Personas']`.
-- Pure function handlers (deterministic, no GPT): `utils/calculator.py` → `maybe_calculate_reply`, `utils/letter_counter.py` → `maybe_count_letter_reply`. Both return a bare fact string; `gpt_wrap_fact` wraps it with personality using assistant prefill to prevent prompt leakage.
-- URL rewriting: `utils/url_rewriter.py` → `rewrite_social_urls`. Triggered by `cogs/url_filter.py` on_message listener.
+- Pure function handlers (deterministic, no GPT): `utils/calculator.py` -> `maybe_calculate_reply`, `utils/letter_counter.py` -> `maybe_count_letter_reply`. Both return a bare fact string; `gpt_wrap_fact` wraps it with personality using assistant prefill to prevent prompt leakage.
+- URL rewriting: `utils/url_rewriter.py` -> `rewrite_social_urls`. Triggered by `cogs/url_filter.py` on_message listener.
 - Graph PNGs: all saved to `DATA_DIR`, not the repo working directory.
 - Uma Musume gacha: in `cogs/uma.py`. Pity stored in `cog.pity_file` (default `data/uma_pity.json`). SSR 3%, SR 18.75%, R 78.25%, hard pity at 200 pulls.
 - Cog data: each cog loads its own persistent data in `cog_load()` and exposes `_save()` helpers. No global mutable state.
@@ -84,7 +89,7 @@ cogs/
 pytest
 ```
 
-61 tests in `tests/test_tinki_bot.py`. Tests import directly from `utils/` modules and instantiate cog classes without a live Discord connection. `_wire_cog(cog)` sets `cmd.cog` on each Command so direct method calls work in tests.
+61 tests in `tests/test_tinki_bot.py`. Tests import directly from `utils/` modules and instantiate cog classes without a live Discord connection. `_wire_cog(cog)` sets `cmd.cog` on each `Command` so direct method calls work in tests.
 
 ## Operational Rules
 
@@ -93,7 +98,7 @@ pytest
 - Before risky server-side edits, back up `tinki-bot.py` and preserve data.
 - Keep Minecraft/SkyFactory controls retired unless explicitly reintroduced.
 - Prefer updating repo files locally and deploying via `deploy-ec2.ps1`, rather than editing directly on the EC2 instance.
-- Deploy prunes backups to 3 most recent automatically — do not disable this.
+- Deploy prunes backups to 3 most recent automatically - do not disable this.
 - `!restart` and `!deploy` are admin-only Discord commands that control the live service.
 
 ## Common Checks
