@@ -7,6 +7,9 @@ myenv/
 __pycache__/
 *.pyc
 *.png
+!assets/
+!assets/branding/
+!assets/branding/*.png
 data/*
 !data/.gitkeep
 github-export-clean/

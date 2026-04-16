@@ -1,3 +1,11 @@
+<p align="center">
+  <img src="assets/branding/tinki-banner.png" alt="Tinki-bot banner" width="100%">
+</p>
+
+<p align="center">
+  <img src="assets/branding/tinki-avatar.png" alt="Tinki avatar" width="160">
+</p>
+
 # tinki-bot
 
 Discord bot for server utilities, memes, reminders, emotes, and OpenAI-powered gremlin replies.
@@ -14,6 +22,7 @@ Discord bot for server utilities, memes, reminders, emotes, and OpenAI-powered g
 - `tinki-bot.py` - main bot entrypoint
 - `requirements.txt` - Python dependencies
 - `.env.example` - environment variable template
+- `assets/branding/` - repo art for README, GitHub, and bot branding
 - `data/` - local runtime data directory for sqlite/json files
 - `INSTALL.md` - local setup and production install notes
 - `CLAUDE.md` - repo context for Claude-style agents
