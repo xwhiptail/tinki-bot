@@ -44,13 +44,32 @@ The deploy script currently:
 - uploads repo files to `/opt/apps/tinki-bot/repo`
 - restarts `tinki-bot.service`
 
+## Bot Architecture
+
+- Personality: `GREMLIN_SYSTEM_STYLE` constant — chaotic gnome shitposter, short replies, no therapy talk.
+- AI mention handler: strips `<@ID>` and `<@!ID>` variants before processing. Falls through to OpenAI if no pure-function handler matches.
+- Pure function handlers (deterministic, no GPT): `maybe_calculate_reply`, `maybe_count_letter_reply`. Both return a bare fact string; `gpt_wrap_fact` wraps it with personality using assistant prefill to prevent prompt leakage.
+- URL rewriting: `rewrite_social_urls` maps Twitter/X/Instagram/TikTok/Reddit to fix-embed proxies.
+- Graph PNGs: all saved to `DATA_DIR`, not the repo working directory.
+- Uma Musume gacha: pity tracked per Discord user ID in `data/uma_pity.json`. SSR 3%, SR 18.75%, R 78.25%, hard pity at 200 pulls.
+
+## Tests
+
+```bash
+pytest
+```
+
+48 tests in `tests/test_tinki_bot.py`. Covers `rewrite_social_urls`, `maybe_calculate_reply`, `maybe_count_letter_reply`, score commands, and persona commands. The module is loaded via `importlib` (hyphen in filename); `Bot.run` is patched to a no-op so the bot does not connect.
+
 ## Operational Rules
 
 - Do not commit real secrets to the repo.
 - Do not overwrite `/opt/apps/tinki-bot/data` during routine code deploys.
 - Before risky server-side edits, back up `tinki-bot.py` and preserve data.
 - Keep Minecraft/SkyFactory controls retired unless explicitly reintroduced.
-- Prefer updating repo files locally and deploying, rather than editing directly on the EC2 instance.
+- Prefer updating repo files locally and deploying via `deploy-ec2.ps1`, rather than editing directly on the EC2 instance.
+- Deploy prunes backups to 3 most recent automatically — do not disable this.
+- `!restart` and `!deploy` are admin-only Discord commands that control the live service.
 
 ## Common Checks
 

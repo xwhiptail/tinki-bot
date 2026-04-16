@@ -56,6 +56,32 @@ SCORES_FILE = str(DATA_DIR / 'scores.json')
 SUS_FILE = str(DATA_DIR / 'sus_and_sticker_usage.json')
 EXPLODE_FILE = str(DATA_DIR / 'explode.json')
 SPINNY_FILE = str(DATA_DIR / 'spinny.json')
+UMA_PITY_FILE = str(DATA_DIR / 'uma_pity.json')
+
+# Uma Musume gacha — rates match in-game
+UMA_SSR_RATE = 0.03
+UMA_SR_RATE  = 0.1875
+UMA_PITY_CAP = 200
+
+UMA_SSR = [
+    "Special Week", "Silence Suzuka", "Tokai Teio", "Mejiro McQueen",
+    "Rice Shower", "Gold Ship", "Oguri Cap", "Vodka", "Daiwa Scarlet",
+    "Seiun Sky", "El Condor Pasa", "Grass Wonder", "Agnes Tachyon",
+    "Symboli Rudolf", "Narita Brian", "T.M. Opera O", "Manhattan Cafe",
+    "Kitasan Black", "Satono Diamond", "Mihono Bourbon", "Biwa Hayahide",
+    "Maruzensky", "Mayano Top Gun", "Fine Motion", "Hokko Tarumae",
+    "Smart Falcon", "Sakura Bakushin O", "Curren Chan", "Twin Turbo",
+]
+UMA_SR = [
+    "Nice Nature", "Winning Ticket", "Air Groove", "Super Creek",
+    "Meisho Doto", "Narita Top Road", "Taiki Shuttle", "Eishin Flash",
+    "Copano Rickey", "Ikuno Dictus", "Nishino Flower", "Haru Urara",
+    "Bamboo Memory", "Agnes Digital", "Sakura Chiyono O", "Sweep Tosho",
+]
+UMA_R = [
+    "Mejiro Dober", "Daiichi Ruby", "Mejiro Ardan", "Matikanefukukitaru",
+    "Shinko Windy", "Marvelous Sunday", "Biko Pegasus", "Yamanin Zephyr",
+]
 
 bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
 
@@ -1078,6 +1104,148 @@ async def add_score(ctx, score: int, *, timestamp_str: str):
         await ctx.send(f"Added score {score} on {timestamp.strftime('%Y-%m-%d %H:%M:%S')}.")
     except ValueError:
         await ctx.send("Invalid timestamp format. Please use the format %Y-%m-%d %H:%M:%S.")
+
+
+# ── Uma Musume ────────────────────────────────────────────────────────────────
+
+async def _uma_gif() -> Optional[str]:
+    """Return a random Uma Musume GIF URL from Giphy, or None on failure."""
+    if not GIPHY_API_KEY:
+        return None
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://api.giphy.com/v1/gifs/search",
+                params={"api_key": GIPHY_API_KEY, "q": "uma musume", "limit": 25, "rating": "g"},
+            ) as resp:
+                data = await resp.json()
+                items = data.get("data", [])
+                if items:
+                    pick = random.choice(items)
+                    return pick["images"]["original"]["url"]
+    except Exception:
+        pass
+    return None
+
+
+def load_uma_pity() -> dict:
+    try:
+        with open(UMA_PITY_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def save_uma_pity(data: dict):
+    with open(UMA_PITY_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+def _uma_single_pull(pity: int) -> tuple:
+    """Return (rarity_str, name, new_pity). Forces SSR at cap."""
+    force = pity + 1 >= UMA_PITY_CAP
+    roll = random.random()
+    if force or roll < UMA_SSR_RATE:
+        return ("SSR", random.choice(UMA_SSR), 0)
+    elif roll < UMA_SSR_RATE + UMA_SR_RATE:
+        return ("SR", random.choice(UMA_SR), pity + 1)
+    else:
+        return ("R", random.choice(UMA_R), pity + 1)
+
+@bot.command(name='gacha')
+async def uma_gacha(ctx, count: int = 10):
+    if count not in (1, 10):
+        await ctx.send("Pull 1 or 10 at a time.")
+        return
+
+    pity_data = load_uma_pity()
+    uid = str(ctx.author.id)
+    pity = pity_data.get(uid, 0)
+
+    pulls = []
+    for _ in range(count):
+        rarity, name, pity = _uma_single_pull(pity)
+        pulls.append((rarity, name))
+
+    pity_data[uid] = pity
+    save_uma_pity(pity_data)
+
+    ssrs = [name for r, name in pulls if r == "SSR"]
+    lines = []
+    for rarity, name in pulls:
+        if rarity == "SSR":
+            lines.append(f"✨ **[SSR] {name}**")
+        elif rarity == "SR":
+            lines.append(f"⭐ [SR] {name}")
+        else:
+            lines.append(f"· [R] {name}")
+
+    result = "\n".join(lines)
+    if ssrs:
+        footer = f"\n🎉 SSR! You got: **{', '.join(ssrs)}** (pity reset to 0)"
+        gif = await _uma_gif()
+    else:
+        footer = f"\n*Pity: {pity}/{UMA_PITY_CAP}*"
+        gif = None
+
+    await ctx.send(f"**{ctx.author.display_name}'s pull results:**\n{result}{footer}")
+    if gif:
+        await ctx.send(gif)
+
+
+@bot.command(name='pity')
+async def uma_pity(ctx, member: discord.Member = None):
+    target = member or ctx.author
+    pity_data = load_uma_pity()
+    pity = pity_data.get(str(target.id), 0)
+    remaining = UMA_PITY_CAP - pity
+    bar = "█" * (pity // 10) + "░" * ((UMA_PITY_CAP - pity) // 10)
+    await ctx.send(
+        f"**{target.display_name}'s pity:** {pity}/{UMA_PITY_CAP} "
+        f"({remaining} pulls until guaranteed SSR)\n`{bar}`"
+    )
+
+
+@bot.command(name='uma')
+async def uma_assign(ctx, member: discord.Member = None):
+    target = member or ctx.author
+    rarity = random.choices(["SSR", "SR", "R"], weights=[UMA_SSR_RATE, UMA_SR_RATE, 1 - UMA_SSR_RATE - UMA_SR_RATE])[0]
+    pool = {"SSR": UMA_SSR, "SR": UMA_SR, "R": UMA_R}[rarity]
+    horse = random.choice(pool)
+    prefix = "✨" if rarity == "SSR" else ("⭐" if rarity == "SR" else "·")
+    await ctx.send(f"{prefix} **{target.display_name}** is **{horse}** [{rarity}]")
+
+
+@bot.command(name='race')
+async def uma_race(ctx, *members: discord.Member):
+    if len(members) < 2:
+        await ctx.send("Tag at least 2 people to race.")
+        return
+    names = [m.display_name for m in members]
+    client = get_openai_client()
+    prompt = (
+        f"Narrate a short, chaotic Uma Musume horse race between: {', '.join(names)}. "
+        f"Pick a winner. Keep it under 4 sentences. Be dramatic and funny."
+    )
+    completion = client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": GREMLIN_SYSTEM_STYLE},
+            {"role": "user", "content": prompt},
+        ]
+    )
+    result = completion.choices[0].message.content if completion.choices else "The race exploded. No winner."
+    gif = await _uma_gif()
+    await ctx.send(f"🏇 **RACE START**\n{result}")
+    if gif:
+        await ctx.send(gif)
+
+
+@bot.command(name='umagif')
+async def uma_gif_cmd(ctx):
+    gif = await _uma_gif()
+    if gif:
+        await ctx.send(gif)
+    else:
+        await ctx.send("Giphy came up empty. The gnome is disappointed.")
 
 
 # purge bot messages, limited to whiptail username

@@ -8,7 +8,7 @@
 
 # tinki-bot
 
-Discord bot for server utilities, memes, reminders, emotes, and OpenAI-powered gremlin replies.
+Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered gremlin replies, and Uma Musume gacha.
 
 ## Requirements
 
@@ -172,9 +172,36 @@ Live runtime data on EC2 is stored in:
 - `/opt/apps/tinki-bot/data/sus_and_sticker_usage.json`
 - `/opt/apps/tinki-bot/data/explode.json`
 - `/opt/apps/tinki-bot/data/spinny.json`
+- `/opt/apps/tinki-bot/data/uma_pity.json`
+
+## Features
+
+### AI replies
+Tinki responds when mentioned (`@Tinki-bot`). She has a chaotic gnome personality powered by OpenAI. Math questions and letter-count questions are answered deterministically and then wrapped by GPT for flavour.
+
+### Bowling score tracking
+Commands: `!pb`, `!avg`, `!median`, `!all`, `!bowlinggraph`, `!bowlingdistgraph`, `!add`
+
+### Uma Musume gacha
+- `!gacha [1|10]` — simulate pulls at real SSR/SR/R rates (3% SSR, pity at 200)
+- `!pity [@user]` — show current pity counter with progress bar
+- `!uma [@user]` — assign a random horse girl to someone
+- `!race @u1 @u2 ...` — GPT-narrated race between mentioned members
+
+### Utility
+- `!remindme` — set a reminder
+- `!restart` / `!deploy` — admin-only service control and self-update from GitHub
+
+### Tests
+Run locally with:
+```bash
+pytest
+```
+48 tests covering pure functions and isolated command helpers. No live Discord calls needed.
 
 ## Notes
 
-- The bot now stores runtime files in `data/` by default instead of `/opt/apps/...`.
-- Minecraft and SkyFactory hosting controls have been retired. Their commands now return a removal notice.
-- Do not commit secrets, local databases, generated json files, or virtual environments.
+- Runtime files live in `data/` by default (set `TINKI_DATA_DIR` to override).
+- Minecraft and SkyFactory commands are retired and return a removal notice.
+- Do not commit secrets, local databases, generated JSON files, or virtual environments.
+- Deploy backups are pruned to the 3 most recent automatically.
