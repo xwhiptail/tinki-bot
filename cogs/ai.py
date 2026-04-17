@@ -366,7 +366,7 @@ class AI(commands.Cog):
     async def on_ready(self):
         if not self._ai_task_started:
             self._ai_task_started = True
-            self.bot.loop.create_task(self._random_ai_post_task())
+            asyncio.create_task(self._random_ai_post_task())
 
     async def _random_ai_post_task(self):
         await self.bot.wait_until_ready()
@@ -435,5 +435,5 @@ class AI(commands.Cog):
         self.random_ai_message_ids.add(bot_reply.id)
 
 
-def setup(bot):
-    bot.add_cog(AI(bot))
+async def setup(bot):
+    await bot.add_cog(AI(bot))

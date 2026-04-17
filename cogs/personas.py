@@ -69,5 +69,5 @@ class Personas(commands.Cog):
             await ctx.send("No conversation history found for you.")
 
 
-def setup(bot):
-    bot.add_cog(Personas(bot))
+async def setup(bot):
+    await bot.add_cog(Personas(bot))

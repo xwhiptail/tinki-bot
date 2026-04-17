@@ -312,5 +312,5 @@ class Admin(commands.Cog):
         await ctx.send(f"URL tests complete: {passed}/{len(results)} passed.")
 
 
-def setup(bot):
-    bot.add_cog(Admin(bot))
+async def setup(bot):
+    await bot.add_cog(Admin(bot))

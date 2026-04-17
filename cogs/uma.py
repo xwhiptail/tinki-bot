@@ -366,5 +366,5 @@ class Uma(commands.Cog):
             await ctx.send('Giphy came up empty. The gremlin is disappointed.')
 
 
-def setup(bot):
-    bot.add_cog(Uma(bot))
+async def setup(bot):
+    await bot.add_cog(Uma(bot))

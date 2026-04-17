@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import matplotlib.dates as mdates
@@ -53,16 +54,18 @@ class Bowling(commands.Cog):
             if score_value > avg:
                 confirm_msg = await message.channel.send(
                     f"Score of {score_value} on {score_timestamp.strftime('%Y-%m-%d %H:%M:%S')}UTC "
-                    f"recorded for Jun! Great job, that's above your average of {avg:.2f}!"
+                    f"recorded for Jun! Great job, that's above your average of {avg:.2f}!",
+                    silent=True,
                 )
             else:
                 confirm_msg = await message.channel.send(
                     f"Score of {score_value} on {score_timestamp.strftime('%Y-%m-%d %H:%M:%S')}UTC "
-                    f"recorded for Jun. Your average is {avg:.2f}."
+                    f"recorded for Jun. Your average is {avg:.2f}.",
+                    silent=True,
                 )
             await message.add_reaction("🎳")
             await confirm_msg.add_reaction("❌")
-            self.bot.loop.create_task(
+            asyncio.create_task(
                 self._undo_window(confirm_msg, entry)
             )
 
@@ -216,5 +219,5 @@ class Bowling(commands.Cog):
         await ctx.send(file=discord.File(path))
 
 
-def setup(bot):
-    bot.add_cog(Bowling(bot))
+async def setup(bot):
+    await bot.add_cog(Bowling(bot))

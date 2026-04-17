@@ -44,7 +44,7 @@ class Utility(commands.Cog):
             if message.attachments:
                 embed.set_image(url=message.attachments[0].url)
             embed.add_field(name="Link", value=f"[Jump to message]({message.jump_url})", inline=False)
-            await pins_channel.send(embed=embed)
+            await pins_channel.send(embed=embed, silent=True)
             await message.add_reaction('✅')
             user = payload.member or await message.guild.fetch_member(payload.user_id)
             await message.remove_reaction(payload.emoji, user)
@@ -271,5 +271,5 @@ class Utility(commands.Cog):
         await ctx.send(SERVER_FEATURE_REMOVED_MESSAGE)
 
 
-def setup(bot):
-    bot.add_cog(Utility(bot))
+async def setup(bot):
+    await bot.add_cog(Utility(bot))

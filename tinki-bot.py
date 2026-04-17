@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import discord
 from discord.ext import commands
@@ -6,9 +7,6 @@ from fuzzywuzzy import process
 import config
 
 logging.basicConfig(level=logging.INFO)
-
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix='!', intents=intents)
 
 COGS = [
     'cogs.bowling',
@@ -24,8 +22,15 @@ COGS = [
 ]
 
 
-for cog in COGS:
-    bot.load_extension(cog)
+class TinkiBot(commands.Bot):
+    async def setup_hook(self):
+        for cog in COGS:
+            await self.load_extension(cog)
+        logging.info("setup_hook: loaded cogs = %s", list(self.cogs.keys()))
+
+
+intents = discord.Intents.all()
+bot = TinkiBot(command_prefix='!', intents=intents)
 
 
 @bot.event
@@ -35,7 +40,7 @@ async def on_ready():
     admin_cog = bot.cogs.get('Admin')
     logging.info("on_ready: admin_cog = %s", admin_cog)
     if admin_cog:
-        bot.loop.create_task(admin_cog.run_startup_tests())
+        asyncio.create_task(admin_cog.run_startup_tests())
 
 
 @bot.event

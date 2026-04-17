@@ -166,5 +166,5 @@ class Tracking(commands.Cog):
             await ctx.send(f"Error: {e}")
 
 
-def setup(bot):
-    bot.add_cog(Tracking(bot))
+async def setup(bot):
+    await bot.add_cog(Tracking(bot))

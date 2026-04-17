@@ -32,7 +32,8 @@ class URLFilter(commands.Cog):
             rewritten = rewrite_social_urls(message.content)
             if rewritten != message.content:
                 await message.channel.send(
-                    f"{message.author.mention} originally posted: {rewritten}"
+                    f"{message.author.mention} originally posted: {rewritten}",
+                    silent=True,
                 )
                 await message.delete()
                 await asyncio.sleep(3)
@@ -54,5 +55,5 @@ class URLFilter(commands.Cog):
             await message.delete()
 
 
-def setup(bot):
-    bot.add_cog(URLFilter(bot))
+async def setup(bot):
+    await bot.add_cog(URLFilter(bot))

@@ -166,5 +166,5 @@ class Reminders(commands.Cog):
         await ctx.send(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
 
-def setup(bot):
-    bot.add_cog(Reminders(bot))
+async def setup(bot):
+    await bot.add_cog(Reminders(bot))
