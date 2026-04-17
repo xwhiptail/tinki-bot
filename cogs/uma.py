@@ -283,6 +283,10 @@ class Uma(commands.Cog):
         try:
             await self.bot.wait_for('reaction_add', timeout=UMA_REPULL_TIMEOUT, check=check)
         except Exception:
+            try:
+                await result_message.remove_reaction(UMA_REPULL_EMOJI, ctx.bot.user)
+            except (discord.Forbidden, discord.HTTPException, AttributeError):
+                pass
             return
 
         await self.uma_gacha(ctx, count)
