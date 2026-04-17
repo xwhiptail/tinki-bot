@@ -51,16 +51,48 @@ class Bowling(commands.Cog):
             self._save()
             avg = sum(s[0] for s in self.scores) / len(self.scores)
             if score_value > avg:
-                await message.channel.send(
+                confirm_msg = await message.channel.send(
                     f"Score of {score_value} on {score_timestamp.strftime('%Y-%m-%d %H:%M:%S')}UTC "
                     f"recorded for Jun! Great job, that's above your average of {avg:.2f}!"
                 )
             else:
-                await message.channel.send(
+                confirm_msg = await message.channel.send(
                     f"Score of {score_value} on {score_timestamp.strftime('%Y-%m-%d %H:%M:%S')}UTC "
                     f"recorded for Jun. Your average is {avg:.2f}."
                 )
             await message.add_reaction("🎳")
+            await confirm_msg.add_reaction("❌")
+            self.bot.loop.create_task(
+                self._undo_window(confirm_msg, entry)
+            )
+
+    async def _undo_window(self, confirm_msg, entry):
+        """Wait 30 s for _cate to react ❌ and undo the score if she does."""
+        def check(reaction, user):
+            return (
+                str(reaction.emoji) == '❌'
+                and reaction.message.id == confirm_msg.id
+                and user.name == '_cate'
+                and not user.bot
+            )
+
+        try:
+            await self.bot.wait_for('reaction_add', timeout=30.0, check=check)
+            # _cate reacted — remove the entry and confirm
+            if entry in self.scores:
+                self.scores.remove(entry)
+                self._save()
+            await confirm_msg.edit(content=f"~~{confirm_msg.content}~~ Score undone. ↩️")
+            try:
+                await confirm_msg.clear_reactions()
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+        except Exception:
+            # Timeout (or any other error) — just remove the ❌ reaction silently
+            try:
+                await confirm_msg.remove_reaction('❌', confirm_msg.guild.me)
+            except (discord.Forbidden, discord.HTTPException, AttributeError):
+                pass
 
     @commands.command(name='pb')
     async def personal_best(self, ctx):
