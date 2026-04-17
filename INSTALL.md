@@ -98,9 +98,9 @@ sudo systemctl restart tinki-bot
 Data rollback:
 
 ```bash
-ls -lt /opt/apps/tinki-bot/data_backup_*.tar.gz
+ls -lt /opt/apps/tinki-bot/backup/data_backup_*.tar.gz
 cd /opt/apps/tinki-bot
 mv data data.bad_$(date +%Y%m%d_%H%M%S)
-tar -xzf data_backup_YYYYMMDD_HHMMSS.tar.gz
+tar -xzf /opt/apps/tinki-bot/backup/data_backup_YYYYMMDD_HHMMSS.tar.gz
 sudo systemctl restart tinki-bot
 ```

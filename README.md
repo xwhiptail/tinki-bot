@@ -91,7 +91,7 @@ Create a local-only `deploy-ec2.local.ps1` from `deploy-ec2.local.ps1.example` a
 That script:
 
 - backs up the live server copy of `tinki-bot.py`
-- creates a timestamped archive of `/opt/apps/tinki-bot/data`
+- creates a timestamped archive of `/opt/apps/tinki-bot/data` under `/opt/apps/tinki-bot/backup`
 - compares local `HEAD` against GitHub `main` and aborts if they differ
 - shows the currently deployed commit from `/opt/apps/tinki-bot/repo/.deploy-commit`
 - uploads the tracked app files to the EC2 `repo/` directory
@@ -111,7 +111,7 @@ cd i:\botserver\tinki-bot
 3. The script will:
 
 - create `tinki-bot.py.backup_YYYYMMDD_HHMMSS` in `/opt/apps/tinki-bot/repo`
-- create `data_backup_YYYYMMDD_HHMMSS.tar.gz` in `/opt/apps/tinki-bot`
+- create `data_backup_YYYYMMDD_HHMMSS.tar.gz` in `/opt/apps/tinki-bot/backup`
 - upload the current repo files
 - restart `tinki-bot.service`
 
@@ -150,7 +150,7 @@ If data was damaged and you need to restore the data snapshot:
 1. List recent data backups:
 
 ```bash
-ls -lt /opt/apps/tinki-bot/data_backup_*.tar.gz
+ls -lt /opt/apps/tinki-bot/backup/data_backup_*.tar.gz
 ```
 
 2. Restore one:
@@ -158,7 +158,7 @@ ls -lt /opt/apps/tinki-bot/data_backup_*.tar.gz
 ```bash
 cd /opt/apps/tinki-bot
 mv data data.bad_$(date +%Y%m%d_%H%M%S)
-tar -xzf data_backup_YYYYMMDD_HHMMSS.tar.gz
+tar -xzf /opt/apps/tinki-bot/backup/data_backup_YYYYMMDD_HHMMSS.tar.gz
 sudo systemctl restart tinki-bot
 ```
 
