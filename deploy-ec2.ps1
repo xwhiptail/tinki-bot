@@ -65,7 +65,7 @@ $repoFiles = @(
     ".gitignore"
 )
 
-$repoDirs = @("utils", "cogs", "tests", "assets")
+$repoDirs = @("utils", "cogs", "tests", "assets", "scripts")
 
 $backupScript = @"
 set -e
