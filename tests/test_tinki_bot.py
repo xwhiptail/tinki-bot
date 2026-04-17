@@ -639,6 +639,7 @@ class TestUmaMediaAndTriggers:
         ctx.author.display_name = "Tester"
         result_message = MagicMock()
         result_message.add_reaction = AsyncMock()
+        result_message.remove_reaction = AsyncMock()
         send_mock = AsyncMock(return_value=result_message)
 
         with patch.object(self.cog, "load_pity", return_value={}), \
@@ -709,6 +710,7 @@ class TestUmaMediaAndTriggers:
         ctx.author.display_name = "Tester"
         result_message = MagicMock()
         result_message.add_reaction = AsyncMock()
+        result_message.remove_reaction = AsyncMock()
 
         with patch.object(self.cog, "_send_gacha_results", new=AsyncMock(return_value=result_message)), \
              patch.object(self.cog.bot, "wait_for", new=AsyncMock(side_effect=TimeoutError)):

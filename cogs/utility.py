@@ -5,7 +5,7 @@ import discord
 import pyfiglet
 from discord.ext import commands
 
-from config import GIPHY_API_KEY, GITHUB_REPO_URL, SERVER_FEATURE_REMOVED_MESSAGE
+from config import CHANNEL_PINS, GIPHY_API_KEY, GITHUB_REPO_URL, SERVER_FEATURE_REMOVED_MESSAGE
 
 BARK_VARIATIONS = [
     "Bark", "Arf", "Woof", "Bork", "Boof", "Yap", "Yip",
@@ -34,7 +34,7 @@ class Utility(commands.Cog):
             return
 
         pins_channel = discord.utils.get(
-            message.guild.channels, name='pins', type=discord.ChannelType.text
+            message.guild.channels, name=CHANNEL_PINS, type=discord.ChannelType.text
         )
         if pins_channel:
             embed = discord.Embed(title="Pinned Message", description=message.content, color=0x00ff00)

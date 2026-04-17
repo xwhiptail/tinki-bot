@@ -7,7 +7,7 @@ import discord
 import pytz
 from discord.ext import commands, tasks
 
-from config import DATABASE_FILE
+from config import CHANNEL_REMINDERS, DATABASE_FILE
 
 
 class Reminders(commands.Cog):
@@ -46,14 +46,14 @@ class Reminders(commands.Cog):
         with self._connect() as conn:
             c = conn.cursor()
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            c.execute('SELECT user_id, message FROM reminders WHERE reminder_time<=? AND sent=0', (now,))
+            c.execute('SELECT user_id, channel_id, reminder_time, message FROM reminders WHERE reminder_time<=? AND sent=0', (now,))
             reminders = c.fetchall()
-            for user_id, message in reminders:
+            for user_id, channel_id, reminder_time, message in reminders:
                 user = await self.bot.fetch_user(user_id)
-                channel = discord.utils.get(self.bot.get_all_channels(), name="wat-doggo-only")
+                channel = discord.utils.get(self.bot.get_all_channels(), name=CHANNEL_REMINDERS)
                 if channel:
                     await channel.send(f"{user.mention}, {message}")
-                    c.execute('UPDATE reminders SET sent=1 WHERE user_id=? AND message=?', (user_id, message))
+                    c.execute('UPDATE reminders SET sent=1 WHERE user_id=? AND reminder_time=?', (user_id, reminder_time))
                     conn.commit()
 
     @check_reminders.before_loop

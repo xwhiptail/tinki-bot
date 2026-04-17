@@ -12,7 +12,7 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
-from config import GITHUB_REPO_URL
+from config import CHANNEL_BOT_TEST, GITHUB_REPO_URL
 from utils.openai_helpers import fetch_openai_balance
 from utils.selftests import (
     run_bot_insight_selftests,
@@ -39,11 +39,11 @@ class Admin(commands.Cog):
         await self.bot.wait_until_ready()
         all_channels = list(self.bot.get_all_channels())
         log.info("[startup tests] bot sees %d channels: %s", len(all_channels), [c.name for c in all_channels])
-        test_channel = discord.utils.get(all_channels, name="bot-test")
+        test_channel = discord.utils.get(all_channels, name=CHANNEL_BOT_TEST)
         if not test_channel:
-            log.warning("[startup tests] No #bot-test channel found; skipping.")
+            log.warning("[startup tests] No #%s channel found; skipping.", CHANNEL_BOT_TEST)
             return
-        log.info("[startup tests] found #bot-test, running tests...")
+        log.info("[startup tests] found #%s, running tests...", CHANNEL_BOT_TEST)
 
         cmd_results = await self._run_command_selftests(ctx=None)
         url_results = run_url_selftests()

@@ -15,6 +15,15 @@ OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-5.4')
 OPENAI_FAST_MODEL = os.getenv('OPENAI_FAST_MODEL', 'gpt-5.4-mini')
 GITHUB_REPO_URL = "https://github.com/xwhiptail/tinki-bot"
 
+# ── Channel names ────────────────────────────────────────────────────────────
+# Change these if your Discord server uses different channel names.
+CHANNEL_BOT_TEST   = os.getenv('CHANNEL_BOT_TEST',   'bot-test')
+CHANNEL_REMINDERS  = os.getenv('CHANNEL_REMINDERS',  'wat-doggo-only')
+CHANNEL_RANDOM_AI  = os.getenv('CHANNEL_RANDOM_AI',  'wat-doggo-only')
+CHANNEL_PINS       = os.getenv('CHANNEL_PINS',       'pins')
+STICKER_SPINNY     = os.getenv('STICKER_SPINNY',     'SPINNY')
+
+# ── Data files ────────────────────────────────────────────────────────────────
 DATABASE_FILE = str(DATA_DIR / 'reminders.db')
 CONVERSATION_FILE = str(DATA_DIR / 'conversations.json')
 PERSONA_FILE = str(DATA_DIR / 'personas.json')
@@ -23,7 +32,8 @@ SCORES_FILE = str(DATA_DIR / 'scores.json')
 SUS_FILE = str(DATA_DIR / 'sus_and_sticker_usage.json')
 EXPLODE_FILE = str(DATA_DIR / 'explode.json')
 SPINNY_FILE = str(DATA_DIR / 'spinny.json')
-UMA_PITY_FILE = str(DATA_DIR / 'uma_pity.json')
+UMA_PITY_FILE        = str(DATA_DIR / 'uma_pity.json')
+GRINDING_STATE_FILE  = str(DATA_DIR / 'grinding_state.json')
 
 GREMLIN_SYSTEM_STYLE = (
     "You are Tinki, a cute gnome Hunter from Azeroth (World of Warcraft) who moonlights as a Discord bot. "

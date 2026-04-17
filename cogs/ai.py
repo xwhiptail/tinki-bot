@@ -7,7 +7,7 @@ from typing import List, Set
 import discord
 from discord.ext import commands
 
-from config import AI_MEMORY_FILE, GREMLIN_SYSTEM_STYLE, OPENAI_FAST_MODEL, OPENAI_MODEL
+from config import AI_MEMORY_FILE, CHANNEL_RANDOM_AI, GREMLIN_SYSTEM_STYLE, OPENAI_FAST_MODEL, OPENAI_MODEL
 from utils.ai_brain import (
     build_memory_context,
     build_system_prompt,
@@ -370,7 +370,7 @@ class AI(commands.Cog):
 
     async def _random_ai_post_task(self):
         await self.bot.wait_until_ready()
-        channel = discord.utils.get(self.bot.get_all_channels(), name="wat-doggo-only")
+        channel = discord.utils.get(self.bot.get_all_channels(), name=CHANNEL_RANDOM_AI)
         while not self.bot.is_closed():
             wait_minutes = random.randint(60, 180)
             await asyncio.sleep(wait_minutes * 60)
@@ -408,6 +408,7 @@ class AI(commands.Cog):
             )
             if not text:
                 return
+            text = text[:1000]  # hard cap — prevents novel-pasting from blowing up token budget
             try:
                 await self._handle_mention(message, text)
             except Exception as error:

@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import logging
 import random
 import time
@@ -10,6 +11,8 @@ import seventv
 from discord.ext import commands, menus
 from fuzzywuzzy import process
 from PIL import Image
+
+from config import GRINDING_STATE_FILE, STICKER_SPINNY
 
 
 async def _get_user_id_from_username(guild, username):
@@ -31,7 +34,18 @@ class EmotesMenu(menus.MenuPages):
 class Emotes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.sticker_users = {}
+        self.sticker_users = self._load_grinding_state()
+
+    def _load_grinding_state(self) -> dict:
+        try:
+            with open(GRINDING_STATE_FILE, 'r') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    def _save_grinding_state(self):
+        with open(GRINDING_STATE_FILE, 'w') as f:
+            json.dump(self.sticker_users, f)
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -50,6 +64,7 @@ class Emotes(commands.Cog):
             user = message.guild.get_member(int(user_id))
             if user:
                 self.sticker_users[user_id] = True
+                self._save_grinding_state()
                 await message.channel.send(f"Grinding activated for {user.mention}!", silent=True)
             else:
                 await message.channel.send("Could not find the user you mentioned.")
@@ -67,6 +82,7 @@ class Emotes(commands.Cog):
                 user_id = await _get_user_id_from_username(message.guild, target)
             if user_id and user_id in self.sticker_users:
                 self.sticker_users.pop(user_id, None)
+                self._save_grinding_state()
                 await message.channel.send("Grinding deactivated.", silent=True)
             else:
                 await message.channel.send("Could not find the user you mentioned.")
@@ -81,6 +97,7 @@ class Emotes(commands.Cog):
                 user_id = await _get_user_id_from_username(message.guild, parts[1])
                 if user_id:
                     self.sticker_users[user_id] = True
+                    self._save_grinding_state()
                     await message.channel.send(f"Grinding activated for {parts[1]}!", silent=True)
                 else:
                     await message.channel.send("Could not find the user you mentioned.")
@@ -90,11 +107,11 @@ class Emotes(commands.Cog):
 
         # Send SPINNY sticker to users with grinding active
         if str(message.author.id) in self.sticker_users:
-            sticker = discord.utils.get(message.guild.stickers, name="SPINNY")
+            sticker = discord.utils.get(message.guild.stickers, name=STICKER_SPINNY)
             if sticker:
                 await message.channel.send(stickers=[sticker], silent=True)
             else:
-                await message.channel.send("Sticker 'SPINNY' not found.")
+                await message.channel.send(f"Sticker '{STICKER_SPINNY}' not found.")
 
         # $ emote commands
         if not content.startswith('$'):

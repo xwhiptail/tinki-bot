@@ -7,7 +7,7 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from discord.ext import commands
 
-from config import SUS_FILE, EXPLODE_FILE, SPINNY_FILE, DATA_DIR
+from config import DATA_DIR, EXPLODE_FILE, SPINNY_FILE, STICKER_SPINNY, SUS_FILE
 
 
 class Tracking(commands.Cog):
@@ -71,7 +71,7 @@ class Tracking(commands.Cog):
             self._save_explode()
 
         # Track SPINNY sticker usage
-        if any(s.name == "SPINNY" for s in message.stickers):
+        if any(s.name == STICKER_SPINNY for s in message.stickers):
             self.spinny.append(self._make_entry(message))
             self._save_spinny()
 
