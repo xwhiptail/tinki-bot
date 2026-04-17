@@ -31,7 +31,7 @@ SCAN_EXTS = {".py", ".md", ".txt", ".json", ".yaml", ".yml", ".toml"}
 THIS_FILE = Path(__file__).resolve()
 
 
-def scan(root: str = ".") -> list[tuple[str, int, str, str]]:
+def scan(root: str = ".") -> List[Tuple[str, int, str, str]]:
     hits = []
     for dirpath, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
