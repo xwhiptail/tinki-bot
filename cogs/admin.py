@@ -223,7 +223,9 @@ class Admin(commands.Cog):
                     headers={"Accept": "application/vnd.github+json", "User-Agent": "tinki-bot"},
                 ) as resp:
                     resp.raise_for_status()
-                    github_commit = (await resp.json())["sha"]
+                    commit_data = await resp.json()
+                    github_commit = commit_data["sha"]
+                    commit_message = commit_data.get("commit", {}).get("message", "").splitlines()[0]
 
                 await ctx.send(
                     f"Deploy check: current `{self._short_commit(current_commit)}` vs GitHub main `{self._short_commit(github_commit)}`"
@@ -285,7 +287,7 @@ class Admin(commands.Cog):
                 await ctx.send(f"Deploy failed during dependency install: {detail}")
                 return
 
-            await ctx.send("Updated. Restarting... brb")
+            await ctx.send(f"Deployed `{self._short_commit(github_commit)}` — {commit_message}. Restarting... brb 👾")
             await asyncio.sleep(1)
             subprocess.Popen(["sudo", "systemctl", "restart", "tinki-bot"])
         except Exception as e:
