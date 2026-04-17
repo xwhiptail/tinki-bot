@@ -1,4 +1,8 @@
 import asyncio
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.aws_costs import fetch_aws_cost_summary
 
