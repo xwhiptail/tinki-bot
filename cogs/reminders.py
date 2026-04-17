@@ -1,6 +1,6 @@
 import re
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from math import ceil
 
 import discord
@@ -37,7 +37,7 @@ class Reminders(commands.Cog):
     def _delete_expired(self):
         with self._connect() as conn:
             c = conn.cursor()
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
             c.execute('DELETE FROM reminders WHERE reminder_time < ? AND sent = 1', (now,))
             conn.commit()
 
@@ -45,7 +45,7 @@ class Reminders(commands.Cog):
     async def check_reminders(self):
         with self._connect() as conn:
             c = conn.cursor()
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
             c.execute('SELECT user_id, channel_id, reminder_time, message FROM reminders WHERE reminder_time<=? AND sent=0', (now,))
             reminders = c.fetchall()
             for user_id, channel_id, reminder_time, message in reminders:

@@ -5,7 +5,8 @@ import discord
 import pyfiglet
 from discord.ext import commands
 
-from config import CHANNEL_PINS, GIPHY_API_KEY, GITHUB_REPO_URL, SERVER_FEATURE_REMOVED_MESSAGE
+from config import (CHANNEL_PINS, GIPHY_API_KEY, GITHUB_REPO_URL,
+                    SERVER_FEATURE_REMOVED_MESSAGE, USER_WHIPTAIL_ID, user_matches)
 
 BARK_VARIATIONS = [
     "Bark", "Arf", "Woof", "Bork", "Boof", "Yap", "Yip",
@@ -56,7 +57,7 @@ class Utility(commands.Cog):
 
     @commands.command(name='purge')
     async def purge_bot_messages(self, ctx):
-        if ctx.author.name != 'whiptail':
+        if not user_matches(ctx.author, USER_WHIPTAIL_ID, 'whiptail'):
             await ctx.send("You do not have permission to use this command.")
             return
         import re

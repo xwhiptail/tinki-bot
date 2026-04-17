@@ -15,6 +15,21 @@ OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-5.4')
 OPENAI_FAST_MODEL = os.getenv('OPENAI_FAST_MODEL', 'gpt-5.4-mini')
 GITHUB_REPO_URL = "https://github.com/xwhiptail/tinki-bot"
 
+# ── Trusted user IDs ─────────────────────────────────────────────────────────
+# Set these via environment variables so ID-based checks survive username changes.
+# Leave unset (or 0) to fall back to matching by username.
+USER_WHIPTAIL_ID = int(os.getenv('USER_WHIPTAIL_ID', '0')) or None
+USER_CATE_ID     = int(os.getenv('USER_CATE_ID',     '0')) or None
+USER_LHEA_ID     = int(os.getenv('USER_LHEA_ID',     '0')) or None
+
+
+def user_matches(author, user_id, fallback_name: str) -> bool:
+    """Match a message author by ID (preferred) or by display name (fallback)."""
+    if user_id is not None:
+        return author.id == user_id
+    return author.name == fallback_name
+
+
 # ── Channel names ────────────────────────────────────────────────────────────
 # Change these if your Discord server uses different channel names.
 CHANNEL_BOT_TEST   = os.getenv('CHANNEL_BOT_TEST',   'bot-test')

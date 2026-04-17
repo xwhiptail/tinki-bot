@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from discord.ext import commands
 from scipy.stats import linregress
 
-from config import SCORES_FILE, DATA_DIR, SCORE_PATTERN
+from config import SCORES_FILE, DATA_DIR, SCORE_PATTERN, USER_CATE_ID, user_matches
 
 
 class Bowling(commands.Cog):
@@ -23,7 +23,7 @@ class Bowling(commands.Cog):
             with open(SCORES_FILE, 'r') as f:
                 data = json.load(f)
                 self.scores = [
-                    (int(score), discord.utils.parse_time(ts)) for score, ts in data
+                    (int(score), datetime.fromisoformat(ts)) for score, ts in data
                 ]
         except FileNotFoundError:
             self.scores = []
@@ -41,7 +41,7 @@ class Bowling(commands.Cog):
     async def on_message(self, message):
         if message.author.bot:
             return
-        if message.author.name != "_cate" or not SCORE_PATTERN.match(message.content):
+        if not user_matches(message.author, USER_CATE_ID, '_cate') or not SCORE_PATTERN.match(message.content):
             return
         score_value = int(message.content)
         score_timestamp = message.created_at

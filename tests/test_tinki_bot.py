@@ -744,6 +744,227 @@ class TestUmaMediaAndTriggers:
         gacha_mock.assert_awaited_once_with(ctx, 10)
 
 
+# ── bowling undo window ───────────────────────────────────────────────────────
+
+def make_confirm_msg(content="Score recorded."):
+    msg = MagicMock()
+    msg.id = 42
+    msg.content = content
+    msg.add_reaction = AsyncMock()
+    msg.remove_reaction = AsyncMock()
+    msg.clear_reactions = AsyncMock()
+    msg.edit = AsyncMock()
+    msg.guild = MagicMock()
+    msg.guild.me = MagicMock()
+    return msg
+
+
+class TestBowlingUndoWindow:
+    def setup_method(self):
+        self.cog = make_bowling_cog()
+
+    async def test_undo_removes_score_when_cate_reacts(self):
+        from datetime import datetime, timezone
+        ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        entry = (150, ts)
+        self.cog.scores.append(entry)
+
+        confirm_msg = make_confirm_msg("Score of 150 recorded for Jun.")
+        user = MagicMock()
+        user.name = '_cate'
+        user.bot = False
+        reaction = MagicMock()
+        reaction.emoji = '❌'
+        reaction.message.id = confirm_msg.id
+
+        self.cog.bot.wait_for = AsyncMock(return_value=(reaction, user))
+
+        await self.cog._undo_window(confirm_msg, entry)
+
+        assert entry not in self.cog.scores
+        confirm_msg.edit.assert_awaited_once()
+        assert "undone" in confirm_msg.edit.call_args.kwargs["content"]
+
+    async def test_undo_cleans_reaction_on_timeout(self):
+        from datetime import datetime, timezone
+        ts = datetime(2024, 1, 2, tzinfo=timezone.utc)
+        entry = (120, ts)
+        self.cog.scores.append(entry)
+
+        confirm_msg = make_confirm_msg()
+        self.cog.bot.wait_for = AsyncMock(side_effect=TimeoutError)
+
+        await self.cog._undo_window(confirm_msg, entry)
+
+        # Score should NOT be removed on timeout
+        assert entry in self.cog.scores
+        confirm_msg.remove_reaction.assert_awaited_once()
+        confirm_msg.edit.assert_not_awaited()
+
+    async def test_undo_check_accepts_only_cate(self):
+        """The check function inside _undo_window should reject non-cate users."""
+        from datetime import datetime, timezone
+        ts = datetime(2024, 1, 3, tzinfo=timezone.utc)
+        entry = (100, ts)
+        self.cog.scores.append(entry)
+
+        confirm_msg = make_confirm_msg()
+        confirm_msg.id = 99
+
+        captured_check = {}
+
+        async def fake_wait_for(event, timeout, check):
+            captured_check["fn"] = check
+            raise TimeoutError
+
+        self.cog.bot.wait_for = AsyncMock(side_effect=fake_wait_for)
+        await self.cog._undo_window(confirm_msg, entry)
+
+        check = captured_check["fn"]
+        good_user = MagicMock(); good_user.name = '_cate'; good_user.bot = False
+        bad_user  = MagicMock(); bad_user.name  = 'whiptail'; bad_user.bot = False
+        reaction  = MagicMock(); reaction.emoji = '❌'; reaction.message.id = 99
+
+        assert check(reaction, good_user) is True
+        assert check(reaction, bad_user)  is False
+
+
+# ── spinny commands ───────────────────────────────────────────────────────────
+
+def make_emotes_cog():
+    from cogs.emotes import Emotes
+    bot = MagicMock()
+    bot.guilds = []
+    bot.wait_for = AsyncMock()
+    cog = Emotes(bot)
+    return _wire_cog(cog)
+
+
+class TestSpinnyCommands:
+    def setup_method(self):
+        self.cog = make_emotes_cog()
+
+    async def test_spinny_activate_stores_user_id(self):
+        ctx = make_ctx()
+        ctx.author = MagicMock()
+        user = MagicMock()
+        user.id = 12345
+        user.mention = "<@12345>"
+
+        with patch.object(self.cog, '_save_grinding_state'):
+            await self.cog.spinny_activate.callback(self.cog, ctx, user)
+
+        assert '12345' in self.cog.sticker_users
+        ctx.send.assert_awaited_once()
+        assert "activated" in ctx.send.call_args[0][0]
+
+    async def test_stopspinny_removes_user_by_mention(self):
+        ctx = make_ctx()
+        ctx.guild = MagicMock()
+        self.cog.sticker_users['9999'] = True
+
+        with patch.object(self.cog, '_save_grinding_state'):
+            await self.cog.spinny_deactivate.callback(self.cog, ctx, target='<@9999>')
+
+        assert '9999' not in self.cog.sticker_users
+        ctx.send.assert_awaited_once()
+        assert "deactivated" in ctx.send.call_args[0][0]
+
+    async def test_stopspinny_not_found_sends_error(self):
+        ctx = make_ctx()
+        ctx.guild = MagicMock()
+        ctx.guild.members = []
+
+        with patch.object(self.cog, '_save_grinding_state'):
+            await self.cog.spinny_deactivate.callback(self.cog, ctx, target='nobody')
+
+        ctx.send.assert_awaited_once()
+        assert "Could not find" in ctx.send.call_args[0][0]
+
+    async def test_silentspinny_denied_for_non_whiptail(self):
+        ctx = make_ctx()
+        ctx.author = MagicMock()
+        ctx.author.id = 0
+        ctx.author.name = 'otherperson'
+
+        await self.cog.silent_spinny.callback(self.cog, ctx, 'someone')
+
+        ctx.send.assert_awaited_once()
+        assert "permission" in ctx.send.call_args[0][0]
+
+
+# ── reminder helpers ──────────────────────────────────────────────────────────
+
+class TestReminderHelpers:
+    def setup_method(self):
+        import tempfile, os, sqlite3
+        from cogs.reminders import Reminders
+        self._tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        self._tmp.close()
+        self._db_path = self._tmp.name
+        # Build cog, then redirect _connect to the temp DB for all subsequent calls.
+        self.cog = Reminders(MagicMock())
+        db_path = self._db_path
+        self.cog._connect = lambda: sqlite3.connect(db_path)
+        self.cog._create_table()   # re-create table in temp DB
+
+    def teardown_method(self):
+        import os
+        try:
+            os.unlink(self._db_path)
+        except OSError:
+            pass
+
+    def _connect(self):
+        import sqlite3
+        return sqlite3.connect(self._db_path)
+
+    def test_table_created_on_init(self):
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='reminders'")
+        assert c.fetchone() is not None
+        conn.close()
+
+    def test_delete_expired_removes_sent_past_reminders(self):
+        from datetime import datetime, timezone, timedelta
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO reminders (user_id, channel_id, reminder_time, message, sent) VALUES (?,?,?,?,1)",
+            ('1', '1', past, 'old reminder')
+        )
+        conn.commit(); conn.close()
+
+        self.cog._delete_expired()
+
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM reminders")
+        assert c.fetchone()[0] == 0
+        conn.close()
+
+    def test_delete_expired_keeps_unsent_past_reminders(self):
+        from datetime import datetime, timezone, timedelta
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO reminders (user_id, channel_id, reminder_time, message, sent) VALUES (?,?,?,?,0)",
+            ('1', '1', past, 'missed reminder')
+        )
+        conn.commit(); conn.close()
+
+        self.cog._delete_expired()
+
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM reminders")
+        assert c.fetchone()[0] == 1
+        conn.close()
+
+
 # ── mojibake scan ─────────────────────────────────────────────────────────────
 
 class TestNoMojibake:

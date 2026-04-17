@@ -7,7 +7,8 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from discord.ext import commands
 
-from config import DATA_DIR, EXPLODE_FILE, SPINNY_FILE, STICKER_SPINNY, SUS_FILE
+from config import (DATA_DIR, EXPLODE_FILE, SPINNY_FILE, STICKER_SPINNY, SUS_FILE,
+                    USER_LHEA_ID, USER_WHIPTAIL_ID, user_matches)
 
 
 class Tracking(commands.Cog):
@@ -66,7 +67,7 @@ class Tracking(commands.Cog):
             return
 
         # Track whiptail's :explode: usage
-        if message.author.name == "whiptail" and ":explode:" in message.content.lower():
+        if user_matches(message.author, USER_WHIPTAIL_ID, 'whiptail') and ":explode:" in message.content.lower():
             self.explode.append(self._make_entry(message))
             self._save_explode()
 
@@ -76,7 +77,7 @@ class Tracking(commands.Cog):
             self._save_spinny()
 
         # Track lhea's sus usage
-        if message.author.name == "lhea.":
+        if user_matches(message.author, USER_LHEA_ID, 'lhea.'):
             sus_count = len(re.findall(r'\bsus\b', message.content, re.IGNORECASE))
             sussy_count = len(re.findall(r'\bsussy\b', message.content, re.IGNORECASE))
             sticker_count = sum(s.name.lower() in ["sussydoge", "sus"] for s in message.stickers)
@@ -93,11 +94,11 @@ class Tracking(commands.Cog):
         data_sorted = sorted(data, key=lambda x: x['timestamp'])
         timestamps = [datetime.fromisoformat(e['timestamp']) for e in data_sorted]
         filtered_ts = [timestamps[0]]
-        filtered_counts = [0]
+        filtered_counts = [1]
         for i in range(1, len(timestamps)):
             if timestamps[i] >= filtered_ts[-1]:
                 filtered_ts.append(timestamps[i])
-                filtered_counts.append(i)
+                filtered_counts.append(len(filtered_ts))
         plt.figure(figsize=(15, 6))
         plt.scatter(filtered_ts, filtered_counts)
         plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
@@ -115,20 +116,13 @@ class Tracking(commands.Cog):
 
     @commands.command(name='sussy')
     async def sussy_count(self, ctx):
-        try:
-            with open(SUS_FILE, 'r') as f:
-                data = json.load(f)
-            await ctx.send(f"Lhea has used 'sus' a total of {len(data)} times.")
-        except Exception as e:
-            await ctx.send(f"Error: {e}")
+        await ctx.send(f"Lhea has used 'sus' a total of {len(self.sus_and_sticker_usage)} times.")
 
     @commands.command(name='sussygraph')
     async def sussy_graph(self, ctx):
         try:
-            with open(SUS_FILE, 'r') as f:
-                data = json.load(f)
             path = self._build_cumulative_graph(
-                data, 'Lhea "sus" Usage Over Time', 'Date',
+                self.sus_and_sticker_usage, 'Lhea "sus" Usage Over Time', 'Date',
                 datetime(2020, 1, 1), 'sussy_usage_graph.png'
             )
             await ctx.send(file=discord.File(path))
@@ -137,26 +131,19 @@ class Tracking(commands.Cog):
 
     @commands.command(name='explode')
     async def explode_count(self, ctx):
-        try:
-            with open(EXPLODE_FILE, 'r') as f:
-                data = json.load(f)
-            emote_name = 'explode'
-            emote = discord.utils.get(ctx.guild.emojis, name=emote_name)
-            if not emote:
-                all_emotes = [e for g in self.bot.guilds for e in g.emojis if e.available]
-                emote = discord.utils.find(lambda e: e.name == emote_name, all_emotes)
-            emote_str = str(emote) if emote else ''
-            await ctx.send(f"Whiptail has {emote_str} a total of {len(data)} times.")
-        except Exception as e:
-            await ctx.send(f"Error: {e}")
+        emote_name = 'explode'
+        emote = discord.utils.get(ctx.guild.emojis, name=emote_name)
+        if not emote:
+            all_emotes = [e for g in self.bot.guilds for e in g.emojis if e.available]
+            emote = discord.utils.find(lambda e: e.name == emote_name, all_emotes)
+        emote_str = str(emote) if emote else ''
+        await ctx.send(f"Whiptail has {emote_str} a total of {len(self.explode)} times.")
 
     @commands.command(name='explodegraph')
     async def explode_graph(self, ctx):
         try:
-            with open(EXPLODE_FILE, 'r') as f:
-                data = json.load(f)
             path = self._build_cumulative_graph(
-                data, "Whiptail's Explosions Over Time", 'Date',
+                self.explode, "Whiptail's Explosions Over Time", 'Date',
                 datetime(2022, 4, 1), 'explode_usage_graph.png'
             )
             await ctx.send(file=discord.File(path))
@@ -165,20 +152,13 @@ class Tracking(commands.Cog):
 
     @commands.command(name='grindcount')
     async def spinny_count(self, ctx):
-        try:
-            with open(SPINNY_FILE, 'r') as f:
-                data = json.load(f)
-            await ctx.send(f"Grinding has occurred {len(data)} times.")
-        except Exception as e:
-            await ctx.send(f"Error: {e}")
+        await ctx.send(f"Grinding has occurred {len(self.spinny)} times.")
 
     @commands.command(name='grindgraph')
     async def spinny_graph(self, ctx):
         try:
-            with open(SPINNY_FILE, 'r') as f:
-                data = json.load(f)
             path = self._build_cumulative_graph(
-                data, 'Grinding Usage Over Time', 'Date',
+                self.spinny, 'Grinding Usage Over Time', 'Date',
                 datetime(2021, 10, 1), 'spinny_usage_graph.png'
             )
             await ctx.send(file=discord.File(path))
