@@ -12,6 +12,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(mess
 TOKEN = os.getenv('DISCORD')
 GIPHY_API_KEY = os.getenv('GIPHY')
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-5.4')
+OPENAI_FAST_MODEL = os.getenv('OPENAI_FAST_MODEL', 'gpt-5.4-mini')
 GITHUB_REPO_URL = "https://github.com/xwhiptail/tinki-bot"
 
 DATABASE_FILE = str(DATA_DIR / 'reminders.db')

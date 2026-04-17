@@ -356,6 +356,38 @@ class TestAINaturalCommands:
 
 # ── score commands ────────────────────────────────────────────────────────────
 
+class TestAINaturalCommands:
+    async def test_execute_natural_command_rewrites_message_to_command(self):
+        cog = make_ai_cog()
+        message = make_message("@Tinki do a 10 pull")
+        original = message.content
+        seen = {}
+
+        async def capture(processed_message):
+            seen["content"] = processed_message.content
+
+        cog.bot.process_commands = AsyncMock(side_effect=capture)
+
+        await cog._execute_natural_command(message, {"command": "gacha", "args": "10"})
+
+        cog.bot.process_commands.assert_awaited_once()
+        assert seen["content"] == "!gacha 10"
+        assert message.content == original
+
+    def test_select_reply_model_uses_full_for_repo_questions(self):
+        cog = make_ai_cog()
+        assert cog._select_reply_model("bot_repo", "how are you deployed", ["ctx"], []) == config.OPENAI_MODEL
+
+    def test_select_reply_model_uses_fast_for_normal_chat(self):
+        cog = make_ai_cog()
+        assert cog._select_reply_model("chat", "hey idiot", [], []) == config.OPENAI_FAST_MODEL
+
+    def test_select_reply_model_uses_full_for_long_context(self):
+        cog = make_ai_cog()
+        long_text = "x" * 351
+        assert cog._select_reply_model("chat", long_text, [], []) == config.OPENAI_MODEL
+
+
 class TestScoreCommands:
     def setup_method(self):
         self.cog = make_bowling_cog()

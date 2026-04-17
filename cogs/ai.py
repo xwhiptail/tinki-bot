@@ -7,7 +7,7 @@ from typing import List, Set
 import discord
 from discord.ext import commands
 
-from config import AI_MEMORY_FILE, GREMLIN_SYSTEM_STYLE, OPENAI_MODEL
+from config import AI_MEMORY_FILE, GREMLIN_SYSTEM_STYLE, OPENAI_FAST_MODEL, OPENAI_MODEL
 from utils.ai_brain import (
     build_memory_context,
     build_system_prompt,
@@ -113,6 +113,13 @@ class AI(commands.Cog):
             return "I do not have enough grounded repo context for that one. Use !commands or !github if you want the source of truth."
         return "I do not have a solid answer for that one right now."
 
+    def _select_reply_model(self, intent: str, text: str, repo_context: List[str], history_context: List[str]) -> str:
+        if intent == "bot_repo":
+            return OPENAI_MODEL
+        if len(text) > 350 or len(repo_context) > 2 or len(history_context) > 4:
+            return OPENAI_MODEL
+        return OPENAI_FAST_MODEL
+
     async def _execute_natural_command(self, message, command_spec) -> bool:
         command_name = command_spec["command"]
         args = command_spec.get("args")
@@ -131,7 +138,7 @@ class AI(commands.Cog):
     async def _generate_random_thought(self) -> str:
         client = get_openai_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=OPENAI_FAST_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -152,7 +159,7 @@ class AI(commands.Cog):
     async def _generate_reaction_reply(self, original_text: str, username: str, emoji: str) -> str:
         client = get_openai_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=OPENAI_FAST_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -179,7 +186,7 @@ class AI(commands.Cog):
     async def _generate_reply_to_reply(self, original_text: str, user: discord.User, user_text: str) -> str:
         client = get_openai_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=OPENAI_FAST_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -213,6 +220,7 @@ class AI(commands.Cog):
         repo_context: List[str],
     ) -> str:
         client = get_openai_client()
+        model = self._select_reply_model(intent, text, repo_context, history_context)
         system_prompt = build_system_prompt(
             GREMLIN_SYSTEM_STYLE,
             persona_description,
@@ -229,7 +237,7 @@ class AI(commands.Cog):
             "- If the context is insufficient, say so briefly instead of guessing.\n"
         )
         completion = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -308,7 +316,7 @@ class AI(commands.Cog):
 
         deterministic_fact = maybe_count_letter_reply(text)
         if deterministic_fact:
-            reply = await gpt_wrap_fact(deterministic_fact, text, persona_description)
+            reply = await gpt_wrap_fact(deterministic_fact, text, persona_description, model=OPENAI_FAST_MODEL)
             await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
             self._update_conversation_history(personas_cog, user_id, persona_key, text, reply)
             self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
@@ -317,7 +325,7 @@ class AI(commands.Cog):
 
         deterministic_fact = maybe_calculate_reply(text)
         if deterministic_fact:
-            reply = await gpt_wrap_fact(deterministic_fact, text, persona_description)
+            reply = await gpt_wrap_fact(deterministic_fact, text, persona_description, model=OPENAI_FAST_MODEL)
             await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
             self._update_conversation_history(personas_cog, user_id, persona_key, text, reply)
             self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
@@ -326,7 +334,7 @@ class AI(commands.Cog):
 
         deterministic_fact = maybe_bot_insight_reply(text)
         if deterministic_fact:
-            reply = await gpt_wrap_fact(deterministic_fact, text, persona_description)
+            reply = await gpt_wrap_fact(deterministic_fact, text, persona_description, model=OPENAI_FAST_MODEL)
             await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
             self._update_conversation_history(personas_cog, user_id, persona_key, text, reply)
             self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)

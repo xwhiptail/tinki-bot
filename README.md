@@ -47,6 +47,7 @@ pip install -r requirements.txt
 - `GIPHY`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` optional, defaults to `gpt-5.4`
+- `OPENAI_FAST_MODEL` optional, defaults to `gpt-5.4-mini` for routine mention replies
 - `TINKI_DATA_DIR` optional, defaults to `./data`
 - `GITHUB_TOKEN` optional local tooling fallback for GitHub access; not used by the bot runtime
 
@@ -163,6 +164,7 @@ That file currently provides:
 - `GIPHY`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
+- `OPENAI_FAST_MODEL`
 - `TINKI_DATA_DIR`
 
 Do not store real secrets in the repo. The repo only contains the template:

@@ -2,7 +2,7 @@ import os
 import aiohttp
 from openai import OpenAI
 
-from config import GREMLIN_SYSTEM_STYLE, OPENAI_MODEL
+from config import GREMLIN_SYSTEM_STYLE, OPENAI_FAST_MODEL, OPENAI_MODEL
 
 
 def get_openai_client() -> OpenAI:
@@ -28,7 +28,7 @@ async def fetch_openai_balance() -> str:
         return f"❌ API key error ({e}) — {billing_url}"
 
 
-async def gpt_wrap_fact(fact: str, user_text: str, system_prompt) -> str:
+async def gpt_wrap_fact(fact: str, user_text: str, system_prompt, model: str = OPENAI_FAST_MODEL) -> str:
     """Deliver a pre-computed factual answer wrapped in Tinki's personality via assistant prefill."""
     client = get_openai_client()
     system = (
@@ -38,7 +38,7 @@ async def gpt_wrap_fact(fact: str, user_text: str, system_prompt) -> str:
     )
     try:
         completion = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_text},
