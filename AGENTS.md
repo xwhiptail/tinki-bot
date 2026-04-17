@@ -51,6 +51,21 @@ Avoid ad hoc file uploads unless fixing an emergency.
 - Back up the live server script before risky changes.
 - Preserve rollback paths in docs and scripts.
 
+## Normal Flow
+
+For ordinary repo work, follow this order unless the user explicitly asks for something different:
+
+1. Pull or otherwise sync from the real remote branch first.
+2. Check `git status --short --branch`.
+3. Read `HANDOFF.md`, then the relevant repo instructions before changing code.
+4. Inspect the smallest relevant code path and the matching tests before editing.
+5. Make the smallest focused change that solves the task.
+6. Run the narrowest relevant test first; run `python -m pytest` when the change is broad or touches shared behavior.
+7. If user-facing text or emojis changed, scan for mojibake before finishing.
+8. Update docs when commands, deploy flow, setup, or operational behavior changed.
+9. Review `git diff` before committing.
+10. Commit and push the change unless the user explicitly says not to push yet.
+
 ## Cross-Agent Handoff
 
 - `HANDOFF.md` is the shared resume file for both Codex and Claude Code.

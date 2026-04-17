@@ -116,6 +116,21 @@ Startup diagnostics in `cogs/admin.py` also run `pytest -q` and post the result 
 - If work must be stashed, use a descriptive stash message and record the stash entry in `HANDOFF.md`.
 - Do not create local branches named like remote refs such as `origin/main`; that makes later fetch/rebase/push flows ambiguous.
 
+## Normal Flow
+
+For routine work in this repo, prefer this default order:
+
+1. Pull or otherwise sync from the real remote branch.
+2. Check `git status --short --branch`.
+3. Read `HANDOFF.md`, then re-check the relevant repo instructions.
+4. Inspect the smallest relevant code path and existing tests before editing.
+5. Make the smallest focused change that fixes the task.
+6. Run the narrowest relevant test first; run `python -m pytest` when the change is broad or shared.
+7. If user-facing text, labels, or emojis changed, run the mojibake scan before finishing.
+8. Update docs if commands, setup, deploy flow, or operational behavior changed.
+9. Review `git diff`.
+10. Commit and push unless the user explicitly says not to push yet.
+
 ## Operational Rules
 
 - Do not commit real secrets to the repo.

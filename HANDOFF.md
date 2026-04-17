@@ -16,6 +16,21 @@ Use this file as the shared resume point between Codex and Claude Code.
 3. Read this file, then read `AGENTS.md` and `CLAUDE.md`
 4. If the task touches runtime behavior, run the narrowest relevant test first
 
+## Normal Flow
+
+Use this as the default workflow unless the user says otherwise:
+
+1. Sync from remote.
+2. Check status.
+3. Read handoff and repo instructions.
+4. Inspect the smallest relevant code path and tests.
+5. Make the smallest focused change.
+6. Run the narrowest relevant test first; run full `python -m pytest` when the change is broad.
+7. If text or emoji output changed, run the mojibake scan.
+8. Update docs when behavior, commands, setup, or deploy flow changed.
+9. Review the diff.
+10. Commit and push before handing off, unless the user said not to push.
+
 ## Cross-Agent Git Rules
 
 - Start by pulling or syncing from the real remote branch.
