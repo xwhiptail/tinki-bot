@@ -12,6 +12,7 @@ import os
 from types import SimpleNamespace
 
 import pytest
+import discord
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # ── ensure project root is on sys.path ──────────────────────────────────────
@@ -1040,20 +1041,27 @@ class TestEmoteBrowserHelpers:
         assert embed.image.url == "https://cdn.7tv.app/emote/bravo/2x.webp"
         assert embed.fields[0].name == "Selected"
         assert "**Bravo** by `unknown owner`" in embed.fields[0].value
-        assert embed.footer.text == "Page 2 - fuzzy search - select to preview, Send to post at 3x"
+        assert embed.footer.text == "Page 2 - fuzzy search - click a number to preview, Send to post at 3x"
 
-    def test_build_7tv_select_options_uses_page_entries(self):
+    def test_7tv_preview_buttons_reflect_selection_and_page_size(self):
+        from cogs.emotes import SevenTvEmoteBrowserView
+
+        ctx = make_ctx()
+        session = MagicMock()
+        session.close = AsyncMock()
         emotes = [
-            SimpleNamespace(name="Alpha", host_url="//cdn.7tv.app/emote/alpha"),
-            SimpleNamespace(name="Bravo", host_url="//cdn.7tv.app/emote/bravo"),
+            SimpleNamespace(id="1", name="Alpha", host_url="//cdn.7tv.app/emote/alpha", owner_username="owner1"),
+            SimpleNamespace(id="2", name="Bravo", host_url="//cdn.7tv.app/emote/bravo", owner_username="owner2"),
         ]
 
-        options = self.cog._build_7tv_select_options(emotes, 4)
+        view = SevenTvEmoteBrowserView(self.cog, ctx, "sus", 2, session, emotes, True)
 
-        assert len(options) == 2
-        assert options[0].label == "1. Alpha"
-        assert options[0].value == "0"
-        assert options[0].description == "unknown owner - send at 4x"
+        assert len(view.preview_buttons) == 5
+        assert view.preview_buttons[0].label == "1"
+        assert view.preview_buttons[0].style == discord.ButtonStyle.primary
+        assert view.preview_buttons[1].label == "2"
+        assert view.preview_buttons[1].style == discord.ButtonStyle.secondary
+        assert view.preview_buttons[2].disabled is True
 
     async def test_7tv_picker_selection_updates_embed_preview(self):
         from cogs.emotes import SevenTvEmoteBrowserView
@@ -1074,6 +1082,8 @@ class TestEmoteBrowserHelpers:
         await view.handle_selection(interaction, 1)
 
         assert view.selected_index == 1
+        assert view.preview_buttons[0].style == discord.ButtonStyle.secondary
+        assert view.preview_buttons[1].style == discord.ButtonStyle.primary
         interaction.response.edit_message.assert_awaited_once()
         embed = interaction.response.edit_message.await_args.kwargs["embed"]
         assert embed.image.url == "https://cdn.7tv.app/emote/bravo/2x.webp"

@@ -62,21 +62,14 @@ class EmotesMenu(menus.MenuPages):
     pass
 
 
-class SevenTvEmoteSelect(discord.ui.Select):
-    def __init__(self, browser):
+class SevenTvPreviewButton(discord.ui.Button):
+    def __init__(self, browser, index: int):
         self.browser = browser
-        super().__init__(
-            placeholder="Choose a 7TV emote to send",
-            min_values=1,
-            max_values=1,
-            options=browser.build_select_options(),
-        )
+        self.preview_index = index
+        super().__init__(label=str(index + 1), style=discord.ButtonStyle.secondary, row=0)
 
     async def callback(self, interaction: discord.Interaction):
-        await self.browser.handle_selection(interaction, int(self.values[0]))
-
-    def refresh(self):
-        self.options = self.browser.build_select_options()
+        await self.browser.handle_selection(interaction, self.preview_index)
 
 
 class SevenTvEmoteBrowserView(discord.ui.View):
@@ -95,8 +88,10 @@ class SevenTvEmoteBrowserView(discord.ui.View):
         self.message = None
         self._closed = False
         self.selected_index = 0
-        self.select_menu = SevenTvEmoteSelect(self)
-        self.add_item(self.select_menu)
+        self.preview_buttons = [SevenTvPreviewButton(self, index) for index in range(EMOTE_BROWSER_PAGE_SIZE)]
+        for button in self.preview_buttons:
+            self.add_item(button)
+        self._refresh_preview_buttons()
 
     async def start(self):
         self.message = await self.ctx.send(embed=self.build_embed(), view=self)
@@ -111,9 +106,6 @@ class SevenTvEmoteBrowserView(discord.ui.View):
             selected_index=self.selected_index,
         )
 
-    def build_select_options(self):
-        return self.cog._build_7tv_select_options(self.emotes, self.size)
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.owner_id:
             await interaction.response.send_message("This emote picker belongs to someone else.", ephemeral=True)
@@ -122,9 +114,25 @@ class SevenTvEmoteBrowserView(discord.ui.View):
 
     async def handle_selection(self, interaction: discord.Interaction, index: int):
         self.selected_index = max(0, min(index, len(self.emotes) - 1))
+        self._refresh_preview_buttons()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label="Send", emoji="\u2705", style=discord.ButtonStyle.success)
+    def _refresh_preview_buttons(self):
+        for index, button in enumerate(self.preview_buttons):
+            if index < len(self.emotes):
+                button.disabled = False
+                button.label = str(index + 1)
+                button.style = (
+                    discord.ButtonStyle.primary
+                    if index == self.selected_index
+                    else discord.ButtonStyle.secondary
+                )
+            else:
+                button.disabled = True
+                button.label = "—"
+                button.style = discord.ButtonStyle.secondary
+
+    @discord.ui.button(label="Send", emoji="\u2705", style=discord.ButtonStyle.success, row=1)
     async def send_selected(self, interaction: discord.Interaction, button: discord.ui.Button):
         chosen = self.emotes[self.selected_index]
         url = await self.cog._resolve_7tv_media_url(self.session, chosen, self.size, self.ext_cache)
@@ -132,7 +140,7 @@ class SevenTvEmoteBrowserView(discord.ui.View):
         await self.ctx.send(url)
         await self._finish()
 
-    @discord.ui.button(label="More", emoji=EMOTE_BROWSER_MORE_EMOJI, style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="More", emoji=EMOTE_BROWSER_MORE_EMOJI, style=discord.ButtonStyle.secondary, row=1)
     async def more(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             next_page = self.page + 1
@@ -157,12 +165,12 @@ class SevenTvEmoteBrowserView(discord.ui.View):
                 if first_page:
                     self.emotes = list(first_page)
                     self.selected_index = 0
-            self.select_menu.refresh()
+            self._refresh_preview_buttons()
             await interaction.response.edit_message(embed=self.build_embed(), view=self)
         except Exception as exc:
             await interaction.response.send_message(f"Search failed: {exc}", ephemeral=True)
 
-    @discord.ui.button(label="Cancel", emoji=EMOTE_BROWSER_CANCEL_EMOJI, style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Cancel", emoji=EMOTE_BROWSER_CANCEL_EMOJI, style=discord.ButtonStyle.danger, row=1)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         await self._finish(delete_command=True)
@@ -253,21 +261,8 @@ class Emotes(commands.Cog):
                 value=f"**{selected_emote.name}** by `{self._display_owner(selected_emote)}`",
                 inline=False,
             )
-        embed.set_footer(text=f"Page {page} - {match_mode} search - select to preview, Send to post at {size}x")
+        embed.set_footer(text=f"Page {page} - {match_mode} search - click a number to preview, Send to post at {size}x")
         return embed
-
-    def _build_7tv_select_options(self, emotes, size: int):
-        options = []
-        for index, emote in enumerate(emotes, start=1):
-            label = f"{index}. {emote.name}"
-            options.append(
-                discord.SelectOption(
-                    label=label[:100],
-                    value=str(index - 1),
-                    description=f"{self._display_owner(emote)} - send at {size}x"[:100],
-                )
-            )
-        return options
 
     async def _search_7tv_page(
         self,
