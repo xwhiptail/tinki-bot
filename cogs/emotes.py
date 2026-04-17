@@ -94,6 +94,7 @@ class SevenTvEmoteBrowserView(discord.ui.View):
         self.ext_cache = {}
         self.message = None
         self._closed = False
+        self.selected_index = 0
         self.select_menu = SevenTvEmoteSelect(self)
         self.add_item(self.select_menu)
 
@@ -107,6 +108,7 @@ class SevenTvEmoteBrowserView(discord.ui.View):
             self.emotes,
             self.page,
             self.exact_match,
+            selected_index=self.selected_index,
         )
 
     def build_select_options(self):
@@ -119,7 +121,12 @@ class SevenTvEmoteBrowserView(discord.ui.View):
         return True
 
     async def handle_selection(self, interaction: discord.Interaction, index: int):
-        chosen = self.emotes[index]
+        self.selected_index = max(0, min(index, len(self.emotes) - 1))
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.button(label="Send", emoji="\u2705", style=discord.ButtonStyle.success)
+    async def send_selected(self, interaction: discord.Interaction, button: discord.ui.Button):
+        chosen = self.emotes[self.selected_index]
         url = await self.cog._resolve_7tv_media_url(self.session, chosen, self.size, self.ext_cache)
         await interaction.response.defer()
         await self.ctx.send(url)
@@ -138,6 +145,7 @@ class SevenTvEmoteBrowserView(discord.ui.View):
             if new_emotes:
                 self.page = next_page
                 self.emotes = list(new_emotes)
+                self.selected_index = 0
             else:
                 self.page = 1
                 first_page = await self.cog._search_7tv_page(
@@ -148,6 +156,7 @@ class SevenTvEmoteBrowserView(discord.ui.View):
                 )
                 if first_page:
                     self.emotes = list(first_page)
+                    self.selected_index = 0
             self.select_menu.refresh()
             await interaction.response.edit_message(embed=self.build_embed(), view=self)
         except Exception as exc:
@@ -215,10 +224,20 @@ class Emotes(commands.Cog):
     def _display_owner(self, emote: SevenTvEmoteResult) -> str:
         return getattr(emote, "owner_username", "") or "unknown owner"
 
-    def _build_7tv_browser_embed(self, emote_name: str, size: int, emotes, page: int, exact_match: bool) -> discord.Embed:
+    def _build_7tv_browser_embed(
+        self,
+        emote_name: str,
+        size: int,
+        emotes,
+        page: int,
+        exact_match: bool,
+        *,
+        selected_index: int = 0,
+    ) -> discord.Embed:
         match_mode = "exact" if exact_match else "fuzzy"
+        safe_selected_index = max(0, min(selected_index, len(emotes) - 1)) if emotes else 0
         description = "\n".join(
-            f"`{index}.` **{emote.name}** by `{self._display_owner(emote)}` - [preview]({self._preview_7tv_url(emote)})"
+            f"{'->' if (index - 1) == safe_selected_index else '  '} `{index}.` **{emote.name}** by `{self._display_owner(emote)}`"
             for index, emote in enumerate(emotes, start=1)
         )
         embed = discord.Embed(
@@ -227,8 +246,14 @@ class Emotes(commands.Cog):
             color=EMOTE_BROWSER_COLOR,
         )
         if emotes:
-            embed.set_image(url=self._preview_7tv_url(emotes[0]))
-        embed.set_footer(text=f"Page {page} - {match_mode} search - send size {size}x")
+            selected_emote = emotes[safe_selected_index]
+            embed.set_image(url=self._preview_7tv_url(selected_emote))
+            embed.add_field(
+                name="Selected",
+                value=f"**{selected_emote.name}** by `{self._display_owner(selected_emote)}`",
+                inline=False,
+            )
+        embed.set_footer(text=f"Page {page} - {match_mode} search - select to preview, Send to post at {size}x")
         return embed
 
     def _build_7tv_select_options(self, emotes, size: int):

@@ -1032,13 +1032,15 @@ class TestEmoteBrowserHelpers:
             SimpleNamespace(name="Bravo", host_url="//cdn.7tv.app/emote/bravo"),
         ]
 
-        embed = self.cog._build_7tv_browser_embed("smile", 3, emotes, 2, exact_match=False)
+        embed = self.cog._build_7tv_browser_embed("smile", 3, emotes, 2, exact_match=False, selected_index=1)
 
         assert embed.title == "7TV results for `smile`"
-        assert "`1.` **Alpha** by `unknown owner`" in embed.description
-        assert "[preview](https://cdn.7tv.app/emote/alpha/2x.webp)" in embed.description
-        assert embed.image.url == "https://cdn.7tv.app/emote/alpha/2x.webp"
-        assert embed.footer.text == "Page 2 - fuzzy search - send size 3x"
+        assert "  `1.` **Alpha** by `unknown owner`" in embed.description
+        assert "-> `2.` **Bravo** by `unknown owner`" in embed.description
+        assert embed.image.url == "https://cdn.7tv.app/emote/bravo/2x.webp"
+        assert embed.fields[0].name == "Selected"
+        assert "**Bravo** by `unknown owner`" in embed.fields[0].value
+        assert embed.footer.text == "Page 2 - fuzzy search - select to preview, Send to post at 3x"
 
     def test_build_7tv_select_options_uses_page_entries(self):
         emotes = [
@@ -1052,6 +1054,30 @@ class TestEmoteBrowserHelpers:
         assert options[0].label == "1. Alpha"
         assert options[0].value == "0"
         assert options[0].description == "unknown owner - send at 4x"
+
+    async def test_7tv_picker_selection_updates_embed_preview(self):
+        from cogs.emotes import SevenTvEmoteBrowserView
+
+        ctx = make_ctx()
+        ctx.author.id = 42
+        session = MagicMock()
+        session.close = AsyncMock()
+        emotes = [
+            SimpleNamespace(id="1", name="Alpha", host_url="//cdn.7tv.app/emote/alpha", owner_username="owner1"),
+            SimpleNamespace(id="2", name="Bravo", host_url="//cdn.7tv.app/emote/bravo", owner_username="owner2"),
+        ]
+        view = SevenTvEmoteBrowserView(self.cog, ctx, "sus", 2, session, emotes, True)
+        interaction = MagicMock()
+        interaction.response.edit_message = AsyncMock()
+        interaction.user.id = 42
+
+        await view.handle_selection(interaction, 1)
+
+        assert view.selected_index == 1
+        interaction.response.edit_message.assert_awaited_once()
+        embed = interaction.response.edit_message.await_args.kwargs["embed"]
+        assert embed.image.url == "https://cdn.7tv.app/emote/bravo/2x.webp"
+        assert "**Bravo** by `owner2`" in embed.fields[0].value
 
     def test_dedupe_7tv_results_removes_exact_duplicates(self):
         emotes = [
