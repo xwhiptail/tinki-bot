@@ -740,3 +740,21 @@ class TestUmaMediaAndTriggers:
             await self.cog._offer_repull(ctx, result_message, 10)
 
         gacha_mock.assert_awaited_once_with(ctx, 10)
+
+
+# ── mojibake scan ─────────────────────────────────────────────────────────────
+
+class TestNoMojibake:
+    def test_repo_has_no_mojibake(self):
+        import importlib.util, pathlib
+        spec = importlib.util.spec_from_file_location(
+            "scan_mojibake",
+            pathlib.Path(__file__).resolve().parent.parent / "scripts" / "scan_mojibake.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        root = str(pathlib.Path(__file__).resolve().parent.parent)
+        hits = mod.scan(root)
+        assert hits == [], f"Mojibake found:\n" + "\n".join(
+            f"  {p}:{ln} [{lbl}]: {snip}" for p, ln, lbl, snip in hits
+        )
