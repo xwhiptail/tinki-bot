@@ -78,6 +78,13 @@ Before the first deploy, copy `deploy-ec2.local.ps1.example` to `deploy-ec2.loca
 
 If you want `!awscost` and deploy-time AWS cost reporting, the bot runtime also needs AWS credentials with Cost Explorer access.
 
+For repeated remote maintenance from Windows, prefer the wrapper scripts in `scripts/` instead of building inline `plink` commands:
+
+```powershell
+.\scripts\Run-RemotePytest.ps1
+.\scripts\Check-RemoteAwsCost.ps1
+```
+
 ## Production Rollback
 
 Code rollback:

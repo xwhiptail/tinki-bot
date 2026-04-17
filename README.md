@@ -31,6 +31,7 @@ Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered greml
 - `INSTALL.md` - local setup and production install notes
 - `CLAUDE.md` - repo context for Claude-style agents
 - `AGENTS.md` - generic agent guidance for this repo
+- `scripts/` - helper scripts for remote checks, AWS cost, and repo maintenance
 
 ## Setup
 
@@ -75,6 +76,14 @@ From this Windows machine, deploy updated repo files with:
 
 ```powershell
 .\deploy-ec2.ps1
+```
+
+For recurring host checks, prefer the stable wrapper scripts over ad hoc `powershell -Command` + `plink` chains:
+
+```powershell
+.\scripts\Run-RemotePytest.ps1
+.\scripts\Check-RemoteAwsCost.ps1
+.\scripts\Check-RemoteAwsCost.ps1 -RestartService
 ```
 
 Create a local-only `deploy-ec2.local.ps1` from `deploy-ec2.local.ps1.example` and set the real host and SSH key path there, or use `TINKI_EC2_HOST` and `TINKI_EC2_KEY_PATH` in your local environment. Keep local deploy config out of git.
@@ -317,3 +326,4 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 - Deploy backups are pruned to the 3 most recent automatically.
 - Deploy state is tracked in `/opt/apps/tinki-bot/repo/.deploy-commit`.
 - Normal repo flow is documented in `AGENTS.md`, `CLAUDE.md`, and `HANDOFF.md`: sync first, make the smallest focused change, run relevant tests, push, then deploy with `.\deploy-ec2.ps1` when you want the change live.
+- For Windows-to-EC2 operations, prefer the checked-in wrapper scripts in `scripts/` instead of inline `plink`/bash/python command strings.

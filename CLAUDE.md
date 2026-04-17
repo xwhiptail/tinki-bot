@@ -20,6 +20,9 @@ Local workspace:
 - `HANDOFF.md` - shared Codex/Claude resume file
 - `assets/branding/` - avatar, banner, and branding assets
 - `deploy-ec2.ps1` - Windows deploy helper
+- `scripts/remote-common.ps1` - shared PowerShell helpers for PuTTY + remote bash
+- `scripts/Run-RemotePytest.ps1` - stable wrapper for host-side pytest
+- `scripts/Check-RemoteAwsCost.ps1` - stable wrapper for host-side AWS cost checks
 - `requirements.txt` - Python dependencies
 - `.env.example` - local environment variable template
 - `data/` - local development runtime data directory
@@ -52,6 +55,9 @@ The deploy script:
 - uploads repo files to `/opt/apps/tinki-bot/repo`
 - writes the deployed commit to `/opt/apps/tinki-bot/repo/.deploy-commit`
 - restarts `tinki-bot.service`
+
+For repeated remote checks from Windows, prefer the wrapper scripts in `scripts/` over inline
+`powershell -Command` strings with nested `plink`, `bash`, and `python`.
 
 ## Project Structure
 
@@ -132,6 +138,7 @@ For routine work in this repo, prefer this default order:
 10. Commit and push unless the user explicitly says not to push yet.
 11. Push the committed change to GitLab as part of the normal release flow when that mirror is in use on this machine.
 12. Deploy the change to the bot with `.\deploy-ec2.ps1` when the user wants it live.
+13. For repeated EC2 checks, prefer `.\scripts\Run-RemotePytest.ps1` and `.\scripts\Check-RemoteAwsCost.ps1`.
 
 ## Operational Rules
 

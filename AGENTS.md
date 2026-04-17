@@ -39,6 +39,9 @@ Normal deploys should go through:
 
 Avoid ad hoc file uploads unless fixing an emergency.
 
+For Windows-to-EC2 maintenance tasks, prefer the checked-in wrapper scripts in `scripts/`
+over inline `powershell -Command` or nested `plink`/bash/python one-liners.
+
 ## High-Risk Areas
 
 - `tinki-bot.py` is monolithic, so small edits can have wide impact.
@@ -67,6 +70,7 @@ For ordinary repo work, follow this order unless the user explicitly asks for so
 10. Commit and push the change unless the user explicitly says not to push yet.
 11. Push the committed change to GitLab as part of the normal release flow when that mirror is in use on this machine.
 12. Deploy the change to the bot with `.\deploy-ec2.ps1` when the user wants it live.
+13. For repeated host checks, prefer wrapper scripts such as `.\scripts\Run-RemotePytest.ps1` and `.\scripts\Check-RemoteAwsCost.ps1`.
 
 ## Cross-Agent Handoff
 
