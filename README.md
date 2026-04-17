@@ -214,9 +214,9 @@ Run locally with:
 pytest
 ```
 
-67 tests covering pure functions and isolated command helpers. No live Discord calls needed.
+114 tests covering pure functions, isolated command helpers, and key admin/emote formatting helpers. No live Discord calls needed.
 
-Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-test`, alongside the command, URL, calculator, and letter-count self-tests. Pytest cache-provider warnings are disabled in this repo so the startup run stays clean on Windows.
+Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-test`, alongside the command, URL, calculator, letter-count, and bot-insight self-tests. Failing sections are marked with `🚨` and clean sections with `✅`. Pytest cache-provider warnings are disabled in this repo so the startup run stays clean on Windows.
 
 ## Commands
 
@@ -250,7 +250,7 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 - `$<emote_name> [count]` - send a named emote as the bot
 - `$randomemote [count]` - send a random emote as the bot
 - `!allemotes` - list the current server's emotes
-- `!emote <name> [1-4]` - search 7TV and pick an emote size
+- `!emote <name> [1-4]` - search 7TV via direct API calls and choose from a paged picker before sending the selected emote size
 - `!spinny @user` - enable SPINNY sticker grinding for a user
 - `!stopspinny @user|username` - disable SPINNY sticker grinding
 - `!silentspinny <username>` - enable silent grinding by username for whiptail only
@@ -281,8 +281,8 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 
 - `!restart` - restart the bot service, admin only
 - `!deploy` - compare current deployed commit to GitHub `main`, sync the modular repo snapshot if newer, install dependencies, and restart, admin only
-- `!runtests` - run command smoke tests, admin only
-- `!testurls` - run URL rewrite self-tests, admin only
+- `!runtests` - run command smoke tests with `✅`/`🚨` status output, admin only
+- `!testurls` - run URL rewrite self-tests with `✅`/`🚨` status output, admin only
 
 ### Uma Musume
 
@@ -311,3 +311,4 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 - Do not commit secrets, local databases, generated JSON files, or virtual environments.
 - Deploy backups are pruned to the 3 most recent automatically.
 - Deploy state is tracked in `/opt/apps/tinki-bot/repo/.deploy-commit`.
+- Normal repo flow is documented in `AGENTS.md`, `CLAUDE.md`, and `HANDOFF.md`: sync first, make the smallest focused change, run relevant tests, push, then deploy with `.\deploy-ec2.ps1` when you want the change live.
