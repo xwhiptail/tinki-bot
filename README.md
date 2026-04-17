@@ -70,12 +70,20 @@ Current server layout:
 - service unit file: `/etc/systemd/system/tinki-bot.service`
 - live secrets file: `/etc/tinki-bot.env`
 - deploy helper on this Windows machine: `deploy-ec2.ps1`
+- deploy helper on macOS/Linux: `./deploy-ec2.sh`
 - local deploy config on this Windows machine: `deploy-ec2.local.ps1`
+- local deploy config on macOS/Linux: `deploy-ec2.local.sh`
 
 From this Windows machine, deploy updated repo files with:
 
 ```powershell
 .\deploy-ec2.ps1
+```
+
+From macOS/Linux, deploy updated repo files with:
+
+```bash
+./deploy-ec2.sh
 ```
 
 For recurring host checks, prefer the stable wrapper scripts over ad hoc `powershell -Command` + `plink` chains:
@@ -86,7 +94,17 @@ For recurring host checks, prefer the stable wrapper scripts over ad hoc `powers
 .\scripts\Check-RemoteAwsCost.ps1 -RestartService
 ```
 
+On macOS/Linux, use the matching shell wrappers:
+
+```bash
+./scripts/run-remote-pytest.sh
+./scripts/check-remote-awscost.sh
+./scripts/check-remote-awscost.sh --restart-service
+```
+
 Create a local-only `deploy-ec2.local.ps1` from `deploy-ec2.local.ps1.example` and set the real host and SSH key path there, or use `TINKI_EC2_HOST` and `TINKI_EC2_KEY_PATH` in your local environment. Keep local deploy config out of git.
+
+On macOS/Linux, create a local-only `deploy-ec2.local.sh` from `deploy-ec2.local.sh.example`, or set `TINKI_EC2_HOST`, `TINKI_EC2_USER`, and `TINKI_EC2_KEY_PATH` in your shell environment. Keep local deploy config out of git.
 
 That script:
 
@@ -101,11 +119,18 @@ That script:
 ### Deploy Steps
 
 1. Edit the code locally.
-2. Run:
+2. Run on Windows:
 
 ```powershell
 cd i:\botserver\tinki-bot
 .\deploy-ec2.ps1
+```
+
+Or run on macOS/Linux:
+
+```bash
+cd /path/to/tinki-bot
+./deploy-ec2.sh
 ```
 
 3. The script will:
@@ -182,6 +207,57 @@ Do not store real secrets in the repo. The repo only contains the template:
 - `.env.example`
 
 If you use local CLI tooling that needs GitHub auth outside normal Git credential flows, store the token in a local environment variable such as `GITHUB_TOKEN` instead of committing it to repo files.
+
+### Mac Quickstart
+
+For Cowork or Codex on a Mac, set up standard OpenSSH once so the repo scripts can reuse it:
+
+1. Put your EC2 key in `~/.ssh/` with restricted permissions:
+
+```bash
+chmod 600 ~/.ssh/your-ec2-key.pem
+```
+
+2. Add an SSH host entry in `~/.ssh/config`:
+
+```sshconfig
+Host tinki-ec2
+  HostName your-ec2-host-or-ip
+  User ec2-user
+  IdentityFile ~/.ssh/your-ec2-key.pem
+  IdentitiesOnly yes
+  ServerAliveInterval 60
+```
+
+3. Either export the repo env vars in `~/.zshrc`:
+
+```bash
+export TINKI_EC2_HOST=tinki-ec2
+export TINKI_EC2_USER=ec2-user
+export TINKI_EC2_KEY_PATH=~/.ssh/your-ec2-key.pem
+```
+
+Or copy `deploy-ec2.local.sh.example` to `deploy-ec2.local.sh` and fill in the same values there.
+
+4. Restart your terminal or reload your shell:
+
+```bash
+source ~/.zshrc
+```
+
+5. Validate the connection before opening Cowork:
+
+```bash
+ssh tinki-ec2
+```
+
+Once that is working, Cowork can just open the repo and use:
+
+```bash
+./deploy-ec2.sh
+./scripts/run-remote-pytest.sh
+./scripts/check-remote-awscost.sh
+```
 
 Live runtime data on EC2 is stored in:
 
@@ -327,3 +403,4 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 - Deploy state is tracked in `/opt/apps/tinki-bot/repo/.deploy-commit`.
 - Normal repo flow is documented in `AGENTS.md`, `CLAUDE.md`, and `HANDOFF.md`: sync first, make the smallest focused change, run relevant tests, push, then deploy with `.\deploy-ec2.ps1` when you want the change live.
 - For Windows-to-EC2 operations, prefer the checked-in wrapper scripts in `scripts/` instead of inline `plink`/bash/python command strings.
+- For macOS/Linux-to-EC2 operations, prefer `./deploy-ec2.sh` and the shell wrappers in `scripts/` instead of ad hoc `ssh`/`scp` one-liners.

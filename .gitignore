@@ -16,6 +16,7 @@ data/*
 github-export-clean/
 github-export-sync/
 deploy-ec2.local.ps1
+deploy-ec2.local.sh
 backup_*.txt
 *.bak
 *.db

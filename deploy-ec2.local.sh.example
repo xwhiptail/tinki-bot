@@ -1,0 +1,3 @@
+SERVER_HOST="your-ec2-host-or-ip"
+USER_NAME="ec2-user"
+KEY_PATH="$HOME/.ssh/your-ec2-key.pem"

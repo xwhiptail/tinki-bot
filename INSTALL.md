@@ -76,6 +76,15 @@ cd i:\botserver\tinki-bot
 
 Before the first deploy, copy `deploy-ec2.local.ps1.example` to `deploy-ec2.local.ps1` and set your real EC2 host and SSH key path there, or set `TINKI_EC2_HOST` and `TINKI_EC2_KEY_PATH` in your local environment.
 
+From macOS/Linux:
+
+```bash
+cd /path/to/tinki-bot
+./deploy-ec2.sh
+```
+
+Before the first deploy on macOS/Linux, copy `deploy-ec2.local.sh.example` to `deploy-ec2.local.sh` and set your real EC2 host, user, and SSH key path there, or set `TINKI_EC2_HOST`, `TINKI_EC2_USER`, and `TINKI_EC2_KEY_PATH` in your shell environment.
+
 If you want `!awscost` and deploy-time AWS cost reporting, the bot runtime also needs AWS credentials with Cost Explorer access.
 
 For repeated remote maintenance from Windows, prefer the wrapper scripts in `scripts/` instead of building inline `plink` commands:
@@ -83,6 +92,50 @@ For repeated remote maintenance from Windows, prefer the wrapper scripts in `scr
 ```powershell
 .\scripts\Run-RemotePytest.ps1
 .\scripts\Check-RemoteAwsCost.ps1
+```
+
+On macOS/Linux, use the shell wrappers:
+
+```bash
+./scripts/run-remote-pytest.sh
+./scripts/check-remote-awscost.sh
+```
+
+## Mac SSH Setup
+
+If you want Cowork to open with EC2 access already available, use standard OpenSSH config instead of per-session flags:
+
+1. Put the EC2 key in `~/.ssh/your-ec2-key.pem`
+2. Restrict it:
+
+```bash
+chmod 600 ~/.ssh/your-ec2-key.pem
+```
+
+3. Add `~/.ssh/config`:
+
+```sshconfig
+Host tinki-ec2
+  HostName your-ec2-host-or-ip
+  User ec2-user
+  IdentityFile ~/.ssh/your-ec2-key.pem
+  IdentitiesOnly yes
+  ServerAliveInterval 60
+```
+
+4. Add shell environment in `~/.zshrc` if you want the repo wrappers ready in every new terminal:
+
+```bash
+export TINKI_EC2_HOST=tinki-ec2
+export TINKI_EC2_USER=ec2-user
+export TINKI_EC2_KEY_PATH=~/.ssh/your-ec2-key.pem
+```
+
+5. Reload the shell and validate:
+
+```bash
+source ~/.zshrc
+ssh tinki-ec2
 ```
 
 ## Production Rollback
