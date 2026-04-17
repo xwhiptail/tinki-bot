@@ -9,6 +9,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
+import aiohttp
 import discord
 from discord.ext import commands
 
@@ -210,6 +211,43 @@ class Admin(commands.Cog):
     def _github_commit_api_url(self) -> str:
         return GITHUB_REPO_URL.replace("https://github.com/", "https://api.github.com/repos/") + "/commits/main"
 
+    async def _fetch_json_with_retries(self, session, url: str, *, attempts: int = 3):
+        last_error = None
+        for attempt in range(1, attempts + 1):
+            try:
+                async with session.get(
+                    url,
+                    timeout=aiohttp.ClientTimeout(total=30),
+                    headers={"Accept": "application/vnd.github+json", "User-Agent": "tinki-bot"},
+                ) as resp:
+                    resp.raise_for_status()
+                    return await resp.json()
+            except Exception as exc:
+                last_error = exc
+                if attempt < attempts:
+                    await asyncio.sleep(attempt)
+        raise last_error
+
+    async def _fetch_bytes_with_retries(self, session, url: str, *, attempts: int = 3):
+        last_error = None
+        for attempt in range(1, attempts + 1):
+            try:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+                    resp.raise_for_status()
+                    return await resp.read()
+            except Exception as exc:
+                last_error = exc
+                if attempt < attempts:
+                    await asyncio.sleep(attempt)
+        raise last_error
+
+    def _format_deploy_error(self, exc: Exception) -> str:
+        detail = str(exc).strip() or type(exc).__name__
+        lowered = detail.lower()
+        if "503" in detail or "service unavailable" in lowered or "upstream connect error" in lowered:
+            return "GitHub download is temporarily unavailable. Try `!deploy` again in a minute."
+        return detail
+
     @commands.command(name="restart")
     @commands.has_permissions(administrator=True)
     async def restart_bot(self, ctx):
@@ -227,15 +265,9 @@ class Admin(commands.Cog):
             repo_root = Path(__file__).resolve().parent.parent
             current_commit = self._read_deployed_commit(repo_root)
             async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    self._github_commit_api_url(),
-                    timeout=aiohttp.ClientTimeout(total=30),
-                    headers={"Accept": "application/vnd.github+json", "User-Agent": "tinki-bot"},
-                ) as resp:
-                    resp.raise_for_status()
-                    commit_data = await resp.json()
-                    github_commit = commit_data["sha"]
-                    commit_message = commit_data.get("commit", {}).get("message", "").splitlines()[0]
+                commit_data = await self._fetch_json_with_retries(session, self._github_commit_api_url())
+                github_commit = commit_data["sha"]
+                commit_message = commit_data.get("commit", {}).get("message", "").splitlines()[0]
 
                 await ctx.send(
                     f"Deploy check: current `{self._short_commit(current_commit)}` vs GitHub main `{self._short_commit(github_commit)}`"
@@ -246,9 +278,7 @@ class Admin(commands.Cog):
                     return
 
                 await ctx.send("Pulling latest repo snapshot from GitHub...")
-                async with session.get(archive_url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
-                    resp.raise_for_status()
-                    content = await resp.read()
+                content = await self._fetch_bytes_with_retries(session, archive_url)
             if len(content) < 5000:
                 await ctx.send(f"Deploy aborted: download looks truncated ({len(content)} bytes).")
                 return
@@ -301,7 +331,7 @@ class Admin(commands.Cog):
             await asyncio.sleep(1)
             subprocess.Popen(["sudo", "systemctl", "restart", "tinki-bot"])
         except Exception as e:
-            await ctx.send(f"Deploy failed: {e}")
+            await ctx.send(f"Deploy failed: {self._format_deploy_error(e)}")
 
     @commands.command(name="awscost")
     @commands.has_permissions(administrator=True)

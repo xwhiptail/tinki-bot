@@ -497,6 +497,13 @@ class TestAdminAWSCost:
 
         assert ctx.send.await_args_list[0].args[0] == "Deploy check: current `abc1234` vs GitHub main `abc1234`"
 
+    def test_format_deploy_error_sanitizes_github_503(self):
+        message = self.cog._format_deploy_error(
+            RuntimeError("503 Service Unavailable: upstream connect error or disconnect/reset before headers")
+        )
+
+        assert message == "GitHub download is temporarily unavailable. Try `!deploy` again in a minute."
+
     async def test_awscost_command_denies_non_whiptail(self):
         ctx = make_ctx()
         ctx.author = MagicMock()
