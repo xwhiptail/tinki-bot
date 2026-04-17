@@ -47,12 +47,12 @@ $repoDirs = @("utils", "cogs", "tests", "assets", "scripts")
 
 Invoke-RemoteBash -Config $config -Script @"
 set -e
-ts=\$(date +%Y%m%d_%H%M%S)
+ts=`$(date +%Y%m%d_%H%M%S)
 if [ -f $($config.RemoteRepoDir)/tinki-bot.py ]; then
-  cp $($config.RemoteRepoDir)/tinki-bot.py $($config.RemoteRepoDir)/tinki-bot.py.backup_\$ts
+  cp $($config.RemoteRepoDir)/tinki-bot.py $($config.RemoteRepoDir)/tinki-bot.py.backup_`$ts
 fi
 if [ -d $($config.RemoteDataDir) ]; then
-  tar -czf /opt/apps/tinki-bot/data_backup_\$ts.tar.gz -C /opt/apps/tinki-bot data
+  tar -czf /opt/apps/tinki-bot/data_backup_`$ts.tar.gz -C /opt/apps/tinki-bot data
 fi
 ls -1t $($config.RemoteRepoDir)/tinki-bot.py.backup_* 2>/dev/null | tail -n +4 | xargs -r rm --
 ls -1t /opt/apps/tinki-bot/data_backup_*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm --
