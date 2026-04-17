@@ -51,7 +51,7 @@ class Emotes(commands.Cog):
     async def spinny_activate(self, ctx, user: discord.Member):
         self.sticker_users[str(user.id)] = True
         self._save_grinding_state()
-        await ctx.send(f"Grinding activated for {user.mention}!", silent=True)
+        await ctx.send(f"Grinding activated for {user.mention}!")
 
     @commands.command(name='stopspinny')
     async def spinny_deactivate(self, ctx, *, target: str):
@@ -63,20 +63,20 @@ class Emotes(commands.Cog):
         if user_id and user_id in self.sticker_users:
             self.sticker_users.pop(user_id, None)
             self._save_grinding_state()
-            await ctx.send("Grinding deactivated.", silent=True)
+            await ctx.send("Grinding deactivated.")
         else:
             await ctx.send("Could not find the user you mentioned.")
 
     @commands.command(name='silentspinny')
     async def silent_spinny(self, ctx, target: str):
         if not user_matches(ctx.author, USER_WHIPTAIL_ID, 'whiptail'):
-            await ctx.send("You do not have permission to use this command.", silent=True)
+            await ctx.send("You do not have permission to use this command.")
             return
         user_id = await _get_user_id_from_username(ctx.guild, target)
         if user_id:
             self.sticker_users[user_id] = True
             self._save_grinding_state()
-            await ctx.send(f"Grinding activated for {target}!", silent=True)
+            await ctx.send(f"Grinding activated for {target}!")
         else:
             await ctx.send("Could not find the user you mentioned.")
 
@@ -91,7 +91,7 @@ class Emotes(commands.Cog):
         if str(message.author.id) in self.sticker_users:
             sticker = discord.utils.get(message.guild.stickers, name=STICKER_SPINNY)
             if sticker:
-                await message.channel.send(stickers=[sticker], silent=True)
+                await message.channel.send(stickers=[sticker])
             else:
                 await message.channel.send(f"Sticker '{STICKER_SPINNY}' not found.")
 
@@ -128,13 +128,13 @@ class Emotes(commands.Cog):
 
         emote = discord.utils.get(message.guild.emojis, name=emote_name)
         if emote:
-            await message.channel.send((str(emote) * repeat_times)[:2000], silent=True)
+            await message.channel.send((str(emote) * repeat_times)[:2000])
             return
 
         all_emotes = [e for guild in self.bot.guilds for e in guild.emojis if e.available]
         emote = discord.utils.find(lambda e: e.name == emote_name, all_emotes)
         if emote:
-            await message.channel.send((str(emote) * repeat_times)[:2000], silent=True)
+            await message.channel.send((str(emote) * repeat_times)[:2000])
             return
 
         # Fuzzy match suggestions
@@ -171,7 +171,7 @@ class Emotes(commands.Cog):
             await message.delete()
             await message.channel.send("None selected... cleaning up...", delete_after=5.0)
         else:
-            await message.channel.send((str(reaction.emoji) * repeat_times)[:2000], silent=True)
+            await message.channel.send((str(reaction.emoji) * repeat_times)[:2000])
             await suggestion_msg.delete()
 
     @commands.command(name='allemotes')
@@ -229,7 +229,7 @@ class Emotes(commands.Cog):
                                     if resp.status == 200:
                                         img = Image.open(io.BytesIO(await resp.read()))
                                         ext = 'gif' if getattr(img, "is_animated", False) and img.n_frames > 1 else 'png'
-                                msg = await ctx.send(f"https:{em.host_url}/2x.{ext}", silent=True)
+                                msg = await ctx.send(f"https:{em.host_url}/2x.{ext}")
                                 messages.append(msg)
                                 await msg.add_reaction(number_emojis[i])
 

@@ -44,7 +44,7 @@ class Utility(commands.Cog):
             if message.attachments:
                 embed.set_image(url=message.attachments[0].url)
             embed.add_field(name="Link", value=f"[Jump to message]({message.jump_url})", inline=False)
-            await pins_channel.send(embed=embed, silent=True)
+            await pins_channel.send(embed=embed)
             await message.add_reaction('✅')
             user = payload.member or await message.guild.fetch_member(payload.user_id)
             await message.remove_reaction(payload.emoji, user)

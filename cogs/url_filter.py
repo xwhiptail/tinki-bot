@@ -32,7 +32,7 @@ class URLFilter(commands.Cog):
             rewritten = rewrite_social_urls(message.content)
             if rewritten != message.content:
                 await message.channel.send(
-                    f"{message.author.mention} originally posted: {rewritten}", silent=True
+                    f"{message.author.mention} originally posted: {rewritten}"
                 )
                 await message.delete()
                 await asyncio.sleep(3)
@@ -44,7 +44,7 @@ class URLFilter(commands.Cog):
             base_url = TWITCH_CLIP_PATTERN.search(message.content).group(1)
             for suffix in ['#', '?a', '?b', '?c', '?d', '?e']:
                 sent = await message.channel.send(
-                    f"{message.author.mention} originally posted: {base_url}{suffix}", silent=True
+                    f"{message.author.mention} originally posted: {base_url}{suffix}"
                 )
                 await asyncio.sleep(3)
                 sent = await message.channel.fetch_message(sent.id)
