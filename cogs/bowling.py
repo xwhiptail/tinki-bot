@@ -12,6 +12,10 @@ from scipy.stats import linregress
 
 from config import SCORES_FILE, DATA_DIR, SCORE_PATTERN, USER_CATE_ID, user_matches
 
+BOWLING_SCORE_EMOJI = "\U0001f3b3"
+BOWLING_UNDO_EMOJI = "\u274c"
+BOWLING_UNDO_CONFIRM_EMOJI = "\u21a9\ufe0f"
+
 
 class Bowling(commands.Cog):
     def __init__(self, bot):

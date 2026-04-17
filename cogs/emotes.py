@@ -14,6 +14,20 @@ from PIL import Image
 
 from config import GRINDING_STATE_FILE, STICKER_SPINNY, USER_WHIPTAIL_ID, user_matches
 
+EMOTE_SUGGESTION_DISMISS_EMOJI = "\u274c"
+EMOTE_BROWSER_PREV = "\u2b05\ufe0f"
+EMOTE_BROWSER_NEXT = "\u27a1\ufe0f"
+EMOTE_BROWSER_PICK = "\u2705"
+EMOTE_BROWSER_MORE = "\U0001f4c4"
+EMOTE_BROWSER_CANCEL = "\u274c"
+EMOTE_BROWSER_CONTROLS = [
+    EMOTE_BROWSER_PREV,
+    EMOTE_BROWSER_NEXT,
+    EMOTE_BROWSER_PICK,
+    EMOTE_BROWSER_MORE,
+    EMOTE_BROWSER_CANCEL,
+]
+
 
 async def _get_user_id_from_username(guild, username):
     user = discord.utils.get(guild.members, name=username)
@@ -194,7 +208,7 @@ class Emotes(commands.Cog):
             return
 
         PREV, NEXT, PICK, MORE, CANCEL = '⬅️', '➡️', '✅', '📄', '❌'
-        CONTROLS = [PREV, NEXT, PICK, MORE, CANCEL]
+        CONTROLS = list(EMOTE_BROWSER_CONTROLS)
         per_page    = 5
         max_retries = 3
         backoff     = 1
