@@ -144,12 +144,13 @@ class AI(commands.Cog):
                     "role": "system",
                     "content": (
                         GREMLIN_SYSTEM_STYLE + " "
-                        "Generate ONE shitpost-style thought you might randomly drop in Discord. "
-                        "It should read like a joke or roast about gamers, Discord culture, or daily chaos. "
+                        "Generate ONE unprompted thought you might randomly blurt out in Discord. "
+                        "Could be a hot take about Azeroth, a tinkering disaster, a Hunter complaint, "
+                        "a roast of gamers, or pure chaotic gnome energy. "
                         "No disclaimers, no greetings, no hashtags. Just the line itself."
                     ),
                 },
-                {"role": "user", "content": "Give me one chaotic gnome thought."},
+                {"role": "user", "content": "Give me one gnome hunter thought."},
             ],
             max_tokens=50,
             temperature=1.2,
