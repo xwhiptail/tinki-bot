@@ -108,5 +108,5 @@ foreach ($dir in $repoDirs) {
 }
 
 & $plink -batch -i $KeyPath "${User}@${ServerHost}" "printf '%s`n' '$localCommit' > ${RemoteRepoDir}/.deploy-commit"
-& $plink -batch -i $KeyPath "${User}@${ServerHost}" "find ${RemoteRepoDir} \\( -type d -name '__pycache__' -o -type d -name '.pytest_cache' -o -type d -name 'pytest-cache-files-*' \\) -prune -exec rm -rf {} + ; find ${RemoteRepoDir} -type f \\( -name '*.pyc' -o -name '*.pyo' \\) -delete"
+& $plink -batch -i $KeyPath "${User}@${ServerHost}" "find ${RemoteRepoDir} \( -type d -name '__pycache__' -o -type d -name '.pytest_cache' -o -type d -name 'pytest-cache-files-*' \) -prune -exec rm -rf {} + ; find ${RemoteRepoDir} -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete"
 & $plink -batch -i $KeyPath "${User}@${ServerHost}" "sudo systemctl restart tinki-bot && sleep 3 && sudo systemctl status tinki-bot --no-pager"
