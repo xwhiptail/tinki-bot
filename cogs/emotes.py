@@ -186,175 +186,161 @@ class Emotes(commands.Cog):
 
     @commands.command()
     async def emote(self, ctx, emote_name: str, size: int = 2):
+        """Browse 7TV emotes one at a time.
+        ⬅️➡️ flip through results · ✅ send at chosen size · 📄 next page · ❌ cancel
+        """
         if size not in [1, 2, 3, 4]:
             await ctx.send("Invalid size. Please choose a size between 1 and 4.")
             return
 
-        back_emoji = '⬅️'
-        first_emoji = '🔙'
-        random_emoji = '🎲'
-        next_emoji = '➡️'
-        no_emoji = '❌'
-        number_emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
-        page = 1
-        per_page = 5
+        PREV, NEXT, PICK, MORE, CANCEL = '⬅️', '➡️', '✅', '📄', '❌'
+        CONTROLS = [PREV, NEXT, PICK, MORE, CANCEL]
+        per_page    = 5
         max_retries = 3
-        retry = 0
-        backoff = 1
+        backoff     = 1
+        ext_cache   = {}   # host_url → 'gif'/'png', avoid re-fetching per navigation
 
-        # Session and stv client are created once for the whole interaction loop.
+        async def detect_ext(session, emote):
+            if emote.host_url in ext_cache:
+                return ext_cache[emote.host_url]
+            try:
+                async with session.get(f"https:{emote.host_url}/2x.webp") as resp:
+                    if resp.status == 200:
+                        img = Image.open(io.BytesIO(await resp.read()))
+                        ext = 'gif' if getattr(img, "is_animated", False) and img.n_frames > 1 else 'png'
+                        ext_cache[emote.host_url] = ext
+                        return ext
+            except Exception:
+                pass
+            ext_cache[emote.host_url] = 'png'
+            return 'png'
+
+        async def prefetch(session, emotes_list):
+            """Fire off ext detection for the whole page concurrently."""
+            await asyncio.gather(*[detect_ext(session, e) for e in emotes_list],
+                                 return_exceptions=True)
+
+        async def search(stv, page, exact=True):
+            return await stv.emote_search(
+                emote_name, limit=per_page, page=page,
+                case_sensitive=False, exact_match=exact,
+            )
+
+        async def card_text(session, emotes_list, idx, page):
+            em = emotes_list[idx]
+            ext = await detect_ext(session, em)
+            total = len(emotes_list)
+            return (
+                f"https:{em.host_url}/2x.{ext}\n"
+                f"**{em.name}** · {idx + 1} of {total} · page {page}"
+            )
+
         async with aiohttp.ClientSession() as session:
             stv = seventv.seventv()
             try:
-                while True:
-                    messages = []
+                page  = 1
+                retry = 0
+                emotes = []
+
+                # ── initial search ────────────────────────────────────────────
+                while not emotes:
                     try:
-                        if retry == 0:
-                            emotes = await stv.emote_search(
-                                emote_name, limit=per_page, page=page,
-                                case_sensitive=False, exact_match=True
-                            )
-                            if not emotes:
-                                if page == 1:
-                                    await ctx.send("No emotes found.")
-                                    break
-                                else:
-                                    await ctx.send("No more emotes, returning to the beginning.")
-                                    page = 1
-                                    continue
-
-                            for i, em in enumerate(emotes):
-                                url = f"https:{em.host_url}/2x.webp"
-                                async with session.get(url) as resp:
-                                    if resp.status == 200:
-                                        img = Image.open(io.BytesIO(await resp.read()))
-                                        ext = 'gif' if getattr(img, "is_animated", False) and img.n_frames > 1 else 'png'
-                                msg = await ctx.send(f"https:{em.host_url}/2x.{ext}")
-                                messages.append(msg)
-                                await msg.add_reaction(number_emojis[i])
-
-                            if page > 1:
-                                await messages[-1].add_reaction(back_emoji)
-                            await messages[-1].add_reaction(first_emoji)
-                            await messages[-1].add_reaction(random_emoji)
-                            if len(emotes) == per_page:
-                                await messages[-1].add_reaction(next_emoji)
-                            await messages[-1].add_reaction(no_emoji)
-
-                            def check(reaction, user):
-                                return (
-                                    user == ctx.author
-                                    and reaction.message.id in [m.id for m in messages]
-                                    and str(reaction.emoji) in number_emojis[:len(emotes)] + [
-                                        next_emoji, back_emoji, first_emoji, random_emoji, no_emoji
-                                    ]
-                                )
-
-                            try:
-                                reaction, _ = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
-                            except asyncio.TimeoutError:
-                                await ctx.send('🚫 No reaction received in time.')
-                                for m in messages:
-                                    try:
-                                        await m.delete()
-                                    except discord.NotFound:
-                                        pass
-                                return
-
-                            for m in messages:
-                                try:
-                                    await m.delete()
-                                except discord.NotFound:
-                                    pass
-
-                            emoji_str = str(reaction.emoji)
-
-                            if emoji_str == next_emoji:
-                                try:
-                                    next_emotes = await stv.emote_search(
-                                        emote_name, limit=per_page, page=page + 1,
-                                        case_sensitive=False, exact_match=True
-                                    )
-                                    if next_emotes:
-                                        page += 1
-                                except Exception as e:
-                                    if "No Items Found" in str(e):
-                                        await ctx.send("No more emotes, going back to the beginning.")
-                                        page = 1
-                                    elif "Rate Limit Reached" in str(e) and retry < max_retries:
-                                        wait = backoff * (2 ** retry)
-                                        await ctx.send(f"Rate limit reached, retrying in {wait}s...")
-                                        await asyncio.sleep(wait)
-                                        retry += 1
-                                    else:
-                                        await ctx.send(f"An error occurred: {e}")
-                                        break
-                                continue
-
-                            elif emoji_str == back_emoji:
-                                page = max(1, page - 1)
-                                continue
-
-                            elif emoji_str == first_emoji:
-                                page = 1
-                                continue
-
-                            elif emoji_str == random_emoji:
-                                chosen = random.choice(emotes)
-                                async with session.get(f"https:{chosen.host_url}/4x.webp") as resp:
-                                    if resp.status == 200:
-                                        img = Image.open(io.BytesIO(await resp.read()))
-                                        ext = 'gif' if getattr(img, "is_animated", False) and img.n_frames > 1 else 'png'
-                                await ctx.send(f"https:{chosen.host_url}/{size}x.{ext}")
-                                break
-
-                            elif emoji_str == no_emoji:
-                                await ctx.send("None selected... cleaning up...", delete_after=5.0)
-                                await ctx.message.delete()
-                                return
-
-                            else:
-                                idx = number_emojis.index(emoji_str)
-                                if idx < len(emotes):
-                                    chosen = emotes[idx]
-                                    async with session.get(f"https:{chosen.host_url}/4x.webp") as resp:
-                                        if resp.status == 200:
-                                            img = Image.open(io.BytesIO(await resp.read()))
-                                            ext = 'gif' if getattr(img, "is_animated", False) and img.n_frames > 1 else 'png'
-                                    await ctx.send(f"https:{chosen.host_url}/{size}x.{ext}")
-                                    break
-                                else:
-                                    await ctx.send("An error occurred")
-                                    continue
-
+                        emotes = await search(stv, page, exact=True)
+                        if not emotes:
+                            # fuzzy fallback when exact match finds nothing
+                            emotes = await search(stv, page, exact=False)
+                        if not emotes:
+                            await ctx.send(f"No 7TV emotes found for `{emote_name}`.")
+                            return
                     except Exception as e:
-                        logging.error(f"Emote command error: {e}")
                         err = str(e)
-                        if "Rate Limit Reached" in err and retry < max_retries:
-                            wait = backoff * (2 ** retry)
-                            await ctx.send(f"Rate limit reached, retrying in {wait}s...", delete_after=wait)
-                            await asyncio.sleep(wait)
-                            retry += 1
-                            continue
-                        elif "Search returned no results" in err:
-                            if page > 1:
-                                await ctx.send("No more emotes, returning to the beginning.")
-                                page = 1
-                                continue
-                            else:
-                                await ctx.send("No emotes found.")
-                                break
-                        elif "Server disconnected" in err and retry < max_retries:
+                        if ("Rate Limit" in err or "Server disconnected" in err) and retry < max_retries:
                             wait = backoff * (2 ** retry)
                             await ctx.send(f"Retrying in {wait}s...", delete_after=wait)
                             await asyncio.sleep(wait)
                             retry += 1
-                            continue
                         else:
-                            await ctx.send(f"An error occurred: {e}")
-                            break
+                            await ctx.send(f"Search failed: {e}")
+                            return
 
-                    retry = 0
+                idx = 0
+                # pre-fetch ext for all results on this page in the background
+                self.bot.loop.create_task(prefetch(session, emotes))
+
+                card = await ctx.send(await card_text(session, emotes, idx, page))
+                for emoji in CONTROLS:
+                    await card.add_reaction(emoji)
+
+                # ── interaction loop ──────────────────────────────────────────
+                while True:
+                    def check(reaction, user):
+                        return (
+                            user == ctx.author
+                            and reaction.message.id == card.id
+                            and str(reaction.emoji) in CONTROLS
+                        )
+
+                    try:
+                        reaction, _ = await self.bot.wait_for(
+                            'reaction_add', timeout=60.0, check=check
+                        )
+                    except asyncio.TimeoutError:
+                        try:
+                            await card.delete()
+                        except discord.NotFound:
+                            pass
+                        return
+
+                    emoji_str = str(reaction.emoji)
+
+                    # remove the user's reaction so they can react again without un-reacting
+                    try:
+                        await card.remove_reaction(emoji_str, ctx.author)
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
+
+                    if emoji_str == CANCEL:
+                        try:
+                            await card.delete()
+                            await ctx.message.delete()
+                        except (discord.Forbidden, discord.NotFound):
+                            pass
+                        return
+
+                    elif emoji_str == PICK:
+                        chosen = emotes[idx]
+                        ext = await detect_ext(session, chosen)
+                        await ctx.send(f"https:{chosen.host_url}/{size}x.{ext}")
+                        try:
+                            await card.delete()
+                        except discord.NotFound:
+                            pass
+                        return
+
+                    elif emoji_str == PREV:
+                        idx = (idx - 1) % len(emotes)
+                        await card.edit(content=await card_text(session, emotes, idx, page))
+
+                    elif emoji_str == NEXT:
+                        idx = (idx + 1) % len(emotes)
+                        await card.edit(content=await card_text(session, emotes, idx, page))
+
+                    elif emoji_str == MORE:
+                        try:
+                            new_emotes = await search(stv, page + 1, exact=True)
+                            if new_emotes:
+                                page += 1
+                                emotes = new_emotes
+                            else:
+                                # wrap back to page 1
+                                page = 1
+                                emotes = await search(stv, 1, exact=True) or emotes
+                        except Exception:
+                            pass  # stay on current page/results
+                        idx = 0
+                        self.bot.loop.create_task(prefetch(session, emotes))
+                        await card.edit(content=await card_text(session, emotes, idx, page))
+
             finally:
                 await stv.close()
 
