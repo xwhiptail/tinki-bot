@@ -1,7 +1,7 @@
 param(
     [string]$ServerHost = $env:TINKI_EC2_HOST,
     [string]$User = "ec2-user",
-    [string]$KeyPath = "I:\mybotserver.ppk",
+    [string]$KeyPath = $env:TINKI_EC2_KEY_PATH,
     [string]$RemoteRepoDir = "/opt/apps/tinki-bot/repo",
     [string]$RemoteDataDir = "/opt/apps/tinki-bot/data"
 )
@@ -20,6 +20,10 @@ if (Test-Path $localConfigPath) {
 
 if (-not $ServerHost) {
     throw "Set ServerHost in deploy-ec2.local.ps1 or set the TINKI_EC2_HOST environment variable."
+}
+
+if (-not $KeyPath) {
+    throw "Set KeyPath in deploy-ec2.local.ps1 or set the TINKI_EC2_KEY_PATH environment variable."
 }
 
 $localCommit = (& git -C $projectRoot rev-parse HEAD).Trim()
