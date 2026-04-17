@@ -130,6 +130,8 @@ For routine work in this repo, prefer this default order:
 8. Update docs if commands, setup, deploy flow, or operational behavior changed.
 9. Review `git diff`.
 10. Commit and push unless the user explicitly says not to push yet.
+11. Push the committed change to GitLab as part of the normal release flow when that mirror is in use on this machine.
+12. Deploy the change to the bot with `.\deploy-ec2.ps1` when the user wants it live.
 
 ## Operational Rules
 

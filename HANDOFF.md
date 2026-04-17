@@ -30,6 +30,8 @@ Use this as the default workflow unless the user says otherwise:
 8. Update docs when behavior, commands, setup, or deploy flow changed.
 9. Review the diff.
 10. Commit and push before handing off, unless the user said not to push.
+11. Push to GitLab too when that mirror is part of the normal release path on this machine.
+12. Deploy to the bot with `.\deploy-ec2.ps1` when the user wants the change live.
 
 ## Cross-Agent Git Rules
 
