@@ -12,6 +12,7 @@ Primary files:
 - `README.md`
 - `INSTALL.md`
 - `CLAUDE.md`
+- `HANDOFF.md`
 
 ## What Matters
 
@@ -49,3 +50,13 @@ Avoid ad hoc file uploads unless fixing an emergency.
 - Prefer additive docs and small code changes.
 - Back up the live server script before risky changes.
 - Preserve rollback paths in docs and scripts.
+
+## Cross-Agent Handoff
+
+- `HANDOFF.md` is the shared resume file for both Codex and Claude Code.
+- At the start of work, pull or otherwise sync from the real remote branch before making changes.
+- After making repo changes, push them before handing the task off, unless the user explicitly says not to push yet.
+- Before switching tools, update `HANDOFF.md` with current status, next step, tests run, and any active stash.
+- Prefer handing work off on a branch or commit, not as unstaged local edits.
+- If you must stash work, use a descriptive stash message and record it in `HANDOFF.md`.
+- Never create local branches with names that look like remote refs, such as `origin/main`.

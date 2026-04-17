@@ -17,6 +17,7 @@ Local workspace:
 - `cogs/` - feature modules grouped by domain
 - `utils/` - deterministic helpers, OpenAI wrappers, and self-tests
 - `tests/` - local pytest suite
+- `HANDOFF.md` - shared Codex/Claude resume file
 - `assets/branding/` - avatar, banner, and branding assets
 - `deploy-ec2.ps1` - Windows deploy helper
 - `requirements.txt` - Python dependencies
@@ -104,6 +105,16 @@ Startup diagnostics in `cogs/admin.py` also run `pytest -q` and post the result 
 - Prefer plain ASCII in source strings unless a real emoji or non-ASCII character is intentional. If non-ASCII text is intentional, keep it exact.
 - If a change touches user-facing text behavior, add or update a test in `tests/test_tinki_bot.py` that asserts the exact expected final string, so mojibake fails the test instead of slipping through on a loose substring match.
 - If a file already contains mojibake, fix it as part of the same change rather than preserving the broken text.
+
+## Cross-Agent Handoff
+
+- `HANDOFF.md` is the canonical place to leave resume notes for either Claude Code or Codex.
+- At the start of work, pull or otherwise sync from the real remote branch before making changes.
+- After making repo changes, push them before handing the task off, unless the user explicitly says not to push yet.
+- Before switching tools, update `HANDOFF.md` with the current task, next concrete step, tests run, and any active stash.
+- Prefer handing work off on a branch or committed state rather than as unstaged local edits.
+- If work must be stashed, use a descriptive stash message and record the stash entry in `HANDOFF.md`.
+- Do not create local branches named like remote refs such as `origin/main`; that makes later fetch/rebase/push flows ambiguous.
 
 ## Operational Rules
 

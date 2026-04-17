@@ -40,6 +40,13 @@ def make_message(content):
     return message
 
 
+def make_reaction(message, emoji):
+    reaction = MagicMock()
+    reaction.message = message
+    reaction.emoji = emoji
+    return reaction
+
+
 def _wire_cog(cog):
     """Attach the cog instance to all its Command objects so direct calls work."""
     for cmd in cog.get_commands():
@@ -526,14 +533,19 @@ class TestUmaMediaAndTriggers:
         ctx = make_ctx()
         ctx.author.id = 123
         ctx.author.display_name = "Tester"
+        result_message = MagicMock()
+        result_message.add_reaction = AsyncMock()
+        send_mock = AsyncMock(return_value=result_message)
 
         with patch.object(self.cog, "load_pity", return_value={}), \
              patch.object(self.cog, "save_pity"), \
              patch.object(self.cog, "_single_pull", return_value=("SSR", "Special Week", 0)), \
-             patch.object(self.cog, "_send_character_media", new=AsyncMock()) as media_mock:
+             patch.object(self.cog, "_send_character_media", new=AsyncMock()) as media_mock, \
+             patch.object(ctx, "send", new=send_mock), \
+             patch.object(self.cog.bot, "wait_for", new=AsyncMock(side_effect=TimeoutError)):
             await self.cog.uma_gacha.callback(self.cog, ctx, 1)
 
-        assert ctx.send.call_args.kwargs["delete_after"] is None
+        assert send_mock.call_args.kwargs["delete_after"] is None
         media_mock.assert_awaited_once_with(ctx, "Special Week")
 
     def test_extracts_meta_image_url_from_og_image(self):
@@ -586,3 +598,41 @@ class TestUmaMediaAndTriggers:
             await self.cog.on_message(message)
 
         media_mock.assert_not_awaited()
+
+    async def test_gacha_adds_repull_reaction(self):
+        ctx = make_ctx()
+        ctx.author.id = 123
+        ctx.author.display_name = "Tester"
+        result_message = MagicMock()
+        result_message.add_reaction = AsyncMock()
+
+        with patch.object(self.cog, "_send_gacha_results", new=AsyncMock(return_value=result_message)), \
+             patch.object(self.cog.bot, "wait_for", new=AsyncMock(side_effect=TimeoutError)):
+            await self.cog.uma_gacha.callback(self.cog, ctx, 10)
+
+        result_message.add_reaction.assert_awaited_once_with('♻️')
+
+    async def test_gacha_reaction_repulls_same_count(self):
+        ctx = make_ctx()
+        ctx.author.id = 123
+        ctx.author.display_name = "Tester"
+        result_message = MagicMock()
+        result_message.id = 99
+        result_message.add_reaction = AsyncMock()
+        user = MagicMock()
+        user.id = ctx.author.id
+        reaction = make_reaction(result_message, '♻️')
+
+        async def fake_wait_for(event_name, timeout, check):
+            assert event_name == 'reaction_add'
+            assert timeout == 30.0
+            assert check(reaction, user) is True
+            return reaction, user
+
+        with patch.object(self.cog, "_send_gacha_results", new=AsyncMock(return_value=result_message)), \
+             patch.object(self.cog.bot, "wait_for", new=AsyncMock(side_effect=fake_wait_for)), \
+             patch.object(self.cog, "_offer_repull", wraps=self.cog._offer_repull), \
+             patch.object(self.cog, "uma_gacha", new=AsyncMock()) as gacha_mock:
+            await self.cog._offer_repull(ctx, result_message, 10)
+
+        gacha_mock.assert_awaited_once_with(ctx, 10)

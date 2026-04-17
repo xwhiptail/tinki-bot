@@ -35,6 +35,8 @@ META_IMAGE_PATTERNS = (
     re.compile(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']', re.IGNORECASE),
 )
 UMA_67_PATTERN = re.compile(r'(?<!\d)6(?:[\s\W_]*)7(?!\d)')
+UMA_REPULL_EMOJI = '♻️'
+UMA_REPULL_TIMEOUT = 30.0
 
 
 class Uma(commands.Cog):
@@ -228,22 +230,7 @@ class Uma(commands.Cog):
 
         return False
 
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.author.bot:
-            return
-        if message.content.startswith(('!', '$')):
-            return
-        if not self._matches_67_trigger(message.content):
-            return
-        await self._send_character_media(message.channel, UMA_67_TRIGGER_NAME)
-
-    @commands.command(name='gacha')
-    async def uma_gacha(self, ctx, count: int = 10):
-        if count not in (1, 10):
-            await ctx.send('Pull 1 or 10 at a time.')
-            return
-
+    async def _send_gacha_results(self, ctx, count: int):
         pity_data = self.load_pity()
         uid = str(ctx.author.id)
         pity = pity_data.get(uid, 0)
@@ -272,12 +259,51 @@ class Uma(commands.Cog):
         else:
             footer = f'\n*Pity: {pity}/{UMA_PITY_CAP}*'
 
-        await ctx.send(
+        result_message = await ctx.send(
             f"**{ctx.author.display_name}'s pull results:**\n{result}{footer}",
             delete_after=None if ssrs else UMA_NON_SSR_DELETE_AFTER,
         )
         for name in ssrs:
             await self._send_character_media(ctx, name)
+        return result_message
+
+    async def _offer_repull(self, ctx, result_message, count: int):
+        try:
+            await result_message.add_reaction(UMA_REPULL_EMOJI)
+        except (discord.Forbidden, discord.HTTPException, AttributeError):
+            return
+
+        def check(reaction, user):
+            return (
+                reaction.message.id == result_message.id
+                and str(reaction.emoji) == UMA_REPULL_EMOJI
+                and user.id == ctx.author.id
+            )
+
+        try:
+            await self.bot.wait_for('reaction_add', timeout=UMA_REPULL_TIMEOUT, check=check)
+        except Exception:
+            return
+
+        await self.uma_gacha(ctx, count)
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot:
+            return
+        if message.content.startswith(('!', '$')):
+            return
+        if not self._matches_67_trigger(message.content):
+            return
+        await self._send_character_media(message.channel, UMA_67_TRIGGER_NAME)
+
+    @commands.command(name='gacha')
+    async def uma_gacha(self, ctx, count: int = 10):
+        if count not in (1, 10):
+            await ctx.send('Pull 1 or 10 at a time.')
+            return
+        result_message = await self._send_gacha_results(ctx, count)
+        await self._offer_repull(ctx, result_message, count)
 
     @commands.command(name='pity')
     async def uma_pity(self, ctx, member: discord.Member = None):
