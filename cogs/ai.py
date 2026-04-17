@@ -14,6 +14,7 @@ from utils.ai_brain import (
     classify_intent,
     extract_keywords,
     load_repo_documents,
+    parse_natural_command,
     retrieve_repo_context,
     score_overlap,
     update_memory_state,
@@ -111,6 +112,21 @@ class AI(commands.Cog):
         if intent in {"command_help", "bot_repo", "question_answer"}:
             return "I do not have enough grounded repo context for that one. Use !commands or !github if you want the source of truth."
         return "I do not have a solid answer for that one right now."
+
+    async def _execute_natural_command(self, message, command_spec) -> bool:
+        command_name = command_spec["command"]
+        args = command_spec.get("args")
+        original_content = message.content
+        synthetic = f"!{command_name}"
+        if args:
+            synthetic = f"{synthetic} {args}"
+
+        try:
+            message.content = synthetic
+            await self.bot.process_commands(message)
+            return True
+        finally:
+            message.content = original_content
 
     async def _generate_random_thought(self) -> str:
         client = get_openai_client()
@@ -275,6 +291,20 @@ class AI(commands.Cog):
         guild_id = str(message.guild.id) if message.guild else "dm"
         history = self._conversation_history(personas_cog, user_id, persona_key)
         intent = classify_intent(text)
+        command_spec = parse_natural_command(text)
+        if command_spec:
+            executed = await self._execute_natural_command(message, command_spec)
+            if executed:
+                self._update_conversation_history(
+                    personas_cog,
+                    user_id,
+                    persona_key,
+                    text,
+                    f"[natural command executed: !{command_spec['command']}]",
+                )
+                self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
+                self._save_ai_memory()
+                return
 
         deterministic_fact = maybe_count_letter_reply(text)
         if deterministic_fact:

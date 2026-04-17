@@ -212,3 +212,61 @@ def validate_grounded_reply(reply: str, known_commands: Iterable[str], intent: s
         return False, "missing repo context"
     return True, ""
 
+
+def parse_natural_command(text: str):
+    lowered = normalize_text(text)
+
+    reminder_match = re.search(r"\bremind me in (.+)", lowered)
+    if reminder_match:
+        return {"command": "remindme", "args": f"in {reminder_match.group(1).strip()}"}
+
+    if any(phrase in lowered for phrase in ("list my reminders", "show my reminders", "what reminders do i have")):
+        return {"command": "remindme", "args": None}
+
+    delete_match = re.search(r"\bdelete reminder (\d+)\b", lowered)
+    if delete_match:
+        return {"command": "deletereminder", "args": delete_match.group(1)}
+
+    if any(phrase in lowered for phrase in ("what time is it", "current time", "what's the time")):
+        return {"command": "currenttime", "args": None}
+
+    gacha_match = re.search(r"\b(?:gacha|pull|roll)(?: me)?(?: a)?(?: x?(\d+)| (\d+)-pull| (\d+) pull)?\b", lowered)
+    if gacha_match and any(word in lowered for word in ("gacha", "pull", "roll")):
+        count = next((group for group in gacha_match.groups() if group), None) or "10"
+        if count in {"1", "10"}:
+            return {"command": "gacha", "args": count}
+
+    if any(phrase in lowered for phrase in ("what's my pity", "what is my pity", "show my pity", "my pity")):
+        return {"command": "pity", "args": None}
+
+    if any(phrase in lowered for phrase in ("give me an uma", "assign me an uma", "who is my uma", "give me a horse girl")):
+        return {"command": "uma", "args": None}
+
+    if any(phrase in lowered for phrase in ("send an uma gif", "show an uma gif", "uma gif", "umagif")):
+        return {"command": "umagif", "args": None}
+
+    if any(phrase in lowered for phrase in ("show me a cat", "send a cat", "cat pic", "cat image")):
+        return {"command": "cat", "args": None}
+
+    if any(phrase in lowered for phrase in ("show me a dog", "send a dog", "dog pic", "dog image")):
+        return {"command": "dog", "args": None}
+
+    if any(phrase in lowered for phrase in ("random gif", "send a gif", "roulette gif", "spin the gif roulette")):
+        return {"command": "roulette", "args": None}
+
+    if any(phrase in lowered for phrase in ("my personal best", "what is my personal best", "pb score")):
+        return {"command": "pb", "args": None}
+
+    if any(phrase in lowered for phrase in ("my average score", "what is my average", "average bowling score")):
+        return {"command": "avg", "args": None}
+
+    if any(phrase in lowered for phrase in ("my median score", "what is my median", "median bowling score")):
+        return {"command": "median", "args": None}
+
+    if any(phrase in lowered for phrase in ("show all my scores", "list all my scores", "all bowling scores")):
+        return {"command": "all", "args": None}
+
+    if any(phrase in lowered for phrase in ("show the github", "github repo", "source repo", "repo link")):
+        return {"command": "github", "args": None}
+
+    return None

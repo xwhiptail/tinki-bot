@@ -22,6 +22,7 @@ from utils.ai_brain import (
     build_system_prompt,
     classify_intent,
     extract_user_facts,
+    parse_natural_command,
     retrieve_repo_context,
     update_memory_state,
     validate_grounded_reply,
@@ -85,6 +86,16 @@ def make_uma_cog(pity_file=None):
     if pity_file is not None:
         cog.pity_file = pity_file
     return cog
+
+
+def make_ai_cog():
+    from cogs.ai import AI
+    bot = MagicMock()
+    bot.cogs = {}
+    bot.commands = []
+    bot.process_commands = AsyncMock()
+    cog = AI(bot)
+    return _wire_cog(cog)
 
 
 # ── rewrite_social_urls ──────────────────────────────────────────────────────
@@ -310,6 +321,37 @@ class TestAIBrain:
         assert "cute but mean" in prompt
         assert "likes WoW" in prompt
         assert "Use !commands" in prompt
+
+    def test_parse_natural_command_for_reminder(self):
+        parsed = parse_natural_command("remind me in 10 minutes")
+        assert parsed == {"command": "remindme", "args": "in 10 minutes"}
+
+    def test_parse_natural_command_for_gacha(self):
+        parsed = parse_natural_command("do a 10 pull")
+        assert parsed == {"command": "gacha", "args": "10"}
+
+    def test_parse_natural_command_for_simple_media(self):
+        parsed = parse_natural_command("show me a cat")
+        assert parsed == {"command": "cat", "args": None}
+
+
+class TestAINaturalCommands:
+    async def test_execute_natural_command_rewrites_message_to_command(self):
+        cog = make_ai_cog()
+        message = make_message("@Tinki do a 10 pull")
+        original = message.content
+        seen = {}
+
+        async def capture(processed_message):
+            seen["content"] = processed_message.content
+
+        cog.bot.process_commands = AsyncMock(side_effect=capture)
+
+        await cog._execute_natural_command(message, {"command": "gacha", "args": "10"})
+
+        cog.bot.process_commands.assert_awaited_once()
+        assert seen["content"] == "!gacha 10"
+        assert message.content == original
 
 
 # ── score commands ────────────────────────────────────────────────────────────
