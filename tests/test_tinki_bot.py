@@ -479,7 +479,7 @@ class TestAdminAWSCost:
             "AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30."
         )
 
-    async def test_deploy_reports_aws_cost_before_deploy_check(self):
+    async def test_deploy_reports_check_without_aws_cost_message(self):
         ctx = make_ctx()
         fake_session = MagicMock()
         fake_session.__aenter__ = AsyncMock(return_value=fake_session)
@@ -491,14 +491,11 @@ class TestAdminAWSCost:
         fake_resp.json = AsyncMock(return_value={"sha": "abc1234", "commit": {"message": "Deploy test"}})
         fake_session.get.return_value = fake_resp
 
-        with patch("cogs.admin.fetch_aws_cost_summary", new=AsyncMock(return_value="AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30.")), \
-             patch("aiohttp.ClientSession", return_value=fake_session), \
+        with patch("aiohttp.ClientSession", return_value=fake_session), \
              patch.object(self.cog, "_read_deployed_commit", return_value="abc1234"):
             await self.cog.deploy_latest.callback(self.cog, ctx)
 
-        assert ctx.send.await_args_list[0].args[0] == (
-            "AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30."
-        )
+        assert ctx.send.await_args_list[0].args[0] == "Deploy check: current `abc1234` vs GitHub main `abc1234`"
 
     async def test_awscost_command_denies_non_whiptail(self):
         ctx = make_ctx()
@@ -1035,12 +1032,12 @@ class TestEmoteBrowserHelpers:
             SimpleNamespace(name="Bravo", host_url="//cdn.7tv.app/emote/bravo"),
         ]
 
-        embed = self.cog._build_7tv_browser_embed("smile", 3, emotes, 2, exact_match=False, selected_index=1)
+        embed = self.cog._build_7tv_browser_embed("smile", 3, emotes, 2, exact_match=False, selected_index=1, has_preview_grid=True)
 
         assert embed.title == "7TV results for `smile`"
         assert "  `1.` **Alpha** by `unknown owner`" in embed.description
         assert "-> `2.` **Bravo** by `unknown owner`" in embed.description
-        assert embed.image.url == "https://cdn.7tv.app/emote/bravo/2x.webp"
+        assert embed.image.url == "attachment://7tv-page.png"
         assert embed.fields[0].name == "Selected"
         assert "**Bravo** by `unknown owner`" in embed.fields[0].value
         assert embed.footer.text == "Page 2 - fuzzy search - click a number to preview, Send to post at 3x"
@@ -1083,14 +1080,16 @@ class TestEmoteBrowserHelpers:
         interaction.response.edit_message = AsyncMock()
         interaction.user.id = 42
 
-        await view.handle_selection(interaction, 1)
+        with patch.object(self.cog, "_build_7tv_browser_file", new=AsyncMock(return_value=MagicMock())):
+            await view.handle_selection(interaction, 1)
 
         assert view.selected_index == 1
         assert view.preview_buttons[0].style == discord.ButtonStyle.secondary
         assert view.preview_buttons[1].style == discord.ButtonStyle.primary
         interaction.response.edit_message.assert_awaited_once()
         embed = interaction.response.edit_message.await_args.kwargs["embed"]
-        assert embed.image.url == "https://cdn.7tv.app/emote/bravo/2x.webp"
+        assert embed.image.url == "attachment://7tv-page.png"
+        assert interaction.response.edit_message.await_args.kwargs["attachments"]
         assert "**Bravo** by `owner2`" in embed.fields[0].value
 
     async def test_7tv_picker_timeout_deletes_command_message(self):

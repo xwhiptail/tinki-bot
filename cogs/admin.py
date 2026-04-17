@@ -226,7 +226,6 @@ class Admin(commands.Cog):
 
             repo_root = Path(__file__).resolve().parent.parent
             current_commit = self._read_deployed_commit(repo_root)
-            await ctx.send(await fetch_aws_cost_summary())
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     self._github_commit_api_url(),
