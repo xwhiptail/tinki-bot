@@ -98,6 +98,11 @@ def make_ai_cog():
     return _wire_cog(cog)
 
 
+def make_admin_cog():
+    from cogs.admin import Admin
+    return _wire_cog(Admin(MagicMock()))
+
+
 # ── rewrite_social_urls ──────────────────────────────────────────────────────
 
 class TestRewriteSocialUrls:
@@ -394,6 +399,21 @@ class TestAINaturalCommands:
         cog = make_ai_cog()
         long_text = "x" * 351
         assert cog._select_reply_model("chat", long_text, [], []) == config.OPENAI_MODEL
+
+
+class TestAdminStatusFormatting:
+    def setup_method(self):
+        self.cog = make_admin_cog()
+
+    def test_summary_line_uses_fail_emoji_for_incomplete_results(self):
+        line = self.cog._summary_line("Pytest suite", 9, 10, "passed")
+        assert line.startswith("\U0001f6a8 ")
+        assert "9/10 passed" in line
+
+    def test_summary_line_uses_pass_emoji_for_clean_results(self):
+        line = self.cog._summary_line("Pytest suite", 10, 10, "passed")
+        assert line.startswith("\u2705 ")
+        assert "10/10 passed" in line
 
 
 class TestScoreCommands:

@@ -23,10 +23,19 @@ from utils.selftests import (
 
 log = logging.getLogger("discord.cogs.admin")
 
+TEST_PASS_EMOJI = "\u2705"
+TEST_FAIL_EMOJI = "\U0001f6a8"
+
 
 class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    def _status_emoji(self, passed: int, total: int) -> str:
+        return TEST_PASS_EMOJI if total and passed == total else TEST_FAIL_EMOJI
+
+    def _summary_line(self, label: str, passed: int, total: int, suffix: str = "tests passed") -> str:
+        return f"{self._status_emoji(passed, total)} {label}: {passed}/{total} {suffix}\n"
 
     async def run_startup_tests(self):
         log.warning("[startup tests] task started")
@@ -69,16 +78,16 @@ class Admin(commands.Cog):
         summary = (
             "Bot restarted - running startup diagnostics...\n"
             "```ini\n[BOOT SEQUENCE COMPLETED]\n```\n"
-            f"Command grid: {cmd_p}/{cmd_t} tests passed\n"
-            f"URL filter matrix: {url_p}/{url_t} tests passed\n"
-            f"Calculator gnome: {calc_p}/{calc_t} tests passed\n"
-            f"Letter gnome: {let_p}/{let_t} tests passed\n"
-            f"Bot insight gnome: {ins_p}/{ins_t} tests passed\n"
-            f"Pytest suite: {py_p}/{py_t} passed\n"
+            f"{self._summary_line('Command grid', cmd_p, cmd_t)}"
+            f"{self._summary_line('URL filter matrix', url_p, url_t)}"
+            f"{self._summary_line('Calculator gnome', calc_p, calc_t)}"
+            f"{self._summary_line('Letter gnome', let_p, let_t)}"
+            f"{self._summary_line('Bot insight gnome', ins_p, ins_t)}"
+            f"{self._summary_line('Pytest suite', py_p, py_t, 'passed')}"
             f"OpenAI: {openai_balance}\n"
         )
         if failures:
-            summary += "\nAnomalies detected:\n" + "".join(f"- {failure}\n" for failure in failures)
+            summary += "\nAnomalies detected:\n" + "".join(f"- {TEST_FAIL_EMOJI} {failure}\n" for failure in failures)
         else:
             summary += "\nAll systems fully operational."
 
@@ -93,12 +102,12 @@ class Admin(commands.Cog):
             ("Pytest", pytest_results),
         ]:
             passed, total = _counts(results)
-            lines.append(f"\n{section}: {passed}/{total} passed\n")
+            lines.append(f"\n{self._summary_line(section, passed, total, 'passed')}")
             for name, ok, reason in results:
                 if ok:
-                    lines.append(f"  [PASS] {name}\n")
+                    lines.append(f"  {TEST_PASS_EMOJI} {name}\n")
                 else:
-                    lines.append(f"  [FAIL] {name} - {reason}\n")
+                    lines.append(f"  {TEST_FAIL_EMOJI} {name} - {reason}\n")
 
         buf = io.BytesIO("".join(lines).encode("utf-8"))
         try:
@@ -152,17 +161,17 @@ class Admin(commands.Cog):
             if cmd is None:
                 results.append((name, False, "command not found"))
                 if ctx:
-                    await ctx.send(f"{name}: command not found")
+                    await ctx.send(f"{TEST_FAIL_EMOJI} {name}: command not found")
                 continue
             try:
                 if ctx:
                     await ctx.invoke(cmd)
-                    await ctx.send(f"{name}: passed")
+                    await ctx.send(f"{TEST_PASS_EMOJI} {name}: passed")
                 results.append((name, True, None))
             except Exception as e:
                 results.append((name, False, f"{type(e).__name__}: {e}"))
                 if ctx:
-                    await ctx.send(f"{name}: {type(e).__name__}: {e}")
+                    await ctx.send(f"{TEST_FAIL_EMOJI} {name}: {type(e).__name__}: {e}")
         return results
 
     def _deploy_files(self):
@@ -299,7 +308,7 @@ class Admin(commands.Cog):
         await ctx.send("Starting command self-tests...")
         results = await self._run_command_selftests(ctx)
         passed = sum(1 for _, ok, _ in results if ok)
-        await ctx.send(f"Command tests complete: {passed}/{len(results)} passed.")
+        await ctx.send(self._summary_line("Command tests complete", passed, len(results), "passed").strip())
 
     @commands.command(name="testurls")
     @commands.has_permissions(administrator=True)
@@ -307,9 +316,11 @@ class Admin(commands.Cog):
         await ctx.send("Starting URL rewrite tests...")
         results = run_url_selftests()
         for name, ok, reason in results:
-            await ctx.send(f"{name}: {'passed' if ok else reason}")
+            status = TEST_PASS_EMOJI if ok else TEST_FAIL_EMOJI
+            detail = "passed" if ok else reason
+            await ctx.send(f"{status} {name}: {detail}")
         passed = sum(1 for _, ok, _ in results if ok)
-        await ctx.send(f"URL tests complete: {passed}/{len(results)} passed.")
+        await ctx.send(self._summary_line("URL tests complete", passed, len(results), "passed").strip())
 
 
 async def setup(bot):
