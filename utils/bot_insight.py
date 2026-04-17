@@ -51,10 +51,27 @@ def maybe_bot_insight_reply(text: str) -> Optional[str]:
             "what features do you have",
             "what are your commands",
         )
-    ):
+        ):
         return (
             "My commands are split across bowling, personas, reminders, emotes, tracking, utility, admin, "
             "Uma, and URL features. Use !commands for the full list or !github for the source."
+        )
+
+    if any(
+        phrase in lowered
+        for phrase in (
+            "what can i ask you",
+            "what can i say to you",
+            "what should i ask you",
+            "what can you help with",
+            "what can i use you for",
+            "how should i talk to you",
+        )
+    ):
+        return (
+            "Ask me for normal-language stuff like reminders, Uma pulls, pity, cat or dog pics, random gifs, "
+            "bowling stats, repo or deploy questions, current time, or just tag me to banter. You can also ask "
+            "what command does something, what commands I know, or tell me things in plain English instead of exact commands."
         )
 
     if any(

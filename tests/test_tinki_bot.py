@@ -261,6 +261,14 @@ class TestMaybeBotInsightReply:
         r = maybe_bot_insight_reply("what commands do you have")
         assert r is not None and "!commands" in r and "!github" in r
 
+    def test_what_can_i_ask_you_lists_plain_language_uses(self):
+        r = maybe_bot_insight_reply("what can I ask you")
+        assert r is not None
+        assert "plain English" in r
+        assert "reminders" in r
+        assert "Uma" in r
+        assert "bowling" in r
+
     def test_hosting_question_mentions_ec2(self):
         r = maybe_bot_insight_reply("how are you hosted")
         assert r is not None and "EC2" in r and ".deploy-commit" in r
