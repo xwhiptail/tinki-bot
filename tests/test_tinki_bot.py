@@ -467,6 +467,9 @@ class TestAdminAWSCost:
 
     async def test_awscost_command_sends_summary(self):
         ctx = make_ctx()
+        ctx.author = MagicMock()
+        ctx.author.id = 0
+        ctx.author.name = "whiptail"
 
         with patch("cogs.admin.fetch_aws_cost_summary", new=AsyncMock(return_value="AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30.")):
             await self.cog.aws_cost.callback(self.cog, ctx)
@@ -495,6 +498,36 @@ class TestAdminAWSCost:
         assert ctx.send.await_args_list[0].args[0] == (
             "AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30."
         )
+
+    async def test_awscost_command_denies_non_whiptail(self):
+        ctx = make_ctx()
+        ctx.author = MagicMock()
+        ctx.author.id = 999
+        ctx.author.name = "otherperson"
+
+        await self.cog.aws_cost.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("You do not have permission to use this command.")
+
+    async def test_startup_message_includes_aws_cost_summary(self):
+        self.cog.bot.wait_until_ready = AsyncMock()
+        test_channel = MagicMock()
+        test_channel.name = config.CHANNEL_BOT_TEST
+        test_channel.send = AsyncMock()
+        self.cog.bot.get_all_channels = MagicMock(return_value=[test_channel])
+
+        with patch.object(self.cog, "_run_command_selftests", new=AsyncMock(return_value=[("pb", True, None)])), \
+             patch("cogs.admin.run_url_selftests", return_value=[("url", True, None)]), \
+             patch("cogs.admin.run_calculate_selftests", return_value=[("calc", True, None)]), \
+             patch("cogs.admin.run_letter_count_selftests", return_value=[("letter", True, None)]), \
+             patch("cogs.admin.run_bot_insight_selftests", return_value=[("insight", True, None)]), \
+             patch.object(self.cog, "_run_pytest_suite", new=AsyncMock(return_value=[("pytest", True, "passed")])), \
+             patch("cogs.admin.fetch_openai_balance", new=AsyncMock(return_value="$1.23 remaining")), \
+             patch("cogs.admin.fetch_aws_cost_summary", new=AsyncMock(return_value="AWS cost (Apr 2026): USD5.57 month-to-date, projected USD10.36 by Apr 30.")):
+            await self.cog._run_startup_tests_inner()
+
+        test_channel.send.assert_awaited_once()
+        assert "AWS cost (Apr 2026): USD5.57 month-to-date, projected USD10.36 by Apr 30." in test_channel.send.await_args.kwargs["content"]
 
 
 class TestUtilityChangelog:

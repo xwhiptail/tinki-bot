@@ -219,7 +219,7 @@ pytest
 
 121 tests covering pure functions, isolated command helpers, and key admin/emote formatting helpers. No live Discord calls needed.
 
-Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-test`, alongside the command, URL, calculator, letter-count, and bot-insight self-tests. Failing sections are marked with `🚨` and clean sections with `✅`. Pytest cache-provider warnings are disabled in this repo so the startup run stays clean on Windows.
+Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-test`, alongside the command, URL, calculator, letter-count, bot-insight self-tests, OpenAI balance, and AWS month-to-date/projected cost summary. Failing sections are marked with `🚨` and clean sections with `✅`. Pytest cache-provider warnings are disabled in this repo so the startup run stays clean on Windows.
 
 ## Commands
 
@@ -283,7 +283,7 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 
 ### Admin
 
-- `!awscost` - show AWS month-to-date and projected monthly cost from Cost Explorer, admin only
+- `!awscost` - show AWS month-to-date and projected monthly cost from Cost Explorer, whiptail/admin only
 - `!restart` - restart the bot service, admin only
 - `!deploy` - compare current deployed commit to GitHub `main`, report AWS month-to-date and projected cost, sync the modular repo snapshot if newer, install dependencies, and restart, admin only
 - `!runtests` - run command smoke tests with `✅`/`🚨` status output, admin only

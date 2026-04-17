@@ -12,7 +12,7 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
-from config import CHANNEL_BOT_TEST, GITHUB_REPO_URL
+from config import CHANNEL_BOT_TEST, GITHUB_REPO_URL, USER_WHIPTAIL_ID, user_matches
 from utils.aws_costs import fetch_aws_cost_summary
 from utils.openai_helpers import fetch_openai_balance
 from utils.selftests import (
@@ -62,6 +62,7 @@ class Admin(commands.Cog):
         insight_results = run_bot_insight_selftests()
         pytest_results = await self._run_pytest_suite()
         openai_balance = await fetch_openai_balance()
+        aws_cost_summary = await fetch_aws_cost_summary()
 
         def _counts(results):
             return sum(1 for _, ok, _ in results if ok), len(results)
@@ -86,6 +87,7 @@ class Admin(commands.Cog):
             f"{self._summary_line('Bot insight gnome', ins_p, ins_t)}"
             f"{self._summary_line('Pytest suite', py_p, py_t, 'passed')}"
             f"OpenAI: {openai_balance}\n"
+            f"{aws_cost_summary}\n"
         )
         if failures:
             summary += "\nAnomalies detected:\n" + "".join(f"- {TEST_FAIL_EMOJI} {failure}\n" for failure in failures)
@@ -94,6 +96,7 @@ class Admin(commands.Cog):
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         lines = [f"Startup Diagnostic Results - {timestamp}\n", "=" * 60 + "\n"]
+        lines.append(f"\nAWS Cost\n  {aws_cost_summary}\n")
         for section, results in [
             ("Command Tests", cmd_results),
             ("URL Tests", url_results),
@@ -307,6 +310,9 @@ class Admin(commands.Cog):
     @commands.command(name="awscost")
     @commands.has_permissions(administrator=True)
     async def aws_cost(self, ctx):
+        if not user_matches(ctx.author, USER_WHIPTAIL_ID, 'whiptail'):
+            await ctx.send("You do not have permission to use this command.")
+            return
         await ctx.send(await fetch_aws_cost_summary())
 
     @commands.command(name="runtests")
