@@ -38,7 +38,7 @@ SEVENTV_SEARCH_QUERY = (
 )
 
 
-@dataclass(slots=True)
+@dataclass
 class SevenTvEmoteResult:
     id: str
     name: str
