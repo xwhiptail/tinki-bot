@@ -510,7 +510,7 @@ class TestAdminAWSCost:
 
         ctx.send.assert_awaited_once_with("You do not have permission to use this command.")
 
-    async def test_startup_message_includes_aws_cost_summary(self):
+    async def test_startup_message_omits_aws_cost_summary(self):
         self.cog.bot.wait_until_ready = AsyncMock()
         test_channel = MagicMock()
         test_channel.name = config.CHANNEL_BOT_TEST
@@ -523,12 +523,14 @@ class TestAdminAWSCost:
              patch("cogs.admin.run_letter_count_selftests", return_value=[("letter", True, None)]), \
              patch("cogs.admin.run_bot_insight_selftests", return_value=[("insight", True, None)]), \
              patch.object(self.cog, "_run_pytest_suite", new=AsyncMock(return_value=[("pytest", True, "passed")])), \
-             patch("cogs.admin.fetch_openai_balance", new=AsyncMock(return_value="$1.23 remaining")), \
-             patch("cogs.admin.fetch_aws_cost_summary", new=AsyncMock(return_value="AWS cost (Apr 2026): USD5.57 month-to-date, projected USD10.36 by Apr 30.")):
+             patch("cogs.admin.fetch_openai_balance", new=AsyncMock(return_value="$1.23 remaining")):
             await self.cog._run_startup_tests_inner()
 
         test_channel.send.assert_awaited_once()
-        assert "AWS cost (Apr 2026): USD5.57 month-to-date, projected USD10.36 by Apr 30." in test_channel.send.await_args.kwargs["content"]
+        kwargs = test_channel.send.await_args.kwargs
+        assert "AWS cost" not in kwargs["content"]
+        report_text = kwargs["file"].fp.getvalue().decode("utf-8")
+        assert "AWS cost" not in report_text
 
 
 class TestUtilityChangelog:

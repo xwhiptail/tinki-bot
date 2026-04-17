@@ -62,7 +62,6 @@ class Admin(commands.Cog):
         insight_results = run_bot_insight_selftests()
         pytest_results = await self._run_pytest_suite()
         openai_balance = await fetch_openai_balance()
-        aws_cost_summary = await fetch_aws_cost_summary()
 
         def _counts(results):
             return sum(1 for _, ok, _ in results if ok), len(results)
@@ -87,7 +86,6 @@ class Admin(commands.Cog):
             f"{self._summary_line('Bot insight gnome', ins_p, ins_t)}"
             f"{self._summary_line('Pytest suite', py_p, py_t, 'passed')}"
             f"OpenAI: {openai_balance}\n"
-            f"{aws_cost_summary}\n"
         )
         if failures:
             summary += "\nAnomalies detected:\n" + "".join(f"- {TEST_FAIL_EMOJI} {failure}\n" for failure in failures)
@@ -96,7 +94,6 @@ class Admin(commands.Cog):
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         lines = [f"Startup Diagnostic Results - {timestamp}\n", "=" * 60 + "\n"]
-        lines.append(f"\nAWS Cost\n  {aws_cost_summary}\n")
         for section, results in [
             ("Command Tests", cmd_results),
             ("URL Tests", url_results),
