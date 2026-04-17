@@ -37,6 +37,18 @@ class AWSCostSummary:
         )
 
 
+def _format_client_error(exc: ClientError) -> str:
+    error = getattr(exc, "response", {}).get("Error", {})
+    code = error.get("Code", type(exc).__name__)
+    message = error.get("Message", str(exc)).strip()
+    if code in {"AccessDenied", "AccessDeniedException", "UnauthorizedOperation"}:
+        return (
+            "AWS cost unavailable: missing Cost Explorer permissions. "
+            f"{code}: {message}"
+        )
+    return f"AWS cost unavailable: {code}: {message}"
+
+
 def _month_bounds(today: Optional[date] = None):
     today = today or date.today()
     start = today.replace(day=1)
@@ -56,7 +68,8 @@ def _fetch_cost_summary_sync(today: Optional[date] = None) -> AWSCostSummary:
         raise RuntimeError("boto3 is not installed")
 
     period_start, period_end, forecast_end = _month_bounds(today)
-    ce = boto3.client("ce", region_name=AWS_COST_REGION)
+    # Cost Explorer is a billing endpoint; keep it pinned to the configured billing region.
+    ce = boto3.client("ce", region_name=AWS_COST_REGION or "us-east-1")
 
     usage = ce.get_cost_and_usage(
         TimePeriod={
@@ -103,8 +116,10 @@ async def fetch_aws_cost_summary() -> str:
         return f"AWS cost unavailable: {exc}."
     except NoCredentialsError:
         return "AWS cost unavailable: no AWS credentials configured for Cost Explorer."
-    except (BotoCoreError, ClientError) as exc:
-        return f"AWS cost unavailable: {type(exc).__name__}."
+    except ClientError as exc:
+        return _format_client_error(exc)
+    except BotoCoreError as exc:
+        return f"AWS cost unavailable: {type(exc).__name__}: {exc}"
     except Exception as exc:
         return f"AWS cost unavailable: {type(exc).__name__}: {exc}"
     return summary.as_message()

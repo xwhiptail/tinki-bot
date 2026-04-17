@@ -32,7 +32,12 @@ from utils.calculator import maybe_calculate_reply
 from utils.bot_insight import maybe_bot_insight_reply
 from utils.letter_counter import maybe_count_letter_reply
 import config
-from utils.aws_costs import AWSCostSummary
+from utils.aws_costs import AWSCostSummary, _format_client_error
+
+try:
+    from botocore.exceptions import ClientError
+except Exception:  # pragma: no cover - optional dependency in test env
+    ClientError = None
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -436,6 +441,24 @@ class TestAWSCostSummary:
         assert summary.as_message() == (
             "AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30."
         )
+
+    @pytest.mark.skipif(ClientError is None, reason="botocore unavailable")
+    def test_format_client_error_surfaces_access_denied_details(self):
+        exc = ClientError(
+            {
+                "Error": {
+                    "Code": "AccessDeniedException",
+                    "Message": "User is not authorized to call ce:GetCostAndUsage",
+                }
+            },
+            "GetCostAndUsage",
+        )
+
+        message = _format_client_error(exc)
+
+        assert "missing Cost Explorer permissions" in message
+        assert "AccessDeniedException" in message
+        assert "not authorized" in message
 
 
 class TestAdminAWSCost:
@@ -979,8 +1002,9 @@ class TestEmoteBrowserHelpers:
         embed = self.cog._build_7tv_browser_embed("smile", 3, emotes, 2, exact_match=False)
 
         assert embed.title == "7TV results for `smile`"
-        assert "`1.` **Alpha**" in embed.description
+        assert "`1.` **Alpha** by `unknown owner`" in embed.description
         assert "[preview](https://cdn.7tv.app/emote/alpha/2x.webp)" in embed.description
+        assert embed.image.url == "https://cdn.7tv.app/emote/alpha/2x.webp"
         assert embed.footer.text == "Page 2 - fuzzy search - send size 3x"
 
     def test_build_7tv_select_options_uses_page_entries(self):
@@ -994,7 +1018,35 @@ class TestEmoteBrowserHelpers:
         assert len(options) == 2
         assert options[0].label == "1. Alpha"
         assert options[0].value == "0"
-        assert options[0].description == "Send at 4x"
+        assert options[0].description == "unknown owner - send at 4x"
+
+    def test_dedupe_7tv_results_removes_exact_duplicates(self):
+        emotes = [
+            SimpleNamespace(id="1", name="sus", host_url="//cdn.7tv.app/emote/sus", owner_username="owner1"),
+            SimpleNamespace(id="1", name="sus", host_url="//cdn.7tv.app/emote/sus", owner_username="owner1"),
+            SimpleNamespace(id="2", name="sus", host_url="//cdn.7tv.app/emote/sus2", owner_username="owner2"),
+        ]
+
+        deduped = self.cog._dedupe_7tv_results(emotes)
+
+        assert len(deduped) == 2
+        assert deduped[0].id == "1"
+        assert deduped[1].id == "2"
+
+    async def test_emote_command_sends_directly_for_single_result(self):
+        ctx = make_ctx()
+        session = MagicMock()
+        session.close = AsyncMock()
+        emote = SimpleNamespace(id="1", name="sus", host_url="//cdn.7tv.app/emote/sus", owner_username="owner1")
+
+        with patch("cogs.emotes.aiohttp.ClientSession", return_value=session), \
+             patch.object(self.cog, "_search_7tv_page", new=AsyncMock(return_value=[emote])), \
+             patch.object(self.cog, "_resolve_7tv_media_url", new=AsyncMock(return_value="https://cdn.7tv.app/emote/sus/2x.png")) as resolve_mock:
+            await self.cog.emote.callback(self.cog, ctx, "sus", 2)
+
+        ctx.send.assert_awaited_once_with("https://cdn.7tv.app/emote/sus/2x.png")
+        resolve_mock.assert_awaited_once()
+        session.close.assert_awaited_once()
 
 
 class TestSpinnyCommands:

@@ -201,10 +201,24 @@ class Emotes(commands.Cog):
     def _preview_7tv_url(self, emote: SevenTvEmoteResult) -> str:
         return f"https:{emote.host_url}/2x.webp"
 
+    def _dedupe_7tv_results(self, emotes):
+        seen = set()
+        unique = []
+        for emote in emotes:
+            key = (emote.id, emote.host_url)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(emote)
+        return unique
+
+    def _display_owner(self, emote: SevenTvEmoteResult) -> str:
+        return getattr(emote, "owner_username", "") or "unknown owner"
+
     def _build_7tv_browser_embed(self, emote_name: str, size: int, emotes, page: int, exact_match: bool) -> discord.Embed:
         match_mode = "exact" if exact_match else "fuzzy"
         description = "\n".join(
-            f"`{index}.` **{emote.name}** - [preview]({self._preview_7tv_url(emote)})"
+            f"`{index}.` **{emote.name}** by `{self._display_owner(emote)}` - [preview]({self._preview_7tv_url(emote)})"
             for index, emote in enumerate(emotes, start=1)
         )
         embed = discord.Embed(
@@ -213,7 +227,7 @@ class Emotes(commands.Cog):
             color=EMOTE_BROWSER_COLOR,
         )
         if emotes:
-            embed.set_thumbnail(url=self._preview_7tv_url(emotes[0]))
+            embed.set_image(url=self._preview_7tv_url(emotes[0]))
         embed.set_footer(text=f"Page {page} - {match_mode} search - send size {size}x")
         return embed
 
@@ -225,7 +239,7 @@ class Emotes(commands.Cog):
                 discord.SelectOption(
                     label=label[:100],
                     value=str(index - 1),
-                    description=f"Send at {size}x"[:100],
+                    description=f"{self._display_owner(emote)} - send at {size}x"[:100],
                 )
             )
         return options
@@ -273,7 +287,7 @@ class Emotes(commands.Cog):
                 if response_data.get("errors"):
                     raise RuntimeError(response_data["errors"][0].get("message", "unknown 7TV error"))
                 items = response_data.get("data", {}).get("emotes", {}).get("items", [])
-                return [
+                return self._dedupe_7tv_results([
                     SevenTvEmoteResult(
                         id=item.get("id", ""),
                         name=item.get("name", ""),
@@ -282,7 +296,7 @@ class Emotes(commands.Cog):
                     )
                     for item in items
                     if item.get("host", {}).get("url")
-                ]
+                ])
             except Exception as exc:
                 retriable = any(
                     marker in str(exc)
@@ -473,6 +487,12 @@ class Emotes(commands.Cog):
                 emotes = await self._search_7tv_page(session, emote_name, 1, exact_match=False)
             if not emotes:
                 await ctx.send(f"No 7TV emotes found for `{emote_name}`.")
+                return
+
+            if len(emotes) == 1:
+                url = await self._resolve_7tv_media_url(session, emotes[0], size, {})
+                await ctx.send(url)
+                await session.close()
                 return
 
             view = SevenTvEmoteBrowserView(
