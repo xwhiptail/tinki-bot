@@ -231,13 +231,8 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 
 ### Personas And AI
 
-- `!createpersona <name> <prompt>` - create a persona
-- `!switchpersona <name>` - switch the active persona
 - `!listpersonas` - list available personas
-- `!currentpersona` - show the active persona
-- `!deletepersona <name>` - delete a persona
 - `!erasememory [count]` - erase saved conversation memory for the active persona
-- `!randomai on|off|status` - control random AI posting
 - `@Tinki-bot <message>` - get a reply from Tinki
 
 ### Reminders

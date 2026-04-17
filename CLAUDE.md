@@ -71,7 +71,7 @@ cogs/
   reminders.py        Reminders cog - sqlite DB + commands + check_reminders loop
   emotes.py           Emotes cog - $ commands, !emote, !allemotes, spinny grinding
   tracking.py         Tracking cog - sus/explode/spinny tracking + graph commands
-  ai.py               AI cog - @mention handler, random AI posting, reaction replies
+  ai.py               AI cog - @mention handler and reaction replies
   utility.py          Utility cog - cat, dog, gif, roulette, purge, retired server stubs
   admin.py            Admin cog - restart, deploy, runtests, testurls, startup diagnostics
   url_filter.py       URLFilter cog - URL rewrites and Twitch clip embed fix

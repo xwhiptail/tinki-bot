@@ -45,42 +45,12 @@ class Personas(commands.Cog):
         user_convos[persona] = history[-10:]
         self.save_conversations()
 
-    @commands.command(name='createpersona')
-    async def create_persona(self, ctx, name: str, *, persona_description: str):
-        self.personas[name] = persona_description
-        self.save_personas()
-        await ctx.send(f"Persona '{name}' created.")
-
-    @commands.command(name='switchpersona')
-    async def switch_persona(self, ctx, name: str):
-        if name in self.personas:
-            self.current_persona = name
-            await ctx.send(f"Switched to persona '{self.current_persona}'.")
-        else:
-            await ctx.send("Persona not found.")
-
     @commands.command(name='listpersonas')
     async def list_personas(self, ctx):
         if self.personas:
             await ctx.send(f"Available Personas:\n{chr(10).join(self.personas.keys())}")
         else:
             await ctx.send("No personas available.")
-
-    @commands.command(name='currentpersona')
-    async def current_persona_cmd(self, ctx):
-        if self.current_persona in self.personas:
-            await ctx.send(f"The current persona is '{self.current_persona}'.")
-        else:
-            await ctx.send("No specific persona is currently active.")
-
-    @commands.command(name='deletepersona')
-    async def delete_persona(self, ctx, name: str):
-        if name in self.personas:
-            del self.personas[name]
-            self.save_personas()
-            await ctx.send(f"Persona '{name}' has been deleted.")
-        else:
-            await ctx.send(f"No persona found with the name '{name}'.")
 
     @commands.command(name='erasememory')
     async def erase_memory(self, ctx, number_of_interactions: int = None):

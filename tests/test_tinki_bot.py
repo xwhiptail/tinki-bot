@@ -306,31 +306,6 @@ class TestPersonaCommands:
     def setup_method(self):
         self.cog = make_personas_cog()
 
-    async def test_create_persona_stores_it(self):
-        ctx = make_ctx()
-        with patch.object(self.cog, "save_personas"):
-            await self.cog.create_persona(ctx, "pirate", persona_description="talks like a pirate")
-        assert self.cog.personas.get("pirate") == "talks like a pirate"
-
-    async def test_create_persona_confirms_in_message(self):
-        ctx = make_ctx()
-        with patch.object(self.cog, "save_personas"):
-            await self.cog.create_persona(ctx, "robot", persona_description="beep boop")
-        assert "robot" in ctx.send.call_args[0][0]
-
-    async def test_switch_to_existing_persona(self):
-        self.cog.personas["pirate"] = "arr"
-        ctx = make_ctx()
-        await self.cog.switch_persona(ctx, "pirate")
-        assert self.cog.current_persona == "pirate"
-        ctx.send.assert_awaited_once()
-
-    async def test_switch_to_missing_persona(self):
-        ctx = make_ctx()
-        await self.cog.switch_persona(ctx, "ghost")
-        assert "not found" in ctx.send.call_args[0][0].lower()
-        assert self.cog.current_persona is None
-
     async def test_list_personas_when_empty(self):
         ctx = make_ctx()
         await self.cog.list_personas(ctx)
@@ -343,18 +318,6 @@ class TestPersonaCommands:
         await self.cog.list_personas(ctx)
         msg = ctx.send.call_args[0][0]
         assert "pirate" in msg and "robot" in msg
-
-    async def test_current_persona_when_none_active(self):
-        ctx = make_ctx()
-        await self.cog.current_persona_cmd(ctx)
-        assert "No specific persona" in ctx.send.call_args[0][0]
-
-    async def test_current_persona_shows_active_name(self):
-        self.cog.personas["pirate"] = "arr"
-        self.cog.current_persona = "pirate"
-        ctx = make_ctx()
-        await self.cog.current_persona_cmd(ctx)
-        assert "pirate" in ctx.send.call_args[0][0]
 
 
 # ── Uma Musume gacha ──────────────────────────────────────────────────────────

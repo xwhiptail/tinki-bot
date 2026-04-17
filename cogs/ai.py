@@ -245,32 +245,6 @@ class AI(commands.Cog):
         bot_reply = await channel.send(f"{user.mention} {reply}")
         self.random_ai_message_ids.add(bot_reply.id)
 
-    @commands.command(name="randomai")
-    @commands.has_permissions(administrator=True)
-    async def randomai(self, ctx, mode: str = "status"):
-        mode = mode.lower()
-        if mode in ("on", "enable", "start"):
-            self.random_ai_enabled = True
-            await ctx.send("🔊 **Random AI posting enabled.** Tinki may speak at any time.")
-            await self.bot.change_presence(
-                status=discord.Status.do_not_disturb,
-                activity=discord.Game(name="Generating thoughts...")
-            )
-            thought = await self._generate_random_thought()
-            msg = await ctx.channel.send(thought)
-            self.random_ai_message_ids.add(msg.id)
-        elif mode in ("off", "disable", "stop"):
-            self.random_ai_enabled = False
-            await ctx.send("🔇 **Random AI posting disabled.** Tinki will stay silent unless invoked.")
-            await self.bot.change_presence(
-                status=discord.Status.online,
-                activity=discord.Game(name="Ready to help!")
-            )
-        else:
-            status = "ON" if self.random_ai_enabled else "OFF"
-            emoji = "🟢" if self.random_ai_enabled else "🔴"
-            await ctx.send(f"{emoji} **Random AI posting is currently {status}.**")
-
 
 def setup(bot):
     bot.add_cog(AI(bot))

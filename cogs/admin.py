@@ -142,7 +142,7 @@ class Admin(commands.Cog):
         tests = [
             "pb", "avg", "median", "all", "bowlinggraph", "bowlingdistgraph",
             "gif", "random", "github", "allemotes", "roulette", "cat", "dog", "dogbark",
-            "remindme", "listpersonas", "currentpersona",
+            "remindme", "listpersonas",
             "sussy", "sussygraph", "explode", "explodegraph", "grindcount", "grindgraph",
             "minecraftstatus", "minecraftserver", "uptime", "skyfactorystatus", "skyfactoryserver",
         ]

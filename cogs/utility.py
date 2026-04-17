@@ -195,10 +195,6 @@ class Utility(commands.Cog):
 `!dog` - Sends a random dog.
 `!dogbark` - Sends a random bark word in block letters.
 `!listpersonas` - lists available personas
-`!createpersona [name] [prompt]` - creates a persona with the given name with description
-`!switchpersona [name]` - switches to named persona
-`!currentpersona` - shows the current used persona
-`!deletepersona [name]` - deletes the named persona
 `!erasememory [number]` - deletes past X interactions saved in memory
 `!emote [name] [1-4]` - displays the top 5 emotes from 7tv API
 `!spinny @[user]` - grinding activated for @user
@@ -216,7 +212,6 @@ class Utility(commands.Cog):
 `!stopminecraft` - retired command; server hosting was removed
 `!minecraftstatus` - retired command; server hosting was removed
 `!minecraftserver` - retired command; server hosting was removed
-`!randomai on | off | status` - turns on random posting for Tinki
 `!testurls` - tests the url rewrites
 `!runtests` - unit tests for the commands
 `!restart` - restarts the bot (admin only)
