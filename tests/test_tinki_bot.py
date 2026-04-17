@@ -1058,12 +1058,14 @@ class TestEmoteBrowserHelpers:
 
         view = SevenTvEmoteBrowserView(self.cog, ctx, "sus", 2, session, emotes, True)
 
-        assert len(view.preview_buttons) == 5
+        assert len(view.preview_buttons) == 10
         assert view.preview_buttons[0].label == "1"
         assert view.preview_buttons[0].style == discord.ButtonStyle.primary
         assert view.preview_buttons[1].label == "2"
         assert view.preview_buttons[1].style == discord.ButtonStyle.secondary
         assert view.preview_buttons[2].disabled is True
+        assert view.preview_buttons[5].row == 1
+        assert view.preview_buttons[9].disabled is True
 
     async def test_7tv_picker_selection_updates_embed_preview(self):
         from cogs.emotes import SevenTvEmoteBrowserView

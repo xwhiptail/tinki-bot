@@ -18,7 +18,7 @@ EMOTE_SUGGESTION_DISMISS_EMOJI = "\u274c"
 EMOTE_BROWSER_MORE_EMOJI = "\U0001f4c4"
 EMOTE_BROWSER_CANCEL_EMOJI = "\u274c"
 EMOTE_BROWSER_COLOR = 0x55A7F7
-EMOTE_BROWSER_PAGE_SIZE = 5
+EMOTE_BROWSER_PAGE_SIZE = 10
 SEVENTV_GQL_ENDPOINT = "https://7tv.io/v3/gql"
 SEVENTV_SEARCH_QUERY = (
     "query SearchEmotes($query: String!, $page: Int, $sort: Sort, $limit: Int, $filter: EmoteSearchFilter) {\n"
@@ -66,7 +66,8 @@ class SevenTvPreviewButton(discord.ui.Button):
     def __init__(self, browser, index: int):
         self.browser = browser
         self.preview_index = index
-        super().__init__(label=str(index + 1), style=discord.ButtonStyle.secondary, row=0)
+        row = 0 if index < 5 else 1
+        super().__init__(label=str(index + 1), style=discord.ButtonStyle.secondary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         await self.browser.handle_selection(interaction, self.preview_index)
@@ -132,7 +133,7 @@ class SevenTvEmoteBrowserView(discord.ui.View):
                 button.label = "—"
                 button.style = discord.ButtonStyle.secondary
 
-    @discord.ui.button(label="Send", emoji="\u2705", style=discord.ButtonStyle.success, row=1)
+    @discord.ui.button(label="Send", emoji="\u2705", style=discord.ButtonStyle.success, row=2)
     async def send_selected(self, interaction: discord.Interaction, button: discord.ui.Button):
         chosen = self.emotes[self.selected_index]
         url = await self.cog._resolve_7tv_media_url(self.session, chosen, self.size, self.ext_cache)
@@ -140,7 +141,7 @@ class SevenTvEmoteBrowserView(discord.ui.View):
         await self.ctx.send(url)
         await self._finish()
 
-    @discord.ui.button(label="More", emoji=EMOTE_BROWSER_MORE_EMOJI, style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="More", emoji=EMOTE_BROWSER_MORE_EMOJI, style=discord.ButtonStyle.secondary, row=2)
     async def more(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             next_page = self.page + 1
@@ -170,7 +171,7 @@ class SevenTvEmoteBrowserView(discord.ui.View):
         except Exception as exc:
             await interaction.response.send_message(f"Search failed: {exc}", ephemeral=True)
 
-    @discord.ui.button(label="Cancel", emoji=EMOTE_BROWSER_CANCEL_EMOJI, style=discord.ButtonStyle.danger, row=1)
+    @discord.ui.button(label="Cancel", emoji=EMOTE_BROWSER_CANCEL_EMOJI, style=discord.ButtonStyle.danger, row=2)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         await self._finish(delete_command=True)
