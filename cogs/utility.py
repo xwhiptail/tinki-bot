@@ -1,4 +1,7 @@
 import random
+import subprocess
+from pathlib import Path
+from urllib.parse import urlparse
 
 import aiohttp
 import discord
@@ -17,6 +20,80 @@ BARK_VARIATIONS = [
 class Utility(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    def _repo_root(self):
+        return Path(__file__).resolve().parent.parent
+
+    def _github_repo_slug(self):
+        parsed = urlparse(GITHUB_REPO_URL)
+        path = parsed.path.strip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+        return path
+
+    def _local_changelog_entries(self, limit):
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "log",
+                    f"-n{limit}",
+                    "--pretty=format:%h|%s",
+                ],
+                cwd=self._repo_root(),
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+
+        entries = []
+        for line in result.stdout.splitlines():
+            if "|" not in line:
+                continue
+            commit_hash, subject = line.split("|", 1)
+            commit_hash = commit_hash.strip()
+            subject = subject.strip()
+            if commit_hash and subject:
+                entries.append((commit_hash, subject))
+        return entries
+
+    async def _github_changelog_entries(self, limit):
+        slug = self._github_repo_slug()
+        if not slug:
+            return []
+
+        url = f"https://api.github.com/repos/{slug}/commits?per_page={limit}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    return []
+                payload = await response.json()
+
+        entries = []
+        for item in payload:
+            commit_hash = (item.get("sha") or "")[:7]
+            subject = item.get("commit", {}).get("message", "").splitlines()[0].strip()
+            if commit_hash and subject:
+                entries.append((commit_hash, subject))
+        return entries
+
+    async def _get_changelog_entries(self, limit):
+        entries = self._local_changelog_entries(limit)
+        if entries:
+            return entries
+        try:
+            return await self._github_changelog_entries(limit)
+        except aiohttp.ClientError:
+            return []
+
+    def _render_changelog(self, entries):
+        lines = ["Recent changes:"]
+        for commit_hash, subject in entries:
+            lines.append(f"`{commit_hash}` - {subject}")
+        return "\n".join(lines)
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
@@ -163,6 +240,15 @@ class Utility(commands.Cog):
     async def github_repo(self, ctx):
         await ctx.send(f"Tinki-bot source: {GITHUB_REPO_URL}")
 
+    @commands.command(name='changelog')
+    async def changelog(self, ctx, count: int = 5):
+        limit = max(1, min(count, 10))
+        entries = await self._get_changelog_entries(limit)
+        if not entries:
+            await ctx.send("I couldn't read recent commits right now.")
+            return
+        await ctx.send(self._render_changelog(entries))
+
     @commands.command(name='commands')
     async def show_commands(self, ctx):
         part1 = """
@@ -184,6 +270,8 @@ class Utility(commands.Cog):
 `!remindme` - Lists upcoming reminders.
 `!deletereminder [ID]` - Deletes a reminder with the specified ID.
 `!github` - Links to the bot source repository.
+`!changelog [count]` - Shows recent commit summaries.
+`!awscost` - Shows AWS month-to-date and projected monthly cost (admin only).
         """
         part2 = """
 **Bot Commands List - Part 2**
@@ -217,6 +305,7 @@ class Utility(commands.Cog):
 `!runtests` - unit tests for the commands
 `!restart` - restarts the bot (admin only)
 `!deploy` - pulls latest from GitHub and restarts (admin only)
+`!awscost` - shows AWS month-to-date and projected monthly cost (admin only)
 
 **Uma Musume**
 `!gacha [1|10]` - simulate pulls (3% SSR, pity at 200)

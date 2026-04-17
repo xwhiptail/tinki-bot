@@ -13,6 +13,7 @@ TOKEN = os.getenv('DISCORD')
 GIPHY_API_KEY = os.getenv('GIPHY')
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-5.4')
 OPENAI_FAST_MODEL = os.getenv('OPENAI_FAST_MODEL', 'gpt-5.4-mini')
+AWS_COST_REGION = os.getenv('AWS_COST_REGION', 'us-east-1')
 GITHUB_REPO_URL = "https://github.com/xwhiptail/tinki-bot"
 
 # ── Trusted user IDs ─────────────────────────────────────────────────────────

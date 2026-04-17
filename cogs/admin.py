@@ -13,6 +13,7 @@ import discord
 from discord.ext import commands
 
 from config import CHANNEL_BOT_TEST, GITHUB_REPO_URL
+from utils.aws_costs import fetch_aws_cost_summary
 from utils.openai_helpers import fetch_openai_balance
 from utils.selftests import (
     run_bot_insight_selftests,
@@ -225,6 +226,7 @@ class Admin(commands.Cog):
 
             repo_root = Path(__file__).resolve().parent.parent
             current_commit = self._read_deployed_commit(repo_root)
+            await ctx.send(await fetch_aws_cost_summary())
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     self._github_commit_api_url(),
@@ -301,6 +303,11 @@ class Admin(commands.Cog):
             subprocess.Popen(["sudo", "systemctl", "restart", "tinki-bot"])
         except Exception as e:
             await ctx.send(f"Deploy failed: {e}")
+
+    @commands.command(name="awscost")
+    @commands.has_permissions(administrator=True)
+    async def aws_cost(self, ctx):
+        await ctx.send(await fetch_aws_cost_summary())
 
     @commands.command(name="runtests")
     @commands.has_permissions(administrator=True)

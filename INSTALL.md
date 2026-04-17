@@ -40,6 +40,7 @@ Optional:
 
 - `OPENAI_MODEL`
 - `OPENAI_FAST_MODEL`
+- `AWS_COST_REGION`
 - `TINKI_DATA_DIR`
 - `GITHUB_TOKEN` for local GitHub-authenticated tooling; not used by the bot runtime
 
@@ -74,6 +75,8 @@ cd i:\botserver\tinki-bot
 ```
 
 Before the first deploy, copy `deploy-ec2.local.ps1.example` to `deploy-ec2.local.ps1` and set your real EC2 host and SSH key path there, or set `TINKI_EC2_HOST` and `TINKI_EC2_KEY_PATH` in your local environment.
+
+If you want `!awscost` and deploy-time AWS cost reporting, the bot runtime also needs AWS credentials with Cost Explorer access.
 
 ## Production Rollback
 

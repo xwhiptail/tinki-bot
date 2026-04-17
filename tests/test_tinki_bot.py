@@ -32,6 +32,7 @@ from utils.calculator import maybe_calculate_reply
 from utils.bot_insight import maybe_bot_insight_reply
 from utils.letter_counter import maybe_count_letter_reply
 import config
+from utils.aws_costs import AWSCostSummary
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,11 @@ def make_ai_cog():
 def make_admin_cog():
     from cogs.admin import Admin
     return _wire_cog(Admin(MagicMock()))
+
+
+def make_utility_cog():
+    from cogs.utility import Utility
+    return _wire_cog(Utility(MagicMock()))
 
 
 # ── rewrite_social_urls ──────────────────────────────────────────────────────
@@ -415,6 +421,105 @@ class TestAdminStatusFormatting:
         line = self.cog._summary_line("Pytest suite", 10, 10, "passed")
         assert line.startswith("\u2705 ")
         assert "10/10 passed" in line
+
+
+class TestAWSCostSummary:
+    def test_as_message_formats_month_and_forecast(self):
+        summary = AWSCostSummary(
+            month_to_date="12.34",
+            forecast_total="18.90",
+            currency="USD",
+            period_label="Apr 2026",
+            forecast_label="Apr 30",
+        )
+
+        assert summary.as_message() == (
+            "AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30."
+        )
+
+
+class TestAdminAWSCost:
+    def setup_method(self):
+        self.cog = make_admin_cog()
+
+    async def test_awscost_command_sends_summary(self):
+        ctx = make_ctx()
+
+        with patch("cogs.admin.fetch_aws_cost_summary", new=AsyncMock(return_value="AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30.")):
+            await self.cog.aws_cost.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with(
+            "AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30."
+        )
+
+    async def test_deploy_reports_aws_cost_before_deploy_check(self):
+        ctx = make_ctx()
+        fake_session = MagicMock()
+        fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+        fake_session.__aexit__ = AsyncMock(return_value=None)
+        fake_resp = MagicMock()
+        fake_resp.__aenter__ = AsyncMock(return_value=fake_resp)
+        fake_resp.__aexit__ = AsyncMock(return_value=None)
+        fake_resp.raise_for_status = MagicMock()
+        fake_resp.json = AsyncMock(return_value={"sha": "abc1234", "commit": {"message": "Deploy test"}})
+        fake_session.get.return_value = fake_resp
+
+        with patch("cogs.admin.fetch_aws_cost_summary", new=AsyncMock(return_value="AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30.")), \
+             patch("aiohttp.ClientSession", return_value=fake_session), \
+             patch.object(self.cog, "_read_deployed_commit", return_value="abc1234"):
+            await self.cog.deploy_latest.callback(self.cog, ctx)
+
+        assert ctx.send.await_args_list[0].args[0] == (
+            "AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30."
+        )
+
+
+class TestUtilityChangelog:
+    def setup_method(self):
+        self.cog = make_utility_cog()
+
+    def test_local_changelog_entries_parse_git_output(self):
+        completed = SimpleNamespace(stdout="abc1234|Fix deploy path\ndef5678|Add changelog command")
+        with patch("cogs.utility.subprocess.run", return_value=completed) as run_mock:
+            entries = self.cog._local_changelog_entries(2)
+
+        assert entries == [
+            ("abc1234", "Fix deploy path"),
+            ("def5678", "Add changelog command"),
+        ]
+        run_mock.assert_called_once()
+
+    def test_render_changelog_lists_commit_subjects(self):
+        message = self.cog._render_changelog([
+            ("abc1234", "Fix deploy path"),
+            ("def5678", "Add changelog command"),
+        ])
+
+        assert message.startswith("Recent changes:")
+        assert "`abc1234` - Fix deploy path" in message
+        assert "`def5678` - Add changelog command" in message
+
+    async def test_changelog_command_uses_entries(self):
+        ctx = make_ctx()
+
+        with patch.object(self.cog, "_get_changelog_entries", new=AsyncMock(return_value=[
+            ("abc1234", "Fix deploy path"),
+            ("def5678", "Add changelog command"),
+        ])):
+            await self.cog.changelog.callback(self.cog, ctx, 2)
+
+        ctx.send.assert_awaited_once()
+        sent = ctx.send.call_args[0][0]
+        assert "Recent changes:" in sent
+        assert "abc1234" in sent
+
+    async def test_changelog_command_handles_empty_results(self):
+        ctx = make_ctx()
+
+        with patch.object(self.cog, "_get_changelog_entries", new=AsyncMock(return_value=[])):
+            await self.cog.changelog.callback(self.cog, ctx, 5)
+
+        ctx.send.assert_awaited_once_with("I couldn't read recent commits right now.")
 
 
 class TestScoreCommands:
