@@ -9,6 +9,7 @@ Run:
 """
 import sys
 import os
+from types import SimpleNamespace
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -858,6 +859,37 @@ def make_emotes_cog():
     bot.wait_for = AsyncMock()
     cog = Emotes(bot)
     return _wire_cog(cog)
+
+
+class TestEmoteBrowserHelpers:
+    def setup_method(self):
+        self.cog = make_emotes_cog()
+
+    def test_build_7tv_browser_embed_lists_multiple_results(self):
+        emotes = [
+            SimpleNamespace(name="Alpha", host_url="//cdn.7tv.app/emote/alpha"),
+            SimpleNamespace(name="Bravo", host_url="//cdn.7tv.app/emote/bravo"),
+        ]
+
+        embed = self.cog._build_7tv_browser_embed("smile", 3, emotes, 2, exact_match=False)
+
+        assert embed.title == "7TV results for `smile`"
+        assert "`1.` **Alpha**" in embed.description
+        assert "[preview](https://cdn.7tv.app/emote/alpha/2x.webp)" in embed.description
+        assert embed.footer.text == "Page 2 - fuzzy search - send size 3x"
+
+    def test_build_7tv_select_options_uses_page_entries(self):
+        emotes = [
+            SimpleNamespace(name="Alpha", host_url="//cdn.7tv.app/emote/alpha"),
+            SimpleNamespace(name="Bravo", host_url="//cdn.7tv.app/emote/bravo"),
+        ]
+
+        options = self.cog._build_7tv_select_options(emotes, 4)
+
+        assert len(options) == 2
+        assert options[0].label == "1. Alpha"
+        assert options[0].value == "0"
+        assert options[0].description == "Send at 4x"
 
 
 class TestSpinnyCommands:

@@ -12,6 +12,5 @@ pytz
 requests
 scipy
 seaborn
-seventv
 pytest
 pytest-asyncio

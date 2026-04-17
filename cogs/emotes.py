@@ -4,10 +4,10 @@ import json
 import logging
 import random
 import time
+from dataclasses import dataclass
 
 import aiohttp
 import discord
-import seventv
 from discord.ext import commands, menus
 from fuzzywuzzy import process
 from PIL import Image
@@ -15,18 +15,35 @@ from PIL import Image
 from config import GRINDING_STATE_FILE, STICKER_SPINNY, USER_WHIPTAIL_ID, user_matches
 
 EMOTE_SUGGESTION_DISMISS_EMOJI = "\u274c"
-EMOTE_BROWSER_PREV = "\u2b05\ufe0f"
-EMOTE_BROWSER_NEXT = "\u27a1\ufe0f"
-EMOTE_BROWSER_PICK = "\u2705"
-EMOTE_BROWSER_MORE = "\U0001f4c4"
-EMOTE_BROWSER_CANCEL = "\u274c"
-EMOTE_BROWSER_CONTROLS = [
-    EMOTE_BROWSER_PREV,
-    EMOTE_BROWSER_NEXT,
-    EMOTE_BROWSER_PICK,
-    EMOTE_BROWSER_MORE,
-    EMOTE_BROWSER_CANCEL,
-]
+EMOTE_BROWSER_MORE_EMOJI = "\U0001f4c4"
+EMOTE_BROWSER_CANCEL_EMOJI = "\u274c"
+EMOTE_BROWSER_COLOR = 0x55A7F7
+EMOTE_BROWSER_PAGE_SIZE = 5
+SEVENTV_GQL_ENDPOINT = "https://7tv.io/v3/gql"
+SEVENTV_SEARCH_QUERY = (
+    "query SearchEmotes($query: String!, $page: Int, $sort: Sort, $limit: Int, $filter: EmoteSearchFilter) {\n"
+    " emotes(query: $query, page: $page, sort: $sort, limit: $limit, filter: $filter) {\n"
+    "  items {\n"
+    "   id\n"
+    "   name\n"
+    "   owner {\n"
+    "    username\n"
+    "   }\n"
+    "   host {\n"
+    "    url\n"
+    "   }\n"
+    "  }\n"
+    " }\n"
+    "}"
+)
+
+
+@dataclass(slots=True)
+class SevenTvEmoteResult:
+    id: str
+    name: str
+    host_url: str
+    owner_username: str = ""
 
 
 async def _get_user_id_from_username(guild, username):
@@ -45,6 +62,126 @@ class EmotesMenu(menus.MenuPages):
     pass
 
 
+class SevenTvEmoteSelect(discord.ui.Select):
+    def __init__(self, browser):
+        self.browser = browser
+        super().__init__(
+            placeholder="Choose a 7TV emote to send",
+            min_values=1,
+            max_values=1,
+            options=browser.build_select_options(),
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.browser.handle_selection(interaction, int(self.values[0]))
+
+    def refresh(self):
+        self.options = self.browser.build_select_options()
+
+
+class SevenTvEmoteBrowserView(discord.ui.View):
+    def __init__(self, cog, ctx, emote_name: str, size: int, session, emotes, exact_match: bool):
+        super().__init__(timeout=60)
+        self.cog = cog
+        self.ctx = ctx
+        self.owner_id = ctx.author.id
+        self.emote_name = emote_name
+        self.size = size
+        self.session = session
+        self.emotes = list(emotes)
+        self.page = 1
+        self.exact_match = exact_match
+        self.ext_cache = {}
+        self.message = None
+        self._closed = False
+        self.select_menu = SevenTvEmoteSelect(self)
+        self.add_item(self.select_menu)
+
+    async def start(self):
+        self.message = await self.ctx.send(embed=self.build_embed(), view=self)
+
+    def build_embed(self):
+        return self.cog._build_7tv_browser_embed(
+            self.emote_name,
+            self.size,
+            self.emotes,
+            self.page,
+            self.exact_match,
+        )
+
+    def build_select_options(self):
+        return self.cog._build_7tv_select_options(self.emotes, self.size)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message("This emote picker belongs to someone else.", ephemeral=True)
+            return False
+        return True
+
+    async def handle_selection(self, interaction: discord.Interaction, index: int):
+        chosen = self.emotes[index]
+        url = await self.cog._resolve_7tv_media_url(self.session, chosen, self.size, self.ext_cache)
+        await interaction.response.defer()
+        await self.ctx.send(url)
+        await self._finish()
+
+    @discord.ui.button(label="More", emoji=EMOTE_BROWSER_MORE_EMOJI, style=discord.ButtonStyle.secondary)
+    async def more(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            next_page = self.page + 1
+            new_emotes = await self.cog._search_7tv_page(
+                self.session,
+                self.emote_name,
+                next_page,
+                exact_match=self.exact_match,
+            )
+            if new_emotes:
+                self.page = next_page
+                self.emotes = list(new_emotes)
+            else:
+                self.page = 1
+                first_page = await self.cog._search_7tv_page(
+                    self.session,
+                    self.emote_name,
+                    1,
+                    exact_match=self.exact_match,
+                )
+                if first_page:
+                    self.emotes = list(first_page)
+            self.select_menu.refresh()
+            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+        except Exception as exc:
+            await interaction.response.send_message(f"Search failed: {exc}", ephemeral=True)
+
+    @discord.ui.button(label="Cancel", emoji=EMOTE_BROWSER_CANCEL_EMOJI, style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        await self._finish(delete_command=True)
+
+    async def on_timeout(self):
+        await self._finish()
+
+    async def _finish(self, delete_command: bool = False):
+        if self._closed:
+            return
+        self._closed = True
+        self.stop()
+        try:
+            if self.message is not None:
+                await self.message.delete()
+        except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+            pass
+        if delete_command:
+            try:
+                await self.ctx.message.delete()
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException, AttributeError):
+                pass
+        await self._close_clients()
+
+    async def _close_clients(self):
+        await self.session.close()
+
+
 class Emotes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -60,6 +197,126 @@ class Emotes(commands.Cog):
     def _save_grinding_state(self):
         with open(GRINDING_STATE_FILE, 'w') as f:
             json.dump(self.sticker_users, f)
+
+    def _preview_7tv_url(self, emote: SevenTvEmoteResult) -> str:
+        return f"https:{emote.host_url}/2x.webp"
+
+    def _build_7tv_browser_embed(self, emote_name: str, size: int, emotes, page: int, exact_match: bool) -> discord.Embed:
+        match_mode = "exact" if exact_match else "fuzzy"
+        description = "\n".join(
+            f"`{index}.` **{emote.name}** - [preview]({self._preview_7tv_url(emote)})"
+            for index, emote in enumerate(emotes, start=1)
+        )
+        embed = discord.Embed(
+            title=f"7TV results for `{emote_name}`",
+            description=description or "No results found.",
+            color=EMOTE_BROWSER_COLOR,
+        )
+        if emotes:
+            embed.set_thumbnail(url=self._preview_7tv_url(emotes[0]))
+        embed.set_footer(text=f"Page {page} - {match_mode} search - send size {size}x")
+        return embed
+
+    def _build_7tv_select_options(self, emotes, size: int):
+        options = []
+        for index, emote in enumerate(emotes, start=1):
+            label = f"{index}. {emote.name}"
+            options.append(
+                discord.SelectOption(
+                    label=label[:100],
+                    value=str(index - 1),
+                    description=f"Send at {size}x"[:100],
+                )
+            )
+        return options
+
+    async def _search_7tv_page(
+        self,
+        session: aiohttp.ClientSession,
+        searchterm: str,
+        page: int,
+        *,
+        exact_match: bool,
+        limit: int = EMOTE_BROWSER_PAGE_SIZE,
+        max_retries: int = 3,
+        backoff: int = 1,
+    ):
+        payload = {
+            "operationName": "SearchEmotes",
+            "variables": {
+                "query": searchterm,
+                "limit": limit,
+                "page": page,
+                "sort": {
+                    "value": "popularity",
+                    "order": "DESCENDING",
+                },
+                "filter": {
+                    "category": "TOP",
+                    "exact_match": exact_match,
+                    "case_sensitive": False,
+                    "ignore_tags": False,
+                    "zero_width": False,
+                    "animated": False,
+                    "aspect_ratio": "",
+                },
+            },
+            "query": SEVENTV_SEARCH_QUERY,
+        }
+        headers = {"Content-Type": "application/json"}
+
+        for attempt in range(max_retries + 1):
+            try:
+                async with session.post(SEVENTV_GQL_ENDPOINT, json=payload, headers=headers) as response:
+                    response.raise_for_status()
+                    response_data = await response.json()
+                if response_data.get("errors"):
+                    raise RuntimeError(response_data["errors"][0].get("message", "unknown 7TV error"))
+                items = response_data.get("data", {}).get("emotes", {}).get("items", [])
+                return [
+                    SevenTvEmoteResult(
+                        id=item.get("id", ""),
+                        name=item.get("name", ""),
+                        owner_username=item.get("owner", {}).get("username", ""),
+                        host_url=item.get("host", {}).get("url", ""),
+                    )
+                    for item in items
+                    if item.get("host", {}).get("url")
+                ]
+            except Exception as exc:
+                retriable = any(
+                    marker in str(exc)
+                    for marker in ("429", "Rate Limit", "Server disconnected", "502", "503", "504")
+                )
+                if retriable and attempt < max_retries:
+                    await asyncio.sleep(backoff * (2 ** attempt))
+                    continue
+                raise
+
+    async def _detect_7tv_ext(self, session: aiohttp.ClientSession, emote: SevenTvEmoteResult, ext_cache: dict) -> str:
+        if emote.host_url in ext_cache:
+            return ext_cache[emote.host_url]
+        try:
+            async with session.get(self._preview_7tv_url(emote)) as resp:
+                if resp.status == 200:
+                    img = Image.open(io.BytesIO(await resp.read()))
+                    ext = "gif" if getattr(img, "is_animated", False) and img.n_frames > 1 else "png"
+                    ext_cache[emote.host_url] = ext
+                    return ext
+        except Exception:
+            pass
+        ext_cache[emote.host_url] = "png"
+        return "png"
+
+    async def _resolve_7tv_media_url(
+        self,
+        session: aiohttp.ClientSession,
+        emote: SevenTvEmoteResult,
+        size: int,
+        ext_cache: dict,
+    ) -> str:
+        ext = await self._detect_7tv_ext(session, emote, ext_cache)
+        return f"https:{emote.host_url}/{size}x.{ext}"
 
     @commands.command(name='spinny')
     async def spinny_activate(self, ctx, user: discord.Member):
@@ -158,19 +415,21 @@ class Emotes(commands.Cog):
             await message.channel.send(f'No emote found with the name "{emote_name}".')
             return
 
-        suggestion_msg = await message.channel.send("Did you mean...? (React with the correct emote or ❌ to dismiss)")
+        suggestion_msg = await message.channel.send(
+            f"Did you mean...? (React with the correct emote or {EMOTE_SUGGESTION_DISMISS_EMOJI} to dismiss)"
+        )
         for match, score in closest:
             match_emote = discord.utils.get(all_emotes, name=match)
             if match_emote:
                 await suggestion_msg.add_reaction(match_emote)
-        await suggestion_msg.add_reaction('❌')
+        await suggestion_msg.add_reaction(EMOTE_SUGGESTION_DISMISS_EMOJI)
 
         def check(reaction, user):
             return (
                 user == message.author
                 and reaction.message.id == suggestion_msg.id
                 and (str(reaction.emoji) in [str(discord.utils.get(all_emotes, name=m[0])) for m in closest]
-                     or str(reaction.emoji) == '❌')
+                     or str(reaction.emoji) == EMOTE_SUGGESTION_DISMISS_EMOJI)
             )
 
         try:
@@ -180,7 +439,7 @@ class Emotes(commands.Cog):
             await message.channel.send("Suggestion timeout. Please try the command again.")
             return
 
-        if str(reaction.emoji) == '❌':
+        if str(reaction.emoji) == EMOTE_SUGGESTION_DISMISS_EMOJI:
             await suggestion_msg.delete()
             await message.delete()
             await message.channel.send("None selected... cleaning up...", delete_after=5.0)
@@ -200,163 +459,35 @@ class Emotes(commands.Cog):
 
     @commands.command()
     async def emote(self, ctx, emote_name: str, size: int = 2):
-        """Browse 7TV emotes one at a time.
-        ⬅️➡️ flip through results · ✅ send at chosen size · 📄 next page · ❌ cancel
-        """
+        """Search 7TV and pick from a page of results."""
         if size not in [1, 2, 3, 4]:
             await ctx.send("Invalid size. Please choose a size between 1 and 4.")
             return
 
-        PREV, NEXT, PICK, MORE, CANCEL = '⬅️', '➡️', '✅', '📄', '❌'
-        CONTROLS = list(EMOTE_BROWSER_CONTROLS)
-        per_page    = 5
-        max_retries = 3
-        backoff     = 1
-        ext_cache   = {}   # host_url → 'gif'/'png', avoid re-fetching per navigation
+        session = aiohttp.ClientSession()
+        try:
+            exact_match = True
+            emotes = await self._search_7tv_page(session, emote_name, 1, exact_match=True)
+            if not emotes:
+                exact_match = False
+                emotes = await self._search_7tv_page(session, emote_name, 1, exact_match=False)
+            if not emotes:
+                await ctx.send(f"No 7TV emotes found for `{emote_name}`.")
+                return
 
-        async def detect_ext(session, emote):
-            if emote.host_url in ext_cache:
-                return ext_cache[emote.host_url]
-            try:
-                async with session.get(f"https:{emote.host_url}/2x.webp") as resp:
-                    if resp.status == 200:
-                        img = Image.open(io.BytesIO(await resp.read()))
-                        ext = 'gif' if getattr(img, "is_animated", False) and img.n_frames > 1 else 'png'
-                        ext_cache[emote.host_url] = ext
-                        return ext
-            except Exception:
-                pass
-            ext_cache[emote.host_url] = 'png'
-            return 'png'
-
-        async def prefetch(session, emotes_list):
-            """Fire off ext detection for the whole page concurrently."""
-            await asyncio.gather(*[detect_ext(session, e) for e in emotes_list],
-                                 return_exceptions=True)
-
-        async def search(stv, page, exact=True):
-            return await stv.emote_search(
-                emote_name, limit=per_page, page=page,
-                case_sensitive=False, exact_match=exact,
+            view = SevenTvEmoteBrowserView(
+                self,
+                ctx,
+                emote_name,
+                size,
+                session,
+                emotes,
+                exact_match,
             )
-
-        async def card_text(session, emotes_list, idx, page):
-            em = emotes_list[idx]
-            ext = await detect_ext(session, em)
-            total = len(emotes_list)
-            return (
-                f"https:{em.host_url}/2x.{ext}\n"
-                f"**{em.name}** · {idx + 1} of {total} · page {page}"
-            )
-
-        async with aiohttp.ClientSession() as session:
-            stv = seventv.seventv()
-            try:
-                page  = 1
-                retry = 0
-                emotes = []
-
-                # ── initial search ────────────────────────────────────────────
-                while not emotes:
-                    try:
-                        emotes = await search(stv, page, exact=True)
-                        if not emotes:
-                            # fuzzy fallback when exact match finds nothing
-                            emotes = await search(stv, page, exact=False)
-                        if not emotes:
-                            await ctx.send(f"No 7TV emotes found for `{emote_name}`.")
-                            return
-                    except Exception as e:
-                        err = str(e)
-                        if ("Rate Limit" in err or "Server disconnected" in err) and retry < max_retries:
-                            wait = backoff * (2 ** retry)
-                            await ctx.send(f"Retrying in {wait}s...", delete_after=wait)
-                            await asyncio.sleep(wait)
-                            retry += 1
-                        else:
-                            await ctx.send(f"Search failed: {e}")
-                            return
-
-                idx = 0
-                # pre-fetch ext for all results on this page in the background
-                asyncio.create_task(prefetch(session, emotes))
-
-                card = await ctx.send(await card_text(session, emotes, idx, page))
-                for emoji in CONTROLS:
-                    await card.add_reaction(emoji)
-
-                # ── interaction loop ──────────────────────────────────────────
-                while True:
-                    def check(reaction, user):
-                        return (
-                            user == ctx.author
-                            and reaction.message.id == card.id
-                            and str(reaction.emoji) in CONTROLS
-                        )
-
-                    try:
-                        reaction, _ = await self.bot.wait_for(
-                            'reaction_add', timeout=60.0, check=check
-                        )
-                    except asyncio.TimeoutError:
-                        try:
-                            await card.delete()
-                        except discord.NotFound:
-                            pass
-                        return
-
-                    emoji_str = str(reaction.emoji)
-
-                    # remove the user's reaction so they can react again without un-reacting
-                    try:
-                        await card.remove_reaction(emoji_str, ctx.author)
-                    except (discord.Forbidden, discord.HTTPException):
-                        pass
-
-                    if emoji_str == CANCEL:
-                        try:
-                            await card.delete()
-                            await ctx.message.delete()
-                        except (discord.Forbidden, discord.NotFound):
-                            pass
-                        return
-
-                    elif emoji_str == PICK:
-                        chosen = emotes[idx]
-                        ext = await detect_ext(session, chosen)
-                        await ctx.send(f"https:{chosen.host_url}/{size}x.{ext}")
-                        try:
-                            await card.delete()
-                        except discord.NotFound:
-                            pass
-                        return
-
-                    elif emoji_str == PREV:
-                        idx = (idx - 1) % len(emotes)
-                        await card.edit(content=await card_text(session, emotes, idx, page))
-
-                    elif emoji_str == NEXT:
-                        idx = (idx + 1) % len(emotes)
-                        await card.edit(content=await card_text(session, emotes, idx, page))
-
-                    elif emoji_str == MORE:
-                        try:
-                            new_emotes = await search(stv, page + 1, exact=True)
-                            if new_emotes:
-                                page += 1
-                                emotes = new_emotes
-                            else:
-                                # wrap back to page 1
-                                page = 1
-                                emotes = await search(stv, 1, exact=True) or emotes
-                        except Exception:
-                            pass  # stay on current page/results
-                        idx = 0
-                        asyncio.create_task(prefetch(session, emotes))
-                        await card.edit(content=await card_text(session, emotes, idx, page))
-
-            finally:
-                await stv.close()
+            await view.start()
+        except Exception as exc:
+            await session.close()
+            await ctx.send(f"Search failed: {exc}")
 
 
 async def setup(bot):
