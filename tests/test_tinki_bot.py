@@ -1089,6 +1089,26 @@ class TestEmoteBrowserHelpers:
         assert embed.image.url == "https://cdn.7tv.app/emote/bravo/2x.webp"
         assert "**Bravo** by `owner2`" in embed.fields[0].value
 
+    async def test_7tv_picker_timeout_deletes_command_message(self):
+        from cogs.emotes import SevenTvEmoteBrowserView
+
+        ctx = make_ctx()
+        ctx.message.delete = AsyncMock()
+        session = MagicMock()
+        session.close = AsyncMock()
+        emotes = [
+            SimpleNamespace(id="1", name="Alpha", host_url="//cdn.7tv.app/emote/alpha", owner_username="owner1"),
+        ]
+        view = SevenTvEmoteBrowserView(self.cog, ctx, "sus", 2, session, emotes, True)
+        view.message = MagicMock()
+        view.message.delete = AsyncMock()
+
+        await view.on_timeout()
+
+        view.message.delete.assert_awaited_once()
+        ctx.message.delete.assert_awaited_once()
+        session.close.assert_awaited_once()
+
     def test_dedupe_7tv_results_removes_exact_duplicates(self):
         emotes = [
             SimpleNamespace(id="1", name="sus", host_url="//cdn.7tv.app/emote/sus", owner_username="owner1"),

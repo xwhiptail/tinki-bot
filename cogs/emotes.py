@@ -176,7 +176,7 @@ class SevenTvEmoteBrowserView(discord.ui.View):
         await self._finish(delete_command=True)
 
     async def on_timeout(self):
-        await self._finish()
+        await self._finish(delete_command=True)
 
     async def _finish(self, delete_command: bool = False):
         if self._closed:
