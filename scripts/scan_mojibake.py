@@ -7,10 +7,11 @@ Exits 0 if clean, 1 if mojibake found.
 import os
 import sys
 from pathlib import Path
+from typing import List, Tuple
 
 # Mojibake patterns: each (bad_sequence, correct_char_description)
 # Written as Unicode escapes so the file itself never contains the bad bytes.
-MOJIBAKE_PATTERNS: list[tuple[str, str]] = [
+MOJIBAKE_PATTERNS: List[Tuple[str, str]] = [
     ("\u00e2\u0080\u0099", "right single quote \u2019"),
     ("\u00e2\u0080\u009c", "left double quote \u201c"),
     ("\u00e2\u0080\u009d", "right double quote \u201d"),
