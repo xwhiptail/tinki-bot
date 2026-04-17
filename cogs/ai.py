@@ -1,11 +1,24 @@
 import asyncio
+import json
 import random
-from typing import Set
+from pathlib import Path
+from typing import List, Set
 
 import discord
 from discord.ext import commands
 
-from config import GREMLIN_SYSTEM_STYLE, OPENAI_MODEL
+from config import AI_MEMORY_FILE, GREMLIN_SYSTEM_STYLE, OPENAI_MODEL
+from utils.ai_brain import (
+    build_memory_context,
+    build_system_prompt,
+    classify_intent,
+    extract_keywords,
+    load_repo_documents,
+    retrieve_repo_context,
+    score_overlap,
+    update_memory_state,
+    validate_grounded_reply,
+)
 from utils.bot_insight import maybe_bot_insight_reply
 from utils.calculator import maybe_calculate_reply
 from utils.letter_counter import maybe_count_letter_reply
@@ -18,23 +31,86 @@ class AI(commands.Cog):
         self.random_ai_enabled = False
         self.random_ai_message_ids: Set[int] = set()
         self._ai_task_started = False
+        self.memory_file = Path(AI_MEMORY_FILE)
+        self.ai_memory = self._load_ai_memory()
+        self.repo_documents = load_repo_documents(Path(__file__).resolve().parent.parent)
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        if not self._ai_task_started:
-            self._ai_task_started = True
-            self.bot.loop.create_task(self._random_ai_post_task())
+    def _load_ai_memory(self):
+        try:
+            with self.memory_file.open('r', encoding='utf-8') as handle:
+                loaded = json.load(handle)
+                return {
+                    "users": loaded.get("users", {}),
+                    "guilds": loaded.get("guilds", {}),
+                }
+        except FileNotFoundError:
+            return {"users": {}, "guilds": {}}
+        except json.JSONDecodeError:
+            return {"users": {}, "guilds": {}}
 
-    async def _random_ai_post_task(self):
-        await self.bot.wait_until_ready()
-        channel = discord.utils.get(self.bot.get_all_channels(), name="wat-doggo-only")
-        while not self.bot.is_closed():
-            wait_minutes = random.randint(60, 180)
-            await asyncio.sleep(wait_minutes * 60)
-            if self.random_ai_enabled and channel:
-                thought = await self._generate_random_thought()
-                msg = await channel.send(thought)
-                self.random_ai_message_ids.add(msg.id)
+    def _save_ai_memory(self):
+        with self.memory_file.open('w', encoding='utf-8') as handle:
+            json.dump(self.ai_memory, handle, ensure_ascii=False, indent=2)
+
+    def _persona_state(self):
+        personas_cog = self.bot.cogs.get('Personas')
+        current_persona = personas_cog.current_persona if personas_cog else None
+        persona_description = personas_cog.personas.get(current_persona, "") if personas_cog else ""
+        persona_key = current_persona or 'default'
+        return personas_cog, persona_key, persona_description
+
+    def _conversation_history(self, personas_cog, user_id: str, persona_key: str):
+        if not personas_cog:
+            return []
+        user_convos = personas_cog.conversations.setdefault(user_id, {})
+        return user_convos.setdefault(persona_key, [])
+
+    def _update_conversation_history(self, personas_cog, user_id: str, persona_key: str, user_text: str, bot_text: str):
+        if not personas_cog:
+            return
+        user_convos = personas_cog.conversations.setdefault(user_id, {})
+        history = user_convos.setdefault(persona_key, [])
+        history.append({"role": "user", "content": user_text})
+        history.append({"role": "assistant", "content": bot_text})
+        user_convos[persona_key] = history[-20:]
+        personas_cog.save_conversations()
+
+    def _relevant_history(self, history, query: str, limit: int = 6) -> List[str]:
+        ranked = []
+        for index, entry in enumerate(history):
+            content = str(entry.get("content", ""))
+            score = score_overlap(query, content)
+            ranked.append((score, index, content))
+        ranked.sort(key=lambda item: (-item[0], -item[1]))
+        chosen = [content for score, _, content in ranked[:limit] if score > 0]
+        if chosen:
+            return list(reversed(chosen))
+        fallback = [str(entry.get("content", "")) for entry in history[-limit:]]
+        return [item for item in fallback if item]
+
+    def _command_context(self, query: str) -> List[str]:
+        commands_available = sorted(f"!{command.name}" for command in self.bot.commands if command.enabled)
+        lowered = query.lower()
+        if "what commands" in lowered or "!commands" in lowered or "what can you do" in lowered:
+            return ["Known commands: " + ", ".join(commands_available)]
+
+        keywords = extract_keywords(query)
+        matches = [
+            command for command in commands_available
+            if any(keyword in command.lower() for keyword in keywords)
+        ]
+        if matches:
+            return ["Commands that match the question: " + ", ".join(matches[:12])]
+        return []
+
+    def _fallback_grounded_reply(self, intent: str, repo_context: List[str]) -> str:
+        if repo_context:
+            first_block = repo_context[0].splitlines()
+            summary = " ".join(first_block[:3]).strip()
+            return summary[:350]
+        if intent in {"command_help", "bot_repo", "question_answer"}:
+            return "I do not have enough grounded repo context for that one. Use !commands or !github if you want the source of truth."
+        return "I do not have a solid answer for that one right now."
 
     async def _generate_random_thought(self) -> str:
         client = get_openai_client()
@@ -101,8 +177,8 @@ class AI(commands.Cog):
                     "role": "user",
                     "content": (
                         f'Your original message was:\n"{original_text}"\n\n'
-                        f"The user '{user.display_name}' replied with:\n\"{user_text}\"\n\n"
-                        f"Write a short, playful roast/snarky answer."
+                        f'The user "{user.display_name}" replied with:\n"{user_text}"\n\n'
+                        "Write a short, playful roast/snarky answer."
                     ),
                 },
             ],
@@ -110,6 +186,159 @@ class AI(commands.Cog):
             temperature=1.1,
         )
         return response.choices[0].message.content.strip()
+
+    async def _generate_grounded_reply(
+        self,
+        text: str,
+        intent: str,
+        persona_description: str,
+        memory_context,
+        history_context: List[str],
+        repo_context: List[str],
+    ) -> str:
+        client = get_openai_client()
+        system_prompt = build_system_prompt(
+            GREMLIN_SYSTEM_STYLE,
+            persona_description,
+            intent,
+            memory_context,
+            repo_context,
+        )
+        user_prompt = (
+            f"User message:\n{text}\n\n"
+            f"Recent relevant history:\n{chr(10).join(history_context) if history_context else '(none)'}\n\n"
+            "Instructions:\n"
+            "- Answer in 1-3 short sentences.\n"
+            "- If repo or command context is provided, only use that factual context.\n"
+            "- If the context is insufficient, say so briefly instead of guessing.\n"
+        )
+        completion = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        reply = completion.choices[0].message.content.strip() if completion.choices else ""
+        valid, reason = validate_grounded_reply(
+            reply,
+            [command.name for command in self.bot.commands],
+            intent,
+            repo_context,
+        )
+        if valid:
+            return reply
+
+        if repo_context:
+            correction = client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": (
+                            user_prompt +
+                            f"\nPrevious draft failed validation: {reason}.\n"
+                            "Rewrite it so it only uses grounded repo facts and known commands."
+                        ),
+                    },
+                ],
+            )
+            corrected = correction.choices[0].message.content.strip() if correction.choices else ""
+            valid, _ = validate_grounded_reply(
+                corrected,
+                [command.name for command in self.bot.commands],
+                intent,
+                repo_context,
+            )
+            if valid:
+                return corrected
+
+        return self._fallback_grounded_reply(intent, repo_context)
+
+    async def _send_reply_chunks(self, channel, mention: str, text: str):
+        limit = 2000
+        max_chunk = limit - len(mention) - 30
+        if len(text) <= limit:
+            await channel.send(f'{mention}{text}')
+            return
+
+        chunks = [text[i:i + max_chunk] for i in range(0, len(text), max_chunk)]
+        for index, chunk in enumerate(chunks):
+            suffix = f" (Part {index + 1} of {len(chunks)})" if len(chunks) > 1 else ""
+            await channel.send(f'{mention}{chunk}{suffix}')
+            await asyncio.sleep(1)
+
+    async def _handle_mention(self, message, text: str):
+        personas_cog, persona_key, persona_description = self._persona_state()
+        user_id = str(message.author.id)
+        guild_id = str(message.guild.id) if message.guild else "dm"
+        history = self._conversation_history(personas_cog, user_id, persona_key)
+        intent = classify_intent(text)
+
+        deterministic_fact = maybe_count_letter_reply(text)
+        if deterministic_fact:
+            reply = await gpt_wrap_fact(deterministic_fact, text, persona_description)
+            await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
+            self._update_conversation_history(personas_cog, user_id, persona_key, text, reply)
+            self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
+            self._save_ai_memory()
+            return
+
+        deterministic_fact = maybe_calculate_reply(text)
+        if deterministic_fact:
+            reply = await gpt_wrap_fact(deterministic_fact, text, persona_description)
+            await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
+            self._update_conversation_history(personas_cog, user_id, persona_key, text, reply)
+            self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
+            self._save_ai_memory()
+            return
+
+        deterministic_fact = maybe_bot_insight_reply(text)
+        if deterministic_fact:
+            reply = await gpt_wrap_fact(deterministic_fact, text, persona_description)
+            await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
+            self._update_conversation_history(personas_cog, user_id, persona_key, text, reply)
+            self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
+            self._save_ai_memory()
+            return
+
+        memory_context = build_memory_context(self.ai_memory, user_id, guild_id, text)
+        history_context = self._relevant_history(history, text)
+        repo_context = []
+        if intent in {"command_help", "bot_repo", "question_answer"}:
+            repo_context = self._command_context(text) + retrieve_repo_context(text, self.repo_documents)
+
+        reply = await self._generate_grounded_reply(
+            text,
+            intent,
+            persona_description,
+            memory_context,
+            history_context,
+            repo_context,
+        )
+        await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
+
+        self._update_conversation_history(personas_cog, user_id, persona_key, text, reply)
+        self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
+        self._save_ai_memory()
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        if not self._ai_task_started:
+            self._ai_task_started = True
+            self.bot.loop.create_task(self._random_ai_post_task())
+
+    async def _random_ai_post_task(self):
+        await self.bot.wait_until_ready()
+        channel = discord.utils.get(self.bot.get_all_channels(), name="wat-doggo-only")
+        while not self.bot.is_closed():
+            wait_minutes = random.randint(60, 180)
+            await asyncio.sleep(wait_minutes * 60)
+            if self.random_ai_enabled and channel:
+                thought = await self._generate_random_thought()
+                msg = await channel.send(thought)
+                self.random_ai_message_ids.add(msg.id)
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -140,90 +369,10 @@ class AI(commands.Cog):
             )
             if not text:
                 return
-
-            personas_cog = self.bot.cogs.get('Personas')
-            current_persona = personas_cog.current_persona if personas_cog else None
-            system_prompt = personas_cog.personas.get(current_persona, []) if personas_cog else []
-            user_id = str(message.author.id)
-            persona_key = current_persona or 'default'
-
-            user_convos = personas_cog.conversations.setdefault(user_id, {}) if personas_cog else {}
-            persona_history = user_convos.setdefault(persona_key, [])
-            history = " ".join(m["content"] for m in persona_history)
-
             try:
-                letter_fact = maybe_count_letter_reply(text)
-                if letter_fact:
-                    reply = await gpt_wrap_fact(letter_fact, text, system_prompt)
-                    await message.channel.send(f'{message.author.mention} {reply}')
-                    if personas_cog:
-                        persona_history.append({"role": "user", "content": text})
-                        persona_history.append({"role": "assistant", "content": reply})
-                        user_convos[persona_key] = persona_history[-20:]
-                        personas_cog.save_conversations()
-                    return
-
-                insight_fact = maybe_bot_insight_reply(text)
-                if insight_fact:
-                    reply = await gpt_wrap_fact(insight_fact, text, system_prompt)
-                    await message.channel.send(f'{message.author.mention} {reply}')
-                    if personas_cog:
-                        persona_history.append({"role": "user", "content": text})
-                        persona_history.append({"role": "assistant", "content": reply})
-                        user_convos[persona_key] = persona_history[-20:]
-                        personas_cog.save_conversations()
-                    return
-
-                calc_fact = maybe_calculate_reply(text)
-                if calc_fact:
-                    reply = await gpt_wrap_fact(calc_fact, text, system_prompt)
-                    await message.channel.send(f'{message.author.mention} {reply}')
-                    if personas_cog:
-                        persona_history.append({"role": "user", "content": text})
-                        persona_history.append({"role": "assistant", "content": reply})
-                        user_convos[persona_key] = persona_history[-20:]
-                        personas_cog.save_conversations()
-                    return
-
-                client = get_openai_client()
-                combined_system = (
-                    GREMLIN_SYSTEM_STYLE + " "
-                    f"Your name is @Tinki-bot. "
-                    f"Use this persona description as extra flavor: {system_prompt} "
-                    f"Use the past history only as loose context: {history}"
-                )
-                completion = client.chat.completions.create(
-                    model=OPENAI_MODEL,
-                    messages=[
-                        {"role": "system", "content": combined_system},
-                        {"role": "user", "content": text},
-                    ],
-                )
-                bot_response = completion.choices[0].message.content if completion.choices else "No response generated."
-                if not bot_response.strip():
-                    await message.channel.send(f'{message.author.mention} I am unable to generate a response at the moment.')
-                    return
-
-                mention = f'{message.author.mention} '
-                limit = 2000
-                max_chunk = limit - len(mention) - 30
-                if len(bot_response) > limit:
-                    chunks = [bot_response[i:i + max_chunk] for i in range(0, len(bot_response), max_chunk)]
-                    for i, chunk in enumerate(chunks):
-                        part = f" (Part {i + 1} of {len(chunks)})" if len(chunks) > 1 else ""
-                        await message.channel.send(f'{mention}{chunk}{part}')
-                        await asyncio.sleep(1)
-                else:
-                    await message.channel.send(f'{mention}{bot_response}')
-
-                if personas_cog:
-                    persona_history.append({"role": "user", "content": text})
-                    persona_history.append({"role": "assistant", "content": bot_response})
-                    user_convos[persona_key] = persona_history[-20:]
-                    personas_cog.save_conversations()
-
-            except Exception as e:
-                await message.channel.send(f'{message.author.mention} Sorry, I encountered an issue: {e}')
+                await self._handle_mention(message, text)
+            except Exception as error:
+                await message.channel.send(f'{message.author.mention} Sorry, I encountered an issue: {error}')
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):

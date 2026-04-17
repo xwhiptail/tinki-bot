@@ -17,6 +17,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from utils.url_rewriter import rewrite_social_urls
+from utils.ai_brain import (
+    build_memory_context,
+    build_system_prompt,
+    classify_intent,
+    extract_user_facts,
+    retrieve_repo_context,
+    update_memory_state,
+    validate_grounded_reply,
+)
 from utils.calculator import maybe_calculate_reply
 from utils.bot_insight import maybe_bot_insight_reply
 from utils.letter_counter import maybe_count_letter_reply
@@ -251,6 +260,56 @@ class TestMaybeBotInsightReply:
 
     def test_unrelated_message_returns_none(self):
         assert maybe_bot_insight_reply("tell me a joke") is None
+
+
+class TestAIBrain:
+    def test_classify_intent_detects_command_help(self):
+        assert classify_intent("what commands do you have") == "command_help"
+
+    def test_classify_intent_detects_repo_question(self):
+        assert classify_intent("how are you deployed on ec2") == "bot_repo"
+
+    def test_classify_intent_detects_general_question(self):
+        assert classify_intent("why is gold ship so cursed?") == "question_answer"
+
+    def test_extract_user_facts_finds_simple_profile_facts(self):
+        facts = extract_user_facts("my name is Matt and I like WoW")
+        assert "Matt" in facts[0]
+        assert any("WoW" in fact for fact in facts)
+
+    def test_update_memory_state_stores_user_facts_and_topics(self):
+        state = update_memory_state({"users": {}, "guilds": {}}, "123", "456", "my name is Matt and I like raiding")
+        memory = build_memory_context(state, "123", "456", "what do I like")
+        assert any("Matt" in fact for fact in memory["facts"])
+        assert "raiding" in memory["topics"]
+
+    def test_retrieve_repo_context_finds_matching_doc_chunks(self):
+        docs = {"README.md": "Deploy with deploy-ec2.ps1\nUse !commands for help"}
+        context = retrieve_repo_context("how do you deploy", docs)
+        assert context
+        assert "deploy-ec2.ps1" in context[0]
+
+    def test_validate_grounded_reply_rejects_unknown_commands(self):
+        valid, reason = validate_grounded_reply(
+            "Use !fakecommand and !commands.",
+            {"commands", "github"},
+            "command_help",
+            ["[README]\n!commands"],
+        )
+        assert valid is False
+        assert "!fakecommand" in reason
+
+    def test_build_system_prompt_includes_memory_and_grounding(self):
+        prompt = build_system_prompt(
+            "base style",
+            "cute but mean",
+            "command_help",
+            {"facts": ["likes WoW"], "topics": ["deploy"], "preferences": ["keep replies short"]},
+            ["[README]\nUse !commands"],
+        )
+        assert "cute but mean" in prompt
+        assert "likes WoW" in prompt
+        assert "Use !commands" in prompt
 
 
 # ── score commands ────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ GITHUB_REPO_URL = "https://github.com/xwhiptail/tinki-bot"
 DATABASE_FILE = str(DATA_DIR / 'reminders.db')
 CONVERSATION_FILE = str(DATA_DIR / 'conversations.json')
 PERSONA_FILE = str(DATA_DIR / 'personas.json')
+AI_MEMORY_FILE = str(DATA_DIR / 'ai_memory.json')
 SCORES_FILE = str(DATA_DIR / 'scores.json')
 SUS_FILE = str(DATA_DIR / 'sus_and_sticker_usage.json')
 EXPLODE_FILE = str(DATA_DIR / 'explode.json')
