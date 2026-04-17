@@ -96,6 +96,15 @@ pytest
 
 Startup diagnostics in `cogs/admin.py` also run `pytest -q` and post the result to `#bot-test` with the other startup self-tests. `pytest.ini` disables the cache provider so Windows cache-path noise does not pollute deploy or startup output.
 
+## Encoding And Mojibake
+
+- Treat mojibake as a regression. Broken text like `â€”`, `â†’`, `ðŸ`, or `âœ¨` means bytes were decoded or saved with the wrong encoding.
+- Preserve UTF-8 when editing files with user-facing strings. Do not re-save source or docs in a way that corrupts existing text.
+- When changing bot replies, embeds, labels, command help text, or docs, scan the edited file for garbled byte-sequence artifacts before finishing.
+- Prefer plain ASCII in source strings unless a real emoji or non-ASCII character is intentional. If non-ASCII text is intentional, keep it exact.
+- If a change touches user-facing text behavior, add or update a test in `tests/test_tinki_bot.py` that asserts the exact expected final string, so mojibake fails the test instead of slipping through on a loose substring match.
+- If a file already contains mojibake, fix it as part of the same change rather than preserving the broken text.
+
 ## Operational Rules
 
 - Do not commit real secrets to the repo.

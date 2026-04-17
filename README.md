@@ -48,6 +48,7 @@ pip install -r requirements.txt
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` optional, defaults to `gpt-5.4`
 - `TINKI_DATA_DIR` optional, defaults to `./data`
+- `GITHUB_TOKEN` optional local tooling fallback for GitHub access; not used by the bot runtime
 
 4. Run the bot:
 
@@ -167,6 +168,8 @@ That file currently provides:
 Do not store real secrets in the repo. The repo only contains the template:
 
 - `.env.example`
+
+If you use local CLI tooling that needs GitHub auth outside normal Git credential flows, store the token in a local environment variable such as `GITHUB_TOKEN` instead of committing it to repo files.
 
 Live runtime data on EC2 is stored in:
 

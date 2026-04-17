@@ -30,6 +30,16 @@ def make_ctx():
     return ctx
 
 
+def make_message(content):
+    message = MagicMock()
+    message.content = content
+    message.author = MagicMock()
+    message.author.bot = False
+    message.channel = MagicMock()
+    message.channel.send = AsyncMock()
+    return message
+
+
 def _wire_cog(cog):
     """Attach the cog instance to all its Command objects so direct calls work."""
     for cmd in cog.get_commands():
@@ -481,3 +491,98 @@ class TestUmaGifSelection:
     def test_gif_match_accepts_curren_chan_alias(self):
         item = {"title": "Karen Chan Uma Musume", "slug": "karen-chan-uma-musume", "username": ""}
         assert self.cog._gif_matches_horse(item, "Curren Chan") is True
+
+
+class TestUmaMediaAndTriggers:
+    def setup_method(self):
+        self.cog = make_uma_cog()
+
+    def test_every_ssr_has_media_coverage_path(self):
+        for name in config.UMA_SSR:
+            has_explicit_gif = name in config.UMA_CHARACTER_GIF_URLS
+            has_explicit_image = name in config.UMA_CHARACTER_IMAGE_URLS
+            has_profile_slug = name in config.UMA_PROFILE_SLUGS
+            assert has_explicit_gif or has_explicit_image or has_profile_slug, name
+
+    def test_explicit_media_overrides_only_reference_known_ssrs(self):
+        ssr_names = set(config.UMA_SSR)
+        assert set(config.UMA_CHARACTER_GIF_URLS).issubset(ssr_names)
+        assert set(config.UMA_CHARACTER_IMAGE_URLS).issubset(ssr_names)
+
+    async def test_gacha_deletes_non_ssr_results_after_timeout(self):
+        ctx = make_ctx()
+        ctx.author.id = 123
+        ctx.author.display_name = "Tester"
+
+        with patch.object(self.cog, "load_pity", return_value={}), \
+             patch.object(self.cog, "save_pity"), \
+             patch.object(self.cog, "_single_pull", return_value=("R", config.UMA_R[0], 1)):
+            await self.cog.uma_gacha.callback(self.cog, ctx, 1)
+
+        assert ctx.send.await_count == 1
+        assert ctx.send.call_args.kwargs["delete_after"] == config.UMA_NON_SSR_DELETE_AFTER
+
+    async def test_gacha_sends_ssr_media_for_ssr_hits(self):
+        ctx = make_ctx()
+        ctx.author.id = 123
+        ctx.author.display_name = "Tester"
+
+        with patch.object(self.cog, "load_pity", return_value={}), \
+             patch.object(self.cog, "save_pity"), \
+             patch.object(self.cog, "_single_pull", return_value=("SSR", "Special Week", 0)), \
+             patch.object(self.cog, "_send_character_media", new=AsyncMock()) as media_mock:
+            await self.cog.uma_gacha.callback(self.cog, ctx, 1)
+
+        assert ctx.send.call_args.kwargs["delete_after"] is None
+        media_mock.assert_awaited_once_with(ctx, "Special Week")
+
+    def test_extracts_meta_image_url_from_og_image(self):
+        image_url = self.cog._extract_meta_image_url(
+            '<meta property="og:image" content="https://example.com/horse.png">'
+        )
+        assert image_url == "https://example.com/horse.png"
+
+    async def test_character_media_prefers_explicit_gif_override(self):
+        destination = MagicMock()
+        destination.send = AsyncMock()
+
+        with patch.object(self.cog, "_gif", new=AsyncMock()) as gif_mock, \
+             patch.object(self.cog, "_character_image_url", new=AsyncMock()) as image_mock:
+            await self.cog._send_character_media(destination, config.UMA_67_TRIGGER_NAME)
+
+        destination.send.assert_awaited_once_with(
+            config.UMA_CHARACTER_GIF_URLS[config.UMA_67_TRIGGER_NAME]
+        )
+        gif_mock.assert_not_awaited()
+        image_mock.assert_not_awaited()
+
+    async def test_character_media_uses_explicit_image_override(self):
+        destination = MagicMock()
+        destination.send = AsyncMock()
+
+        with patch.object(self.cog, "_gif", new=AsyncMock(return_value=None)) as gif_mock, \
+             patch.object(self.cog, "_character_image_url", new=AsyncMock()) as image_mock:
+            await self.cog._send_character_media(destination, "Manhattan Cafe")
+
+        destination.send.assert_awaited_once()
+        embed = destination.send.call_args.kwargs["embed"]
+        assert embed.title == "Manhattan Cafe"
+        assert embed.image.url == config.UMA_CHARACTER_IMAGE_URLS["Manhattan Cafe"]
+        gif_mock.assert_not_awaited()
+        image_mock.assert_not_awaited()
+
+    async def test_67_trigger_posts_curren_chan_media(self):
+        message = make_message("67!!!")
+
+        with patch.object(self.cog, "_send_character_media", new=AsyncMock()) as media_mock:
+            await self.cog.on_message(message)
+
+        media_mock.assert_awaited_once_with(message.channel, config.UMA_67_TRIGGER_NAME)
+
+    async def test_67_trigger_ignores_other_numbers(self):
+        message = make_message("670")
+
+        with patch.object(self.cog, "_send_character_media", new=AsyncMock()) as media_mock:
+            await self.cog.on_message(message)
+
+        media_mock.assert_not_awaited()

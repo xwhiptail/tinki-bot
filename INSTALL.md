@@ -40,6 +40,7 @@ Optional:
 
 - `OPENAI_MODEL`
 - `TINKI_DATA_DIR`
+- `GITHUB_TOKEN` for local GitHub-authenticated tooling; not used by the bot runtime
 
 5. Run the bot.
 

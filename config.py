@@ -39,6 +39,7 @@ GREMLIN_SYSTEM_STYLE = (
 UMA_SSR_RATE = 0.03
 UMA_SR_RATE = 0.1875
 UMA_PITY_CAP = 200
+UMA_NON_SSR_DELETE_AFTER = 30
 
 UMA_SSR = [
     "Special Week", "Silence Suzuka", "Tokai Teio", "Mejiro McQueen",
@@ -59,6 +60,46 @@ UMA_R = [
     "Mejiro Dober", "Daiichi Ruby", "Mejiro Ardan", "Matikanefukukitaru",
     "Shinko Windy", "Marvelous Sunday", "Biko Pegasus", "Yamanin Zephyr",
 ]
+
+UMA_PROFILE_BASE_URL = "https://gametora.com/umamusume/characters"
+UMA_PROFILE_SLUGS = {
+    "Special Week": "special-week",
+    "Silence Suzuka": "silence-suzuka",
+    "Tokai Teio": "tokai-teio",
+    "Mejiro McQueen": "mejiro-mcqueen",
+    "Rice Shower": "rice-shower",
+    "Gold Ship": "gold-ship",
+    "Oguri Cap": "oguri-cap",
+    "Vodka": "vodka",
+    "Daiwa Scarlet": "daiwa-scarlet",
+    "Seiun Sky": "seiun-sky",
+    "El Condor Pasa": "el-condor-pasa",
+    "Grass Wonder": "grass-wonder",
+    "Agnes Tachyon": "agnes-tachyon",
+    "Symboli Rudolf": "symboli-rudolf",
+    "Narita Brian": "narita-brian",
+    "T.M. Opera O": "tm-opera-o",
+    "Manhattan Cafe": "manhattan-cafe",
+    "Kitasan Black": "kitasan-black",
+    "Satono Diamond": "satono-diamond",
+    "Mihono Bourbon": "mihono-bourbon",
+    "Biwa Hayahide": "biwa-hayahide",
+    "Maruzensky": "maruzensky",
+    "Mayano Top Gun": "mayano-top-gun",
+    "Fine Motion": "fine-motion",
+    "Hokko Tarumae": "hokko-tarumae",
+    "Smart Falcon": "smart-falcon",
+    "Sakura Bakushin O": "sakura-bakushin-o",
+    "Curren Chan": "curren-chan",
+    "Twin Turbo": "twin-turbo",
+}
+UMA_CHARACTER_GIF_URLS = {
+    "Curren Chan": "https://tenor.com/view/daitaku-helios-umamusume-uma-musume-h%C3%A9lios-67-umamusume-67-gif-1976190916739538027",
+}
+UMA_CHARACTER_IMAGE_URLS = {
+    "Manhattan Cafe": "https://media.gametora.com/umamusume/characters/profile/1025.png",
+}
+UMA_67_TRIGGER_NAME = "Curren Chan"
 
 SCORE_PATTERN = re.compile(r'^(?:[6-9][0-9]|1[0-9]{2}|200)$')
 
