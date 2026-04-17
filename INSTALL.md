@@ -101,6 +101,25 @@ On macOS/Linux, use the shell wrappers:
 ./scripts/check-remote-awscost.sh
 ```
 
+## Secret Scanning
+
+This repo includes a lightweight secret scanner for both local commits and GitHub pushes.
+
+1. Enable the local hook path once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+2. Run the scanner manually when needed:
+
+```bash
+python3 scripts/scan_secrets.py
+python3 scripts/scan_secrets.py --staged
+```
+
+GitHub Actions also runs the same scanner on push and pull request.
+
 ## Mac SSH Setup
 
 If you want Cowork to open with EC2 access already available, use standard OpenSSH config instead of per-session flags:
