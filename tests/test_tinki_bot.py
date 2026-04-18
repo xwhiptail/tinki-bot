@@ -1148,8 +1148,8 @@ class TestAdminAWSCost:
     async def test_startup_message_places_aws_cost_under_openai_balance(self):
         content, report_text = await self._run_startup_report(cmd_results=[("pb", True, None)])
 
-        assert "OpenAI: $1.23 remaining\nAWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30." in content
-        assert "OpenAI: $1.23 remaining" in content
+        assert "✅ OpenAI: $1.23 remaining\n✅ AWS cost: AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30." in content
+        assert "✅ OpenAI: $1.23 remaining" in content
         assert "AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30." in report_text
 
     async def test_startup_message_reports_command_availability_not_tests(self):
@@ -1157,17 +1157,22 @@ class TestAdminAWSCost:
 
         assert "Command availability" in content
         assert "Command Availability" in report_text
-        assert "commands loaded only; startup does not execute them" in content
+        assert "commands loaded only; startup does not execute them" not in content
         assert "commands loaded only; startup does not execute them" in report_text
 
-    async def test_startup_message_describes_each_check_family(self):
+    async def test_startup_message_uses_emoji_led_summary_lines_only(self):
         content, report_text = await self._run_startup_report()
 
-        assert "URL rewrite self-tests" in content
-        assert "Calculator handler self-tests" in content
-        assert "Letter counter self-tests" in content
-        assert "Bot insight self-tests" in content
-        assert "Local pytest suite" in content
+        summary_lines = content.strip().splitlines()
+        assert summary_lines[0] == "Bot restarted - running startup diagnostics..."
+        startup_checks_index = summary_lines.index("Startup checks:")
+        for line in summary_lines[startup_checks_index + 1:]:
+            if not line:
+                continue
+            if line == "All systems fully operational.":
+                continue
+            assert line.startswith("✅") or line.startswith("🚨")
+
         assert "URL rewrite self-tests" in report_text
         assert "Local pytest suite" in report_text
 
@@ -1176,8 +1181,8 @@ class TestAdminAWSCost:
             url_results=[("url", False, "broken rewrite rule")],
         )
 
-        assert "Anomalies detected" in content
-        assert "url: broken rewrite rule" in content
+        assert "Anomalies detected" not in content
+        assert "🚨 url: broken rewrite rule" in content
         assert "🚨 url - broken rewrite rule" in report_text
 
     async def test_startup_report_includes_detail_for_passing_checks(self):

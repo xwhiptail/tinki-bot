@@ -157,13 +157,12 @@ class Admin(commands.Cog):
         ]
         for section in sections:
             passed, total = _counts(section.results)
-            summary_lines.append(f"- {section.summary_label}: {section.description}")
             summary_lines.append(self._summary_line(section.summary_label, passed, total, section.suffix).rstrip())
-        summary_lines.append(f"OpenAI: {openai_balance}")
-        summary_lines.append(aws_cost_summary)
+        summary_lines.append(f"{TEST_PASS_EMOJI} OpenAI: {openai_balance}")
+        summary_lines.append(f"{TEST_PASS_EMOJI} AWS cost: {aws_cost_summary}")
         summary = "\n".join(summary_lines) + "\n"
         if failures:
-            summary += "\nAnomalies detected:\n" + "".join(f"- {TEST_FAIL_EMOJI} {failure}\n" for failure in failures)
+            summary += "\n" + "".join(f"{TEST_FAIL_EMOJI} {failure}\n" for failure in failures)
         else:
             summary += "\nAll systems fully operational."
 
