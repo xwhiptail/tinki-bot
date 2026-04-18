@@ -318,13 +318,9 @@ class Emotes(commands.Cog):
     ) -> discord.Embed:
         match_mode = "exact" if exact_match else "fuzzy"
         safe_selected_index = max(0, min(selected_index, len(emotes) - 1)) if emotes else 0
-        description = "\n".join(
-            f"{'->' if (index - 1) == safe_selected_index else '  '} `{index}.` **{emote.name}** by `{self._display_owner(emote)}`"
-            for index, emote in enumerate(emotes, start=1)
-        )
         embed = discord.Embed(
             title=f"7TV results for `{emote_name}`",
-            description=description or "No results found.",
+            description=None if emotes else "No results found.",
             color=EMOTE_BROWSER_COLOR,
         )
         if emotes:

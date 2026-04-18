@@ -2141,7 +2141,7 @@ class TestEmoteBrowserHelpers:
         assert self.cog._parse_emote_size("5x") is None
         assert self.cog._parse_emote_size("big") is None
 
-    def test_build_7tv_browser_embed_lists_multiple_results(self):
+    def test_build_7tv_browser_embed_uses_visual_picker_layout(self):
         emotes = [
             SimpleNamespace(name="Alpha", host_url="//cdn.7tv.app/emote/alpha"),
             SimpleNamespace(name="Bravo", host_url="//cdn.7tv.app/emote/bravo"),
@@ -2159,8 +2159,7 @@ class TestEmoteBrowserHelpers:
         )
 
         assert embed.title == "7TV results for `smile`"
-        assert "  `1.` **Alpha** by `unknown owner`" in embed.description
-        assert "-> `2.` **Bravo** by `unknown owner`" in embed.description
+        assert embed.description is None
         assert embed.image.url == "attachment://7tv-page.gif"
         assert embed.fields[0].name == "Selected"
         assert "**Bravo** by `unknown owner`" in embed.fields[0].value
