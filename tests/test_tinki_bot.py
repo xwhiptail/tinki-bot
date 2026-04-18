@@ -1171,7 +1171,7 @@ class TestAdminAWSCost:
 
         assert "✅ pb - command loaded" in report_text
         assert "✅ pytest - 222 passed in 3.47s" in report_text
-        assert "222 passed in 3.47s" in content
+        assert "222 passed in 3.47s" not in content
 
     async def test_command_selftests_skip_retired_server_placeholders(self):
         invoked = []

@@ -159,11 +159,6 @@ class Admin(commands.Cog):
             passed, total = _counts(section.results)
             summary_lines.append(f"- {section.summary_label}: {section.description}")
             summary_lines.append(self._summary_line(section.summary_label, passed, total, section.suffix).rstrip())
-            detail_lines = [
-                f"  {self._format_check_result(name, ok, reason)}"
-                for name, ok, reason in section.results
-            ]
-            summary_lines.extend(detail_lines)
         summary_lines.append(f"OpenAI: {openai_balance}")
         summary_lines.append(aws_cost_summary)
         summary = "\n".join(summary_lines) + "\n"
