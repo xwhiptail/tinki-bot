@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from pathlib import Path
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,11 +11,15 @@ from datetime import datetime, timezone
 from discord.ext import commands
 from scipy.stats import linregress
 
-from config import SCORES_FILE, DATA_DIR, SCORE_PATTERN, USER_CATE_ID, user_matches
+from config import BASE_DIR, SCORES_FILE, DATA_DIR, SCORE_PATTERN, USER_CATE_ID, user_matches
 
 BOWLING_SCORE_EMOJI = "\U0001f3b3"
 BOWLING_UNDO_EMOJI = "\u274c"
 BOWLING_UNDO_CONFIRM_EMOJI = "\u21a9\ufe0f"
+LEGACY_SCORES_FILES = (
+    BASE_DIR / "scores.json",
+    BASE_DIR.parent / "scores.json",
+)
 
 
 class Bowling(commands.Cog):
@@ -24,22 +29,41 @@ class Bowling(commands.Cog):
         self._load()
 
     def _load(self):
-        try:
-            with open(SCORES_FILE, 'r') as f:
-                data = json.load(f)
-                self.scores = [
-                    (int(score), datetime.fromisoformat(ts)) for score, ts in data
-                ]
-        except FileNotFoundError:
+        data_path = Path(SCORES_FILE)
+        source_path = self._find_scores_file(data_path)
+        if source_path is None:
             self.scores = []
+            return
+
+        with source_path.open('r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        self.scores = [
+            (int(score), datetime.fromisoformat(ts)) for score, ts in data
+        ]
+
+        if source_path != data_path:
+            self._save()
+
+    def _find_scores_file(self, data_path: Path):
+        if data_path.exists():
+            return data_path
+
+        for legacy_path in LEGACY_SCORES_FILES:
+            if Path(legacy_path).exists():
+                logging.info("Loading bowling scores from legacy path %s", legacy_path)
+                return Path(legacy_path)
+
+        return None
 
     def _save(self):
+        Path(SCORES_FILE).parent.mkdir(parents=True, exist_ok=True)
         for i, (score, ts) in enumerate(self.scores):
             if ts.tzinfo is None or ts.tzinfo.utcoffset(ts) is None:
                 self.scores[i] = (score, ts.replace(tzinfo=timezone.utc))
         unique = list({(s, t.isoformat()): (s, t) for s, t in self.scores}.values())
         unique.sort(key=lambda x: x[1])
-        with open(SCORES_FILE, 'w') as f:
+        with open(SCORES_FILE, 'w', encoding='utf-8') as f:
             json.dump([(s, t.isoformat()) for s, t in unique], f)
 
     @commands.Cog.listener()

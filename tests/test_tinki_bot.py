@@ -7,6 +7,7 @@ Install test deps (once):
 Run:
     pytest
 """
+import json
 import sys
 import os
 from types import SimpleNamespace
@@ -628,6 +629,31 @@ class TestScoreCommands:
         ctx = make_ctx()
         await self.cog.median_score(ctx)
         assert "No scores" in ctx.send.call_args[0][0]
+
+
+class TestBowlingScorePersistence:
+    def test_loads_legacy_scores_file_when_new_data_file_is_missing(self, tmp_path):
+        from cogs.bowling import Bowling
+
+        new_scores_file = tmp_path / "data" / "scores.json"
+        legacy_scores_file = tmp_path / "scores.json"
+        legacy_scores_file.write_text(
+            json.dumps([[123, "2024-01-02T03:04:05+00:00"]]),
+            encoding="utf-8",
+        )
+
+        with patch("cogs.bowling.SCORES_FILE", str(new_scores_file)), patch(
+            "cogs.bowling.LEGACY_SCORES_FILES",
+            [legacy_scores_file],
+            create=True,
+        ):
+            cog = Bowling(MagicMock())
+
+        assert cog.scores[0][0] == 123
+        assert cog.scores[0][1].isoformat() == "2024-01-02T03:04:05+00:00"
+        assert json.loads(new_scores_file.read_text(encoding="utf-8")) == [
+            [123, "2024-01-02T03:04:05+00:00"]
+        ]
 
 
 # ── persona commands ──────────────────────────────────────────────────────────
