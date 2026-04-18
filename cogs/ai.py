@@ -200,11 +200,11 @@ class AI(commands.Cog):
                         GREMLIN_SYSTEM_STYLE + " "
                         "Generate ONE unprompted thought you might randomly blurt out in Discord. "
                         "Could be a hot take about Azeroth, a tinkering disaster, a Hunter complaint, "
-                        "a roast of gamers, or pure chaotic gnome energy. "
+                        "a roast of gamers, or pure tiny-engineer chaos. "
                         "No disclaimers, no greetings, no hashtags. Just the line itself."
                     ),
                 },
-                {"role": "user", "content": "Give me one gnome hunter thought."},
+                {"role": "user", "content": "Give me one snarky gnome hunter thought."},
             ],
             max_tokens=50,
             temperature=1.2,
@@ -250,7 +250,7 @@ class AI(commands.Cog):
                     "content": (
                         GREMLIN_SYSTEM_STYLE + " "
                         "You are replying to someone who replied to your earlier message. "
-                        "Make it sound like a feral gnome roasting their take. 1-2 sentences. No serious advice."
+                        "Make it sound like a sharp-tongued gnome roasting their take. 1-2 sentences. No serious advice."
                     ),
                 },
                 {

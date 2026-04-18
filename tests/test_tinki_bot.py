@@ -816,6 +816,11 @@ class TestAIBrain:
         assert "likes WoW" in prompt
         assert "Use !commands" in prompt
 
+    def test_gremlin_system_style_keeps_gnome_identity_without_gremlin_words(self):
+        assert "cute but snarky gnome" in config.GREMLIN_SYSTEM_STYLE
+        assert "gremlin" not in config.GREMLIN_SYSTEM_STYLE.lower()
+        assert "goblin" not in config.GREMLIN_SYSTEM_STYLE.lower()
+
     def test_parse_natural_command_for_reminder(self):
         parsed = parse_natural_command("remind me in 10 minutes")
         assert parsed == {"command": "remindme", "args": "in 10 minutes"}
@@ -2348,7 +2353,7 @@ class TestUmaMediaAndTriggers:
         with patch.object(self.cog, "_gif", new=AsyncMock(return_value=None)):
             await self.cog.uma_gif_cmd.callback(self.cog, ctx)
 
-        ctx.send.assert_awaited_once_with("Giphy came up empty. The gremlin is disappointed.")
+        ctx.send.assert_awaited_once_with("Giphy came up empty. The gnome is annoyed.")
 
     async def test_umagif_sends_gif_when_available(self):
         ctx = make_ctx()
@@ -3121,14 +3126,17 @@ class TestPersonas:
 
         persona_file = tmp_path / "personas.json"
         conversation_file = tmp_path / "conversations.json"
-        persona_file.write_text(json.dumps({"cute": "be nice", "mean": "be mean"}), encoding="utf-8")
+        persona_file.write_text(
+            json.dumps({"cute": "cute but snarky gnome engineer", "mean": "be mean"}),
+            encoding="utf-8",
+        )
         conversation_file.write_text("{}", encoding="utf-8")
 
         with patch("cogs.personas.PERSONA_FILE", str(persona_file)), patch("cogs.personas.CONVERSATION_FILE", str(conversation_file)):
             cog = Personas(MagicMock())
 
         assert cog.current_persona == "cute"
-        assert cog.personas["cute"] == "be nice"
+        assert cog.personas["cute"] == "cute but snarky gnome engineer"
 
     def test_update_conversation_trims_history_to_last_ten_entries(self, tmp_path):
         from cogs.personas import Personas
