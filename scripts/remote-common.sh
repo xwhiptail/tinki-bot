@@ -43,12 +43,22 @@ remote_copy() {
   local scp_args=("${SSH_ARGS[@]}")
 
   if [[ "$recursive" == "true" ]]; then
-    local source_dir source_name remote_path_quoted
-    source_dir="$(cd "$(dirname "$source_path")" && pwd)"
-    source_name="$(basename "$source_path")"
-    printf -v remote_path_quoted '%q' "$remote_path"
-    tar -C "$source_dir" -cf - "$source_name" \
-      | ssh "${SSH_ARGS[@]}" "$SSH_TARGET" "mkdir -p ${remote_path_quoted} && tar -xmf - --no-overwrite-dir -C ${remote_path_quoted}"
+    local source_dir source_name remote_target_quoted
+    source_dir="$(cd "$source_path" && pwd)"
+    source_name="$(basename "$source_dir")"
+    printf -v remote_target_quoted '%q' "${remote_path%/}/$source_name"
+    (
+      cd "$source_dir"
+      find . \( -type f -o -type l \) \
+        ! -path '*/__pycache__/*' \
+        ! -path '*/.pytest_cache/*' \
+        ! -path '*/pytest-cache-files-*/*' \
+        ! -name '._*' \
+        ! -name '.DS_Store' \
+        -print0 \
+        | COPYFILE_DISABLE=1 tar --format=ustar -C "$source_dir" --null -T - -cf -
+    ) \
+      | ssh "${SSH_ARGS[@]}" "$SSH_TARGET" "mkdir -p ${remote_target_quoted} && tar -xmf - --no-same-permissions --no-overwrite-dir -C ${remote_target_quoted}"
     return
   fi
 

@@ -4,9 +4,9 @@ Use this file as the shared resume point between Codex and Claude Code.
 
 ## Current State
 
-- Status: new AL2023 host is live, hardened, and running Python 3.11; repo still has local unpushed security-hardening edits
+- Status: new AL2023 host is live, hardened, and running Python 3.11; local macOS repo now has a working `.venv` pytest setup and the deploy helper is adjusted for the hardened host ownership model
 - Active branch: `main`
-- Last known good verification: `python -m pytest` locally and `python -m pytest -q` on the new EC2 host under Python 3.11 (`234 passed`)
+- Last known good verification: `. .venv/bin/activate && pytest -q` locally (`236 passed`) and `./deploy-ec2.sh` against the new EC2 host with clean restart output
 - Next concrete task: if doing future host migration or rebuild work, copy `/opt/apps/tinki-bot/data` and `/etc/tinki-bot.env` before cutover
 
 ## Resume Checklist
@@ -61,3 +61,6 @@ Use this as the default workflow unless the user says otherwise:
 - New host runtime upgrade: `/opt/apps/tinki-bot/myenv/bin/python` is now Python `3.11.14`; previous venv backup is kept at `/opt/apps/tinki-bot/myenv.py39.20260418_175337`.
 - Host maintenance headroom: `/swapfile_tinki` is enabled and persisted in `/etc/fstab` to avoid OOM kills during `dnf` and venv rebuilds on the `t3a.nano`.
 - Future host replacement work must restore both `/opt/apps/tinki-bot/data` and `/etc/tinki-bot.env`, not just repo code.
+- Local macOS testing uses repo-local `.venv`; run `. .venv/bin/activate && pytest -q`.
+- `scripts/remote-common.sh` now streams recursive uploads with tar instead of `scp -r`, excluding cache junk and macOS metadata files.
+- `deploy-ec2.sh` treats remote cache cleanup as best-effort so deploys stay quiet on the hardened `tinki-bot` ownership model.

@@ -3173,7 +3173,15 @@ exit 0
             "tar",
             f"""#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "{logs_dir / 'tar.log'}"
-cat /dev/null
+cat >/dev/null
+exit 0
+""",
+        )
+        _write_tool(
+            "find",
+            f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "{logs_dir / 'find.log'}"
+printf './example.py\\0'
 exit 0
 """,
         )
@@ -3198,16 +3206,27 @@ remote_copy "{source_dir}" "/remote/repo/" true
         scp_log = (logs_dir / "scp.log")
         assert not scp_log.exists() or scp_log.read_text(encoding="utf-8").strip() == ""
 
+        find_log = (logs_dir / "find.log").read_text(encoding="utf-8")
+        assert find_log.startswith(". ")
+        assert "-type f" in find_log
+        assert "-type l" in find_log
+        assert "__pycache__" in find_log
+        assert ".pytest_cache" in find_log
+        assert "._*" in find_log
+        assert ".DS_Store" in find_log
+
         tar_log = (logs_dir / "tar.log").read_text(encoding="utf-8")
-        assert f"-C {source_dir.parent}" in tar_log
+        assert f"-C {source_dir}" in tar_log
+        assert "--format=ustar" in tar_log
+        assert "--null -T -" in tar_log
         assert "-cf -" in tar_log
-        assert source_dir.name in tar_log
 
         ssh_log = (logs_dir / "ssh.log").read_text(encoding="utf-8")
         assert "deploy-user@example-host" in ssh_log
         assert "tar -xmf -" in ssh_log
+        assert "--no-same-permissions" in ssh_log
         assert "--no-overwrite-dir" in ssh_log
-        assert "-C /remote/repo/" in ssh_log
+        assert "-C /remote/repo/cogs" in ssh_log
 
     def test_remote_copy_file_keeps_using_scp(self, tmp_path):
         project_root = tmp_path / "project"
