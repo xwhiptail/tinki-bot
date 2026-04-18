@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -29,6 +30,15 @@ TEST_PASS_EMOJI = "\u2705"
 TEST_FAIL_EMOJI = "\U0001f6a8"
 
 
+@dataclass(frozen=True)
+class StartupCheckSection:
+    summary_label: str
+    report_label: str
+    suffix: str
+    description: str
+    results: list
+
+
 class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -38,6 +48,60 @@ class Admin(commands.Cog):
 
     def _summary_line(self, label: str, passed: int, total: int, suffix: str = "tests passed") -> str:
         return f"{self._status_emoji(passed, total)} {label}: {passed}/{total} {suffix}\n"
+
+    def _startup_check_sections(
+        self,
+        cmd_results,
+        url_results,
+        calc_results,
+        letter_results,
+        insight_results,
+        pytest_results,
+    ):
+        return [
+            StartupCheckSection(
+                summary_label="Command availability",
+                report_label="Command Availability",
+                suffix="commands available",
+                description="commands loaded only; startup does not execute them",
+                results=cmd_results,
+            ),
+            StartupCheckSection(
+                summary_label="URL filter matrix",
+                report_label="URL Tests",
+                suffix="tests passed",
+                description="URL rewrite self-tests",
+                results=url_results,
+            ),
+            StartupCheckSection(
+                summary_label="Calculator gnome",
+                report_label="Calculator Tests",
+                suffix="tests passed",
+                description="Calculator handler self-tests",
+                results=calc_results,
+            ),
+            StartupCheckSection(
+                summary_label="Letter gnome",
+                report_label="Letter Count Tests",
+                suffix="tests passed",
+                description="Letter counter self-tests",
+                results=letter_results,
+            ),
+            StartupCheckSection(
+                summary_label="Bot insight gnome",
+                report_label="Bot Insight Tests",
+                suffix="tests passed",
+                description="Bot insight self-tests",
+                results=insight_results,
+            ),
+            StartupCheckSection(
+                summary_label="Pytest suite",
+                report_label="Pytest",
+                suffix="passed",
+                description="Local pytest suite",
+                results=pytest_results,
+            ),
+        ]
 
     async def run_startup_tests(self):
         log.warning("[startup tests] task started")
@@ -67,27 +131,29 @@ class Admin(commands.Cog):
         def _counts(results):
             return sum(1 for _, ok, _ in results if ok), len(results)
 
-        cmd_p, cmd_t = _counts(cmd_results)
-        url_p, url_t = _counts(url_results)
-        calc_p, calc_t = _counts(calc_results)
-        let_p, let_t = _counts(letter_results)
-        ins_p, ins_t = _counts(insight_results)
-        py_p, py_t = _counts(pytest_results)
+        sections = self._startup_check_sections(
+            cmd_results,
+            url_results,
+            calc_results,
+            letter_results,
+            insight_results,
+            pytest_results,
+        )
 
         all_results = cmd_results + url_results + calc_results + letter_results + insight_results + pytest_results
         failures = [f"{name}: {reason}" for name, ok, reason in all_results if not ok]
 
-        summary = (
-            "Bot restarted - running startup diagnostics...\n"
-            "```ini\n[BOOT SEQUENCE COMPLETED]\n```\n"
-            f"{self._summary_line('Command availability', cmd_p, cmd_t, 'commands available')}"
-            f"{self._summary_line('URL filter matrix', url_p, url_t)}"
-            f"{self._summary_line('Calculator gnome', calc_p, calc_t)}"
-            f"{self._summary_line('Letter gnome', let_p, let_t)}"
-            f"{self._summary_line('Bot insight gnome', ins_p, ins_t)}"
-            f"{self._summary_line('Pytest suite', py_p, py_t, 'passed')}"
-            f"OpenAI: {openai_balance}\n"
-        )
+        summary_lines = [
+            "Bot restarted - running startup diagnostics...",
+            "```ini\n[BOOT SEQUENCE COMPLETED]\n```",
+            "Startup checks:",
+        ]
+        for section in sections:
+            passed, total = _counts(section.results)
+            summary_lines.append(f"- {section.summary_label}: {section.description}")
+            summary_lines.append(self._summary_line(section.summary_label, passed, total, section.suffix).rstrip())
+        summary_lines.append(f"OpenAI: {openai_balance}")
+        summary = "\n".join(summary_lines) + "\n"
         if failures:
             summary += "\nAnomalies detected:\n" + "".join(f"- {TEST_FAIL_EMOJI} {failure}\n" for failure in failures)
         else:
@@ -95,18 +161,11 @@ class Admin(commands.Cog):
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         lines = [f"Startup Diagnostic Results - {timestamp}\n", "=" * 60 + "\n"]
-        for section, results in [
-            ("Command Availability", cmd_results),
-            ("URL Tests", url_results),
-            ("Calculator Tests", calc_results),
-            ("Letter Count Tests", letter_results),
-            ("Bot Insight Tests", insight_results),
-            ("Pytest", pytest_results),
-        ]:
-            passed, total = _counts(results)
-            suffix = "commands available" if section == "Command Availability" else "passed"
-            lines.append(f"\n{self._summary_line(section, passed, total, suffix)}")
-            for name, ok, reason in results:
+        for section in sections:
+            passed, total = _counts(section.results)
+            lines.append(f"\n{self._summary_line(section.report_label, passed, total, section.suffix)}")
+            lines.append(f"  Checks: {section.description}\n")
+            for name, ok, reason in section.results:
                 if ok:
                     lines.append(f"  {TEST_PASS_EMOJI} {name}\n")
                 else:

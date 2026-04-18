@@ -583,6 +583,35 @@ class TestAdminAWSCost:
     def setup_method(self):
         self.cog = make_admin_cog()
 
+    async def _run_startup_report(
+        self,
+        *,
+        cmd_results=None,
+        url_results=None,
+        calc_results=None,
+        letter_results=None,
+        insight_results=None,
+        pytest_results=None,
+        openai_balance="$1.23 remaining",
+    ):
+        self.cog.bot.wait_until_ready = AsyncMock()
+        test_channel = MagicMock()
+        test_channel.name = config.CHANNEL_BOT_TEST
+        test_channel.send = AsyncMock()
+        self.cog.bot.get_all_channels = MagicMock(return_value=[test_channel])
+
+        with patch.object(self.cog, "_run_command_selftests", new=AsyncMock(return_value=cmd_results or [("pb", True, "available")])), \
+             patch("cogs.admin.run_url_selftests", return_value=url_results or [("url", True, None)]), \
+             patch("cogs.admin.run_calculate_selftests", return_value=calc_results or [("calc", True, None)]), \
+             patch("cogs.admin.run_letter_count_selftests", return_value=letter_results or [("letter", True, None)]), \
+             patch("cogs.admin.run_bot_insight_selftests", return_value=insight_results or [("insight", True, None)]), \
+             patch.object(self.cog, "_run_pytest_suite", new=AsyncMock(return_value=pytest_results or [("pytest", True, "passed")])), \
+             patch("cogs.admin.fetch_openai_balance", new=AsyncMock(return_value=openai_balance)):
+            await self.cog._run_startup_tests_inner()
+
+        kwargs = test_channel.send.await_args.kwargs
+        return kwargs["content"], kwargs["file"].fp.getvalue().decode("utf-8")
+
     async def test_awscost_command_sends_summary(self):
         ctx = make_ctx()
         ctx.author = MagicMock()
@@ -632,47 +661,38 @@ class TestAdminAWSCost:
         ctx.send.assert_awaited_once_with("You do not have permission to use this command.")
 
     async def test_startup_message_omits_aws_cost_summary(self):
-        self.cog.bot.wait_until_ready = AsyncMock()
-        test_channel = MagicMock()
-        test_channel.name = config.CHANNEL_BOT_TEST
-        test_channel.send = AsyncMock()
-        self.cog.bot.get_all_channels = MagicMock(return_value=[test_channel])
+        content, report_text = await self._run_startup_report(cmd_results=[("pb", True, None)])
 
-        with patch.object(self.cog, "_run_command_selftests", new=AsyncMock(return_value=[("pb", True, None)])), \
-             patch("cogs.admin.run_url_selftests", return_value=[("url", True, None)]), \
-             patch("cogs.admin.run_calculate_selftests", return_value=[("calc", True, None)]), \
-             patch("cogs.admin.run_letter_count_selftests", return_value=[("letter", True, None)]), \
-             patch("cogs.admin.run_bot_insight_selftests", return_value=[("insight", True, None)]), \
-             patch.object(self.cog, "_run_pytest_suite", new=AsyncMock(return_value=[("pytest", True, "passed")])), \
-             patch("cogs.admin.fetch_openai_balance", new=AsyncMock(return_value="$1.23 remaining")):
-            await self.cog._run_startup_tests_inner()
-
-        test_channel.send.assert_awaited_once()
-        kwargs = test_channel.send.await_args.kwargs
-        assert "AWS cost" not in kwargs["content"]
-        report_text = kwargs["file"].fp.getvalue().decode("utf-8")
+        assert "AWS cost" not in content
         assert "AWS cost" not in report_text
 
     async def test_startup_message_reports_command_availability_not_tests(self):
-        self.cog.bot.wait_until_ready = AsyncMock()
-        test_channel = MagicMock()
-        test_channel.name = config.CHANNEL_BOT_TEST
-        test_channel.send = AsyncMock()
-        self.cog.bot.get_all_channels = MagicMock(return_value=[test_channel])
+        content, report_text = await self._run_startup_report(cmd_results=[("pb", True, "available")])
 
-        with patch.object(self.cog, "_run_command_selftests", new=AsyncMock(return_value=[("pb", True, "available")])), \
-             patch("cogs.admin.run_url_selftests", return_value=[("url", True, None)]), \
-             patch("cogs.admin.run_calculate_selftests", return_value=[("calc", True, None)]), \
-             patch("cogs.admin.run_letter_count_selftests", return_value=[("letter", True, None)]), \
-             patch("cogs.admin.run_bot_insight_selftests", return_value=[("insight", True, None)]), \
-             patch.object(self.cog, "_run_pytest_suite", new=AsyncMock(return_value=[("pytest", True, "passed")])), \
-             patch("cogs.admin.fetch_openai_balance", new=AsyncMock(return_value="$1.23 remaining")):
-            await self.cog._run_startup_tests_inner()
-
-        kwargs = test_channel.send.await_args.kwargs
-        assert "Command availability" in kwargs["content"]
-        report_text = kwargs["file"].fp.getvalue().decode("utf-8")
+        assert "Command availability" in content
         assert "Command Availability" in report_text
+        assert "commands loaded only; startup does not execute them" in content
+        assert "commands loaded only; startup does not execute them" in report_text
+
+    async def test_startup_message_describes_each_check_family(self):
+        content, report_text = await self._run_startup_report()
+
+        assert "URL rewrite self-tests" in content
+        assert "Calculator handler self-tests" in content
+        assert "Letter counter self-tests" in content
+        assert "Bot insight self-tests" in content
+        assert "Local pytest suite" in content
+        assert "URL rewrite self-tests" in report_text
+        assert "Local pytest suite" in report_text
+
+    async def test_startup_report_carries_failures_into_summary_and_report(self):
+        content, report_text = await self._run_startup_report(
+            url_results=[("url", False, "broken rewrite rule")],
+        )
+
+        assert "Anomalies detected" in content
+        assert "url: broken rewrite rule" in content
+        assert "🚨 url - broken rewrite rule" in report_text
 
     async def test_command_selftests_skip_retired_server_placeholders(self):
         invoked = []
