@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/branding/tinki-avatar.png" alt="Tinki avatar" width="160">
+  <img src="assets/branding/tink.gif" alt="Tinki gif" width="160">
 </p>
 
 # tinki-bot
