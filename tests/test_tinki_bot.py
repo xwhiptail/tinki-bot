@@ -12,6 +12,7 @@ import json
 import sys
 import os
 import importlib.util
+from contextlib import ExitStack
 from types import SimpleNamespace
 
 import pytest
@@ -60,6 +61,19 @@ def isolate_bowling_scores_file(tmp_path, monkeypatch):
         monkeypatch.setattr(bowling_module, "LEGACY_SCORES_FILES", [], raising=False)
 
     return scores_file
+
+
+@pytest.fixture(autouse=True)
+def isolate_reminders_database_file(tmp_path, monkeypatch):
+    db_file = tmp_path / "reminders.db"
+
+    monkeypatch.setattr(config, "DATABASE_FILE", str(db_file), raising=False)
+
+    if "cogs.reminders" in sys.modules:
+        reminders_module = sys.modules["cogs.reminders"]
+        monkeypatch.setattr(reminders_module, "DATABASE_FILE", str(db_file), raising=False)
+
+    return db_file
 
 def make_ctx():
     ctx = MagicMock()
@@ -173,6 +187,20 @@ def make_tracking_cog():
     return _wire_cog(cog)
 
 
+def make_emotes_cog():
+    from cogs.emotes import Emotes
+    bot = MagicMock()
+    bot.guilds = []
+    bot.wait_for = AsyncMock()
+    cog = Emotes(bot)
+    return _wire_cog(cog)
+
+
+def make_reminders_cog():
+    from cogs.reminders import Reminders
+    return _wire_cog(Reminders(MagicMock()))
+
+
 def load_tinki_bot_module():
     module_name = "tinki_bot_entrypoint_test"
     module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tinki-bot.py"))
@@ -181,6 +209,362 @@ def load_tinki_bot_module():
     with patch("discord.ext.commands.Bot.run"):
         spec.loader.exec_module(module)
     return module
+
+
+COMMAND_COG_FACTORIES = (
+    make_admin_cog,
+    make_bowling_cog,
+    make_emotes_cog,
+    make_reminders_cog,
+    make_tracking_cog,
+    make_uma_cog,
+    make_utility_cog,
+)
+
+
+def make_smoke_ctx(author_name="tester"):
+    ctx = make_ctx()
+    ctx.author = MagicMock()
+    ctx.author.id = 1
+    ctx.author.name = author_name
+    ctx.author.display_name = author_name
+    ctx.author.mention = "<@1>"
+    ctx.author.send = AsyncMock()
+    ctx.channel = MagicMock()
+    ctx.channel.id = 456
+    ctx.channel.send = AsyncMock()
+    ctx.channel.pins = AsyncMock(return_value=[])
+    ctx.channel.purge = AsyncMock(return_value=[])
+    ctx.guild = MagicMock()
+    ctx.guild.id = 789
+    ctx.guild.emojis = []
+    ctx.guild.members = []
+    ctx.message = MagicMock()
+    ctx.message.id = 123
+    ctx.message.reference = None
+    ctx.message.delete = AsyncMock()
+    return ctx
+
+
+def _registered_command_names():
+    return {
+        cmd.name
+        for factory in COMMAND_COG_FACTORIES
+        for cmd in factory().get_commands()
+    }
+
+
+def _make_client_session_cm():
+    session = MagicMock()
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+    return session
+
+
+def _build_command_smoke_cases(tmp_path, monkeypatch):
+    async def smoke_admin(command_name):
+        cog = make_admin_cog()
+        ctx = make_smoke_ctx(author_name="whiptail")
+        with ExitStack() as stack:
+            if command_name == "restart":
+                stack.enter_context(patch("cogs.admin.asyncio.sleep", new=AsyncMock()))
+                stack.enter_context(patch("cogs.admin.subprocess.Popen"))
+                await cog.restart_bot.callback(cog, ctx)
+            elif command_name == "deploy":
+                fake_session = _make_client_session_cm()
+                stack.enter_context(patch("cogs.admin.aiohttp.ClientSession", return_value=fake_session))
+                stack.enter_context(patch.object(cog, "_read_deployed_commit", return_value="abc1234"))
+                stack.enter_context(patch.object(cog, "_fetch_json_with_retries", new=AsyncMock(return_value={
+                    "sha": "abc1234",
+                    "commit": {"message": "Already current"},
+                })))
+                await cog.deploy_latest.callback(cog, ctx)
+            elif command_name == "awscost":
+                stack.enter_context(patch("cogs.admin.fetch_aws_cost_summary", new=AsyncMock(return_value="AWS cost summary")))
+                await cog.aws_cost.callback(cog, ctx)
+            elif command_name == "runtests":
+                stack.enter_context(patch.object(cog, "_run_command_selftests", new=AsyncMock(return_value=[("pb", True, None)])))
+                await cog.runtests.callback(cog, ctx)
+            elif command_name == "testurls":
+                stack.enter_context(patch("cogs.admin.run_url_selftests", return_value=[("twitter", True, None)]))
+                await cog.testurls.callback(cog, ctx)
+        assert ctx.send.await_count >= 1
+
+    async def smoke_bowling(command_name):
+        from datetime import datetime
+
+        cog = make_bowling_cog()
+        ctx = make_smoke_ctx()
+        if command_name in {"pb", "avg", "median", "all", "bowlinggraph", "bowlingdistgraph"}:
+            cog.scores = [
+                (100, datetime(2026, 1, 1, 0, 0, 0)),
+                (150, datetime(2026, 1, 2, 0, 0, 0)),
+            ]
+
+        with ExitStack() as stack:
+            if command_name == "pb":
+                await cog.personal_best.callback(cog, ctx)
+            elif command_name == "avg":
+                await cog.average_score.callback(cog, ctx)
+            elif command_name == "median":
+                await cog.median_score.callback(cog, ctx)
+            elif command_name == "all":
+                await cog.all_scores.callback(cog, ctx)
+            elif command_name == "delete":
+                await cog.delete_score.callback(cog, ctx, timestamp_str="2026-01-03 00:00:00")
+            elif command_name == "add":
+                await cog.add_score.callback(cog, ctx, 123, timestamp_str="2026-01-03 00:00:00")
+            elif command_name == "bowlinggraph":
+                stack.enter_context(patch("cogs.bowling.plt.savefig"))
+                stack.enter_context(patch("cogs.bowling.discord.File", return_value="graph-file"))
+                await cog.graph_scores.callback(cog, ctx)
+            elif command_name == "bowlingdistgraph":
+                stack.enter_context(patch("cogs.bowling.plt.savefig"))
+                stack.enter_context(patch("cogs.bowling.discord.File", return_value="dist-file"))
+                await cog.distribution_graph.callback(cog, ctx)
+        assert ctx.send.await_count >= 1
+
+    async def smoke_emotes(command_name):
+        cog = make_emotes_cog()
+        ctx = make_smoke_ctx()
+        with ExitStack() as stack:
+            if command_name == "spinny":
+                user = SimpleNamespace(id=99, mention="<@99>")
+                await cog.spinny_activate.callback(cog, ctx, user)
+            elif command_name == "stopspinny":
+                cog.sticker_users["99"] = True
+                await cog.spinny_deactivate.callback(cog, ctx, target="<@99>")
+            elif command_name == "silentspinny":
+                await cog.silent_spinny.callback(cog, ctx, "someone")
+            elif command_name == "allemotes":
+                ctx.guild = SimpleNamespace(emojis=[])
+                await cog.all_emotes.callback(cog, ctx)
+            elif command_name == "emote":
+                session = MagicMock()
+                session.close = AsyncMock()
+                fake_view = MagicMock()
+                fake_view.start = AsyncMock()
+                emote = SimpleNamespace(id="1", name="sus", host_url="//cdn.7tv.app/emote/sus", owner_username="owner1")
+                stack.enter_context(patch("cogs.emotes.aiohttp.ClientSession", return_value=session))
+                stack.enter_context(patch.object(cog, "_search_7tv_page", new=AsyncMock(return_value=[emote])))
+                stack.enter_context(patch("cogs.emotes.SevenTvEmoteBrowserView", return_value=fake_view))
+                await cog.emote.callback(cog, ctx, "sus", "2x")
+                fake_view.start.assert_awaited_once()
+                return
+        assert ctx.send.await_count >= 1
+
+    async def smoke_reminders(command_name):
+        import cogs.reminders as reminders_module
+        from cogs.reminders import Reminders
+
+        db_path = tmp_path / f"{command_name}_reminders.db"
+        monkeypatch.setattr(reminders_module, "DATABASE_FILE", str(db_path), raising=False)
+        cog = _wire_cog(Reminders(MagicMock()))
+        ctx = make_smoke_ctx()
+        if command_name == "remind":
+            await cog.remind.callback(cog, ctx)
+        elif command_name == "remindme":
+            await cog.remindme.callback(cog, ctx, args=None)
+        elif command_name == "deletereminder":
+            await cog.deletereminder.callback(cog, ctx, 404)
+        elif command_name == "currenttime":
+            await cog.currenttime.callback(cog, ctx)
+        assert ctx.send.await_count >= 1
+
+    async def smoke_tracking(command_name):
+        cog = make_tracking_cog()
+        cog.bot.guilds = []
+        ctx = make_smoke_ctx()
+        with ExitStack() as stack:
+            if command_name == "sussy":
+                await cog.sussy_count.callback(cog, ctx)
+            elif command_name == "sussygraph":
+                stack.enter_context(patch.object(cog, "_build_cumulative_graph", return_value="sus-file"))
+                stack.enter_context(patch("cogs.tracking.discord.File", return_value="sus-file"))
+                await cog.sussy_graph.callback(cog, ctx)
+            elif command_name == "explode":
+                await cog.explode_count.callback(cog, ctx)
+            elif command_name == "explodegraph":
+                stack.enter_context(patch.object(cog, "_build_cumulative_graph", return_value="explode-file"))
+                stack.enter_context(patch("cogs.tracking.discord.File", return_value="explode-file"))
+                await cog.explode_graph.callback(cog, ctx)
+            elif command_name == "grindcount":
+                await cog.spinny_count.callback(cog, ctx)
+            elif command_name == "grindgraph":
+                stack.enter_context(patch.object(cog, "_build_cumulative_graph", return_value="grind-file"))
+                stack.enter_context(patch("cogs.tracking.discord.File", return_value="grind-file"))
+                await cog.spinny_graph.callback(cog, ctx)
+        assert ctx.send.await_count >= 1
+
+    async def smoke_uma(command_name):
+        pity_path = tmp_path / f"{command_name}_pity.json"
+        cog = make_uma_cog(pity_file=str(pity_path))
+        ctx = make_smoke_ctx()
+        with ExitStack() as stack:
+            if command_name == "gacha":
+                result_message = MagicMock()
+                result_message.add_reaction = AsyncMock()
+                result_message.remove_reaction = AsyncMock()
+                send_mock = stack.enter_context(patch.object(cog, "_send_gacha_results", new=AsyncMock(return_value=result_message)))
+                repull_mock = stack.enter_context(patch.object(cog, "_offer_repull", new=AsyncMock()))
+                await cog.uma_gacha.callback(cog, ctx, 1)
+                send_mock.assert_awaited_once()
+                repull_mock.assert_awaited_once()
+                return
+            elif command_name == "pity":
+                await cog.uma_pity.callback(cog, ctx)
+            elif command_name == "uma":
+                member = SimpleNamespace(display_name="Teio")
+                await cog.uma_assign.callback(cog, ctx, member)
+            elif command_name == "race":
+                member = SimpleNamespace(display_name="Teio")
+                await cog.uma_race.callback(cog, ctx, member)
+            elif command_name == "umagif":
+                stack.enter_context(patch.object(cog, "_gif", new=AsyncMock(return_value="https://gif.example/uma")))
+                await cog.uma_gif_cmd.callback(cog, ctx)
+        assert ctx.send.await_count >= 1
+
+    async def smoke_utility(command_name):
+        cog = make_utility_cog()
+        ctx = make_smoke_ctx(author_name="whiptail")
+        with ExitStack() as stack:
+            if command_name == "purge":
+                await cog.purge_bot_messages.callback(cog, ctx)
+            elif command_name in {"gif", "roulette"}:
+                response = MagicMock()
+                response.json = AsyncMock(return_value={"data": {"images": {"original": {"url": "https://giphy.example/random"}}}})
+                session = _make_client_session_cm()
+                session.get = AsyncMock(return_value=response)
+                stack.enter_context(patch("cogs.utility.aiohttp.ClientSession", return_value=session))
+                callback = cog.send_gif if command_name == "gif" else cog.roulette
+                await callback.callback(cog, ctx)
+            elif command_name == "random":
+                await cog.random_cmd.callback(cog, ctx)
+            elif command_name == "cat":
+                session = _make_client_session_cm()
+                stack.enter_context(patch("cogs.utility.aiohttp.ClientSession", return_value=session))
+                stack.enter_context(patch.object(cog, "_fetch_url", new=AsyncMock(return_value=[{"url": "https://cat.example/cat"}])))
+                await cog.cat.callback(cog, ctx)
+            elif command_name == "dog":
+                session = _make_client_session_cm()
+                stack.enter_context(patch("cogs.utility.aiohttp.ClientSession", return_value=session))
+                stack.enter_context(patch.object(cog, "_fetch_url", new=AsyncMock(return_value={"status": "success", "message": "https://dog.example/dog"})))
+                await cog.dog.callback(cog, ctx)
+            elif command_name == "dogbark":
+                await cog.dogbark.callback(cog, ctx)
+            elif command_name == "ss":
+                await cog.ss.callback(cog, ctx)
+            elif command_name == "github":
+                await cog.github_repo.callback(cog, ctx)
+            elif command_name == "changelog":
+                stack.enter_context(patch.object(cog, "_get_changelog_entries", new=AsyncMock(return_value=[("abc1234", "Fix deploy path")])))
+                await cog.changelog.callback(cog, ctx, 1)
+            elif command_name == "commands":
+                await cog.show_commands.callback(cog, ctx)
+            elif command_name == "startminecraft":
+                await cog.startminecraft.callback(cog, ctx)
+            elif command_name == "stopminecraft":
+                await cog.stopminecraft.callback(cog, ctx)
+            elif command_name == "minecraftstatus":
+                await cog.minecraftstatus.callback(cog, ctx)
+            elif command_name == "minecraftserver":
+                await cog.fetch_server_ip.callback(cog, ctx)
+            elif command_name == "startskyfactory":
+                await cog.startskyfactory.callback(cog, ctx)
+            elif command_name == "stopskyfactory":
+                await cog.stopskyfactory.callback(cog, ctx)
+            elif command_name == "skyfactorystatus":
+                await cog.skyfactorystatus.callback(cog, ctx)
+            elif command_name == "skyfactoryserver":
+                await cog.fetch_skyfactory_ip.callback(cog, ctx)
+            elif command_name == "uptime":
+                await cog.uptime.callback(cog, ctx)
+        if command_name == "commands":
+            assert ctx.author.send.await_count == 3
+            assert ctx.send.await_count == 1
+        else:
+            assert ctx.send.await_count >= 1
+
+    return {
+        "restart": lambda: smoke_admin("restart"),
+        "deploy": lambda: smoke_admin("deploy"),
+        "awscost": lambda: smoke_admin("awscost"),
+        "runtests": lambda: smoke_admin("runtests"),
+        "testurls": lambda: smoke_admin("testurls"),
+        "pb": lambda: smoke_bowling("pb"),
+        "avg": lambda: smoke_bowling("avg"),
+        "median": lambda: smoke_bowling("median"),
+        "all": lambda: smoke_bowling("all"),
+        "delete": lambda: smoke_bowling("delete"),
+        "add": lambda: smoke_bowling("add"),
+        "bowlinggraph": lambda: smoke_bowling("bowlinggraph"),
+        "bowlingdistgraph": lambda: smoke_bowling("bowlingdistgraph"),
+        "spinny": lambda: smoke_emotes("spinny"),
+        "stopspinny": lambda: smoke_emotes("stopspinny"),
+        "silentspinny": lambda: smoke_emotes("silentspinny"),
+        "allemotes": lambda: smoke_emotes("allemotes"),
+        "emote": lambda: smoke_emotes("emote"),
+        "remind": lambda: smoke_reminders("remind"),
+        "remindme": lambda: smoke_reminders("remindme"),
+        "deletereminder": lambda: smoke_reminders("deletereminder"),
+        "currenttime": lambda: smoke_reminders("currenttime"),
+        "sussy": lambda: smoke_tracking("sussy"),
+        "sussygraph": lambda: smoke_tracking("sussygraph"),
+        "explode": lambda: smoke_tracking("explode"),
+        "explodegraph": lambda: smoke_tracking("explodegraph"),
+        "grindcount": lambda: smoke_tracking("grindcount"),
+        "grindgraph": lambda: smoke_tracking("grindgraph"),
+        "gacha": lambda: smoke_uma("gacha"),
+        "pity": lambda: smoke_uma("pity"),
+        "uma": lambda: smoke_uma("uma"),
+        "race": lambda: smoke_uma("race"),
+        "umagif": lambda: smoke_uma("umagif"),
+        "purge": lambda: smoke_utility("purge"),
+        "gif": lambda: smoke_utility("gif"),
+        "random": lambda: smoke_utility("random"),
+        "roulette": lambda: smoke_utility("roulette"),
+        "cat": lambda: smoke_utility("cat"),
+        "dog": lambda: smoke_utility("dog"),
+        "dogbark": lambda: smoke_utility("dogbark"),
+        "ss": lambda: smoke_utility("ss"),
+        "github": lambda: smoke_utility("github"),
+        "changelog": lambda: smoke_utility("changelog"),
+        "commands": lambda: smoke_utility("commands"),
+        "startminecraft": lambda: smoke_utility("startminecraft"),
+        "stopminecraft": lambda: smoke_utility("stopminecraft"),
+        "minecraftstatus": lambda: smoke_utility("minecraftstatus"),
+        "minecraftserver": lambda: smoke_utility("minecraftserver"),
+        "startskyfactory": lambda: smoke_utility("startskyfactory"),
+        "stopskyfactory": lambda: smoke_utility("stopskyfactory"),
+        "skyfactorystatus": lambda: smoke_utility("skyfactorystatus"),
+        "skyfactoryserver": lambda: smoke_utility("skyfactoryserver"),
+        "uptime": lambda: smoke_utility("uptime"),
+    }
+
+
+class TestCommandSmokeMatrix:
+    @pytest.mark.asyncio
+    async def test_all_registered_commands_have_smoke_cases_and_invoke_cleanly(self, tmp_path, monkeypatch):
+        smoke_cases = _build_command_smoke_cases(tmp_path, monkeypatch)
+        registered = _registered_command_names()
+        covered = set(smoke_cases)
+
+        missing = sorted(registered - covered)
+        unexpected = sorted(covered - registered)
+        assert not missing and not unexpected, (
+            "Command smoke matrix drifted.\n"
+            f"Missing smoke cases: {missing}\n"
+            f"Unexpected smoke cases: {unexpected}"
+        )
+
+        failures = []
+        for command_name in sorted(registered):
+            try:
+                await smoke_cases[command_name]()
+            except Exception as exc:
+                failures.append(f"{command_name}: {type(exc).__name__}: {exc}")
+
+        assert not failures, "Command smoke failures:\n" + "\n".join(failures)
 
 
 # ── rewrite_social_urls ──────────────────────────────────────────────────────
@@ -2107,14 +2491,6 @@ class TestBowlingMessageAndCommands:
 
 
 # ── spinny commands ───────────────────────────────────────────────────────────
-
-def make_emotes_cog():
-    from cogs.emotes import Emotes
-    bot = MagicMock()
-    bot.guilds = []
-    bot.wait_for = AsyncMock()
-    cog = Emotes(bot)
-    return _wire_cog(cog)
 
 
 class TestEmoteBrowserHelpers:

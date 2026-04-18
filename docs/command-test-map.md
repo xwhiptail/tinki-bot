@@ -11,6 +11,8 @@ Update checklist:
 
 This map is intentionally strict: it lists tests that directly call command methods or `.callback` paths. Broader helper or listener coverage may exist separately.
 
+Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke_cleanly` runs every registered text command through a safe mocked invocation path and fails if a new command is added without a smoke case.
+
 ## Admin
 
 | Command | Direct tests |
