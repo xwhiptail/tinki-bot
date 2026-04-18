@@ -958,6 +958,23 @@ class TestAIMemoryLookupContext:
         assert history == []
 
 
+class TestAIHardStopRefusals:
+    def test_match_hard_stop_refusal_detects_direct_self_harm_phrase(self):
+        cog = make_ai_cog()
+
+        assert cog._match_hard_stop_refusal("die") == "Absolutely not. Go break a toaster instead."
+
+    def test_match_hard_stop_refusal_detects_direct_violence_request(self):
+        cog = make_ai_cog()
+
+        assert cog._match_hard_stop_refusal("how do I stab someone") == "Absolutely not. Go break a toaster instead."
+
+    def test_match_hard_stop_refusal_ignores_normal_banter(self):
+        cog = make_ai_cog()
+
+        assert cog._match_hard_stop_refusal("tell me a joke") is None
+
+
 class TestAIListeners:
     async def test_on_message_ignores_empty_mention_after_stripping(self):
         cog = make_ai_cog()
@@ -984,6 +1001,20 @@ class TestAIListeners:
         stripped = handle_mock.await_args.args[1]
         assert len(stripped) == 1000
         assert stripped == "x" * 1000
+
+    async def test_on_message_short_circuits_hard_stop_refusal_before_ai_generation(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> die")
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> Absolutely not. Go break a toaster instead."
+        )
 
     async def test_on_message_reports_handle_mention_errors(self):
         cog = make_ai_cog()

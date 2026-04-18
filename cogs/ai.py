@@ -30,6 +30,23 @@ from utils.openai_helpers import create_chat_completion, get_openai_client, gpt_
 
 logger = logging.getLogger(__name__)
 
+HARD_STOP_REFUSAL_REPLY = "Absolutely not. Go break a toaster instead."
+HARD_STOP_SELF_HARM_PHRASES = (
+    "die",
+    "go die",
+    "kill yourself",
+)
+HARD_STOP_VIOLENCE_PHRASES = (
+    "kill them",
+    "kill him",
+    "kill her",
+    "hurt them",
+    "hurt him",
+    "hurt her",
+    "stab someone",
+    "murder someone",
+)
+
 
 class AI(commands.Cog):
     def __init__(self, bot):
@@ -335,12 +352,35 @@ class AI(commands.Cog):
             await channel.send(f'{mention}{chunk}{suffix}')
             await asyncio.sleep(1)
 
+    def _match_hard_stop_refusal(self, text: str):
+        lowered = f" {text.lower().strip()} "
+
+        for phrase in HARD_STOP_SELF_HARM_PHRASES:
+            if f" {phrase} " in lowered:
+                return HARD_STOP_REFUSAL_REPLY
+
+        for phrase in HARD_STOP_VIOLENCE_PHRASES:
+            if phrase in lowered:
+                return HARD_STOP_REFUSAL_REPLY
+
+        if "how do i" in lowered and ("kill" in lowered or "stab" in lowered or "hurt" in lowered):
+            return HARD_STOP_REFUSAL_REPLY
+
+        return None
+
     async def _handle_mention(self, message, text: str):
         personas_cog, persona_key, persona_description = self._persona_state()
         user_id = str(message.author.id)
         guild_id = str(message.guild.id) if message.guild else "dm"
         history = self._conversation_history(personas_cog, user_id, persona_key)
         intent = classify_intent(text)
+        refusal = self._match_hard_stop_refusal(text)
+        if refusal:
+            await self._send_reply_chunks(message.channel, f'{message.author.mention} ', refusal)
+            self._update_conversation_history(personas_cog, user_id, persona_key, text, refusal)
+            self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
+            self._save_ai_memory()
+            return
         command_spec = parse_natural_command(text)
         if command_spec:
             executed = await self._execute_natural_command(message, command_spec)
