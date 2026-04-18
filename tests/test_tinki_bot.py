@@ -816,6 +816,11 @@ class TestAIBrain:
         assert "likes WoW" in prompt
         assert "Use !commands" in prompt
 
+    def test_gremlin_system_style_keeps_gnome_identity_without_gremlin_words(self):
+        assert "cute but snarky gnome" in config.GREMLIN_SYSTEM_STYLE
+        assert "gremlin" not in config.GREMLIN_SYSTEM_STYLE.lower()
+        assert "goblin" not in config.GREMLIN_SYSTEM_STYLE.lower()
+
     def test_parse_natural_command_for_reminder(self):
         parsed = parse_natural_command("remind me in 10 minutes")
         assert parsed == {"command": "remindme", "args": "in 10 minutes"}
