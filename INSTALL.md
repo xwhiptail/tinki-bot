@@ -41,6 +41,7 @@ Optional:
 - `OPENAI_MODEL`
 - `OPENAI_FAST_MODEL`
 - `AWS_COST_REGION`
+- `USER_WHIPTAIL_ID` for the trusted operator who may run host-level admin commands
 - `TINKI_DATA_DIR`
 - `GITHUB_TOKEN` for local GitHub-authenticated tooling; not used by the bot runtime
 
@@ -64,6 +65,16 @@ Secrets:
 Service:
 
 - `/etc/systemd/system/tinki-bot.service`
+- runtime user: `tinki-bot`
+- SSH/deploy user: `ec2-user`
+- bot virtualenv runtime: Python `3.11`
+
+On the hardened AL2023 host, `ec2-user` keeps limited passwordless sudo only for
+`systemctl ... tinki-bot` so `!restart`, `!deploy`, and the checked-in deploy helpers still work
+without leaving the full host under `NOPASSWD: ALL`.
+
+On the current `t3a.nano` host, an additional `/swapfile_tinki` swapfile is enabled to give
+package installs and venv rebuilds enough headroom during maintenance work.
 
 ## Production Deploy
 
@@ -86,6 +97,13 @@ cd /path/to/tinki-bot
 Before the first deploy on macOS/Linux, copy `deploy-ec2.local.sh.example` to `deploy-ec2.local.sh` and set your real EC2 host, user, and SSH key path there, or set `TINKI_EC2_HOST`, `TINKI_EC2_USER`, and `TINKI_EC2_KEY_PATH` in your shell environment.
 
 If you want `!awscost` and deploy-time AWS cost reporting, the bot runtime also needs AWS credentials with Cost Explorer access.
+
+If you are migrating to a brand new EC2 host instead of doing a normal code deploy, copy the live runtime state too:
+
+- `/opt/apps/tinki-bot/data`
+- `/etc/tinki-bot.env`
+
+The deploy scripts update code, but host migration still requires those runtime files to be restored on the new machine before cutover.
 
 For repeated remote maintenance from Windows, prefer the wrapper scripts in `scripts/` instead of building inline `plink` commands:
 

@@ -6,5 +6,5 @@ $repo = $config.RemoteRepoDir
 
 Invoke-RemoteBash -Config $config -Script @"
 cd $repo
-/opt/apps/tinki-bot/myenv/bin/python3.8 -m pytest -q
+/opt/apps/tinki-bot/myenv/bin/python -m pytest -q
 "@

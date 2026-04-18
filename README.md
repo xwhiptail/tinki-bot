@@ -50,6 +50,7 @@ pip install -r requirements.txt
 - `OPENAI_MODEL` optional, defaults to `gpt-5.4`
 - `OPENAI_FAST_MODEL` optional, defaults to `gpt-5.4-mini` for routine mention replies
 - `AWS_COST_REGION` optional, defaults to `us-east-1` for Cost Explorer queries
+- `USER_WHIPTAIL_ID` optional, preferred trusted user ID for host-level admin commands like `!restart` and `!deploy`
 - `TINKI_DATA_DIR` optional, defaults to `./data`
 - `GITHUB_TOKEN` optional local tooling fallback for GitHub access; not used by the bot runtime
 
@@ -69,6 +70,9 @@ Current server layout:
 - service: `tinki-bot.service`
 - service unit file: `/etc/systemd/system/tinki-bot.service`
 - live secrets file: `/etc/tinki-bot.env`
+- service user: `tinki-bot`
+- SSH/deploy user: `ec2-user` with limited passwordless sudo for `systemctl ... tinki-bot`
+- bot venv runtime: Python `3.11`
 - deploy helper on this Windows machine: `deploy-ec2.ps1`
 - deploy helper on macOS/Linux: `./deploy-ec2.sh`
 - local deploy config on this Windows machine: `deploy-ec2.local.ps1`
@@ -140,6 +144,12 @@ cd /path/to/tinki-bot
 - upload the current repo files
 - restart `tinki-bot.service`
 
+Host replacement reminder:
+
+- normal deploys update code only
+- when moving the bot to a new EC2 instance or rebuilding the host, also copy `/opt/apps/tinki-bot/data` and `/etc/tinki-bot.env`
+- do not cut over a new host until those runtime files are present
+
 4. If you want to verify manually on the server:
 
 ```bash
@@ -201,6 +211,7 @@ That file currently provides:
 - `OPENAI_MODEL`
 - `OPENAI_FAST_MODEL`
 - `TINKI_DATA_DIR`
+- `USER_WHIPTAIL_ID`
 
 Do not store real secrets in the repo. The repo only contains the template:
 

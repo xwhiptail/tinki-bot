@@ -1414,6 +1414,9 @@ class TestAdminAWSCost:
 
     async def test_deploy_reports_check_without_aws_cost_message(self):
         ctx = make_ctx()
+        ctx.author = MagicMock()
+        ctx.author.id = 0
+        ctx.author.name = "whiptail"
         fake_session = MagicMock()
         fake_session.__aenter__ = AsyncMock(return_value=fake_session)
         fake_session.__aexit__ = AsyncMock(return_value=None)
@@ -1432,6 +1435,9 @@ class TestAdminAWSCost:
 
     async def test_deploy_aborts_truncated_archive(self):
         ctx = make_ctx()
+        ctx.author = MagicMock()
+        ctx.author.id = 0
+        ctx.author.name = "whiptail"
         commit_data = {"sha": "def5678", "commit": {"message": "Ship it"}}
 
         with patch.object(self.cog, "_read_deployed_commit", return_value="abc1234"), \
@@ -1449,6 +1455,9 @@ class TestAdminAWSCost:
 
     async def test_deploy_fails_when_archive_extracts_no_root_directory(self):
         ctx = make_ctx()
+        ctx.author = MagicMock()
+        ctx.author.id = 0
+        ctx.author.name = "whiptail"
         commit_data = {"sha": "def5678", "commit": {"message": "Ship it"}}
         zip_mock = MagicMock()
         zip_mock.__enter__.return_value = zip_mock
@@ -1514,6 +1523,9 @@ class TestAdminAWSCost:
 
     async def test_restart_sends_message_and_invokes_systemctl(self):
         ctx = make_ctx()
+        ctx.author = MagicMock()
+        ctx.author.id = 0
+        ctx.author.name = "whiptail"
 
         with patch("cogs.admin.asyncio.sleep", new=AsyncMock()) as sleep_mock, \
              patch("cogs.admin.subprocess.Popen") as popen_mock:

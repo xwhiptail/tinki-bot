@@ -4,10 +4,10 @@ Use this file as the shared resume point between Codex and Claude Code.
 
 ## Current State
 
-- Status: idle
+- Status: new AL2023 host is live, hardened, and running Python 3.11; repo still has local unpushed security-hardening edits
 - Active branch: `main`
-- Last known good verification: `python -m pytest`
-- Next concrete task: none
+- Last known good verification: `python -m pytest` locally and `python -m pytest -q` on the new EC2 host under Python 3.11 (`234 passed`)
+- Next concrete task: if doing future host migration or rebuild work, copy `/opt/apps/tinki-bot/data` and `/etc/tinki-bot.env` before cutover
 
 ## Resume Checklist
 
@@ -53,4 +53,11 @@ Use this as the default workflow unless the user says otherwise:
 
 ## Notes For Next Agent
 
-- None
+- Live bot host is now `t3a.nano` AL2023 at `98.92.242.38`.
+- Old host `52.91.60.81` has `tinki-bot.service` stopped and disabled.
+- `deploy-ec2.local.sh` points at the new host.
+- New host hardening: `tinki-bot.service` runs as service user `tinki-bot`; `ec2-user` only keeps limited passwordless sudo for `systemctl ... tinki-bot`.
+- Remote wrapper scripts now use `/opt/apps/tinki-bot/myenv/bin/python` instead of the retired `python3.8` path.
+- New host runtime upgrade: `/opt/apps/tinki-bot/myenv/bin/python` is now Python `3.11.14`; previous venv backup is kept at `/opt/apps/tinki-bot/myenv.py39.20260418_175337`.
+- Host maintenance headroom: `/swapfile_tinki` is enabled and persisted in `/etc/fstab` to avoid OOM kills during `dnf` and venv rebuilds on the `t3a.nano`.
+- Future host replacement work must restore both `/opt/apps/tinki-bot/data` and `/etc/tinki-bot.env`, not just repo code.

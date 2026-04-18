@@ -14,5 +14,5 @@ if [ "$RESTART_SERVICE" = "--restart-service" ]; then
   sleep 5
 fi
 cd "$REMOTE_REPO_DIR"
-/opt/apps/tinki-bot/myenv/bin/python3.8 scripts/check_awscost.py
+/opt/apps/tinki-bot/myenv/bin/python scripts/check_awscost.py
 EOF

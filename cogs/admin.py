@@ -43,6 +43,9 @@ class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def _host_admin_allowed(self, author) -> bool:
+        return user_matches(author, USER_WHIPTAIL_ID, 'whiptail')
+
     def _format_check_result(self, name: str, ok: bool, reason: str = None) -> str:
         emoji = TEST_PASS_EMOJI if ok else TEST_FAIL_EMOJI
         if reason:
@@ -316,6 +319,9 @@ class Admin(commands.Cog):
     @commands.command(name="restart")
     @commands.has_permissions(administrator=True)
     async def restart_bot(self, ctx):
+        if not self._host_admin_allowed(ctx.author):
+            await ctx.send("You do not have permission to use this command.")
+            return
         await ctx.send("Restarting... brb")
         await asyncio.sleep(1)
         subprocess.Popen(["sudo", "systemctl", "restart", "tinki-bot"])
@@ -323,6 +329,9 @@ class Admin(commands.Cog):
     @commands.command(name="deploy")
     @commands.has_permissions(administrator=True)
     async def deploy_latest(self, ctx):
+        if not self._host_admin_allowed(ctx.author):
+            await ctx.send("You do not have permission to use this command.")
+            return
         archive_url = GITHUB_REPO_URL.replace("https://github.com/", "https://codeload.github.com/") + "/zip/refs/heads/main"
         try:
             import aiohttp

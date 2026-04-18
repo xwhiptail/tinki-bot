@@ -28,8 +28,18 @@ class TinkiBot(commands.Bot):
             await self.load_extension(cog)
         logging.info("setup_hook: loaded cogs = %s", list(self.cogs.keys()))
 
+def build_bot_intents():
+    intents = discord.Intents.none()
+    intents.guilds = True
+    intents.members = True
+    intents.messages = True
+    intents.reactions = True
+    intents.message_content = True
+    intents.emojis_and_stickers = True
+    return intents
 
-intents = discord.Intents.all()
+
+intents = build_bot_intents()
 bot = TinkiBot(command_prefix='!', intents=intents)
 
 
