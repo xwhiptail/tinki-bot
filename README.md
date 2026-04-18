@@ -120,6 +120,8 @@ That script:
 - writes the deployed commit to `/opt/apps/tinki-bot/repo/.deploy-commit`
 - restarts the systemd service
 
+Repo-only branding art under `assets/branding/` is not part of the runtime deploy set.
+
 ### Deploy Steps
 
 1. Edit the code locally.

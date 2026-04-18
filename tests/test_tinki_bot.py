@@ -1446,6 +1446,9 @@ class TestAdminAWSCost:
             "AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30."
         )
 
+    def test_deploy_dirs_excludes_repo_only_branding_assets(self):
+        assert self.cog._deploy_dirs() == ["cogs", "utils", "tests", "scripts"]
+
     async def test_deploy_reports_check_without_aws_cost_message(self):
         ctx = make_ctx()
         ctx.author = MagicMock()

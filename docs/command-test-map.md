@@ -18,7 +18,7 @@ Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke
 | Command | Direct tests |
 | --- | --- |
 | `!restart` | `test_restart_sends_message_and_invokes_systemctl` |
-| `!deploy` | `test_deploy_reports_check_without_aws_cost_message`, `test_deploy_aborts_truncated_archive`, `test_deploy_fails_when_archive_extracts_no_root_directory` |
+| `!deploy` | `test_deploy_dirs_excludes_repo_only_branding_assets`, `test_deploy_reports_check_without_aws_cost_message`, `test_deploy_aborts_truncated_archive`, `test_deploy_fails_when_archive_extracts_no_root_directory` |
 | `!awscost` | `test_awscost_command_sends_summary`, `test_awscost_command_denies_non_whiptail` |
 | `!runtests` | `test_runtests_reports_start_and_summary` |
 | `!testurls` | `test_testurls_reports_each_result_and_summary` |

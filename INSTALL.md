@@ -105,6 +105,8 @@ If you are migrating to a brand new EC2 host instead of doing a normal code depl
 
 The deploy scripts update code, but host migration still requires those runtime files to be restored on the new machine before cutover.
 
+Repo-only branding art under `assets/branding/` is intentionally excluded from routine code deploys.
+
 For repeated remote maintenance from Windows, prefer the wrapper scripts in `scripts/` instead of building inline `plink` commands:
 
 ```powershell

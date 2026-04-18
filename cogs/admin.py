@@ -259,7 +259,7 @@ class Admin(commands.Cog):
         ]
 
     def _deploy_dirs(self):
-        return ["assets", "cogs", "utils", "tests", "scripts"]
+        return ["cogs", "utils", "tests", "scripts"]
 
     def _deploy_commit_file(self, repo_root: Path) -> Path:
         return repo_root / ".deploy-commit"

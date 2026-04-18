@@ -41,7 +41,7 @@ REPO_FILES=(
   ".gitignore"
 )
 
-REPO_DIRS=("utils" "cogs" "tests" "assets" "scripts")
+REPO_DIRS=("utils" "cogs" "tests" "scripts")
 
 remote_bash <<EOF
 set -e
