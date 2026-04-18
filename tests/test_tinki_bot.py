@@ -2348,7 +2348,7 @@ class TestUmaMediaAndTriggers:
         with patch.object(self.cog, "_gif", new=AsyncMock(return_value=None)):
             await self.cog.uma_gif_cmd.callback(self.cog, ctx)
 
-        ctx.send.assert_awaited_once_with("Giphy came up empty. The gremlin is disappointed.")
+        ctx.send.assert_awaited_once_with("Giphy came up empty. The gnome is annoyed.")
 
     async def test_umagif_sends_gif_when_available(self):
         ctx = make_ctx()

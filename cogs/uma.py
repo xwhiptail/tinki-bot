@@ -363,7 +363,7 @@ class Uma(commands.Cog):
         if gif:
             await ctx.send(gif)
         else:
-            await ctx.send('Giphy came up empty. The gremlin is disappointed.')
+            await ctx.send('Giphy came up empty. The gnome is annoyed.')
 
 
 async def setup(bot):

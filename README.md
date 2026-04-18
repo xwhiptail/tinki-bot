@@ -8,7 +8,7 @@
 
 # tinki-bot
 
-Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered gremlin replies, and Uma Musume gacha.
+Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered cute-snarky gnome replies, and Uma Musume gacha.
 
 ## Requirements
 
@@ -287,7 +287,7 @@ Live runtime data on EC2 is stored in:
 
 ### AI replies
 
-Tinki responds when mentioned (`@Tinki-bot`). She has a chaotic gremlin personality powered by OpenAI. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
+Tinki responds when mentioned (`@Tinki-bot`). She has a cute but snarky gnome personality powered by OpenAI. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
 
 ### Bowling score tracking
 

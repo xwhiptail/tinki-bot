@@ -85,7 +85,7 @@ cogs/
 
 ## Bot Architecture
 
-- Personality: `GREMLIN_SYSTEM_STYLE` constant in `config.py` - chaotic gremlin shitposter, short replies, no therapy talk.
+- Personality: `GREMLIN_SYSTEM_STYLE` constant in `config.py` - cute but snarky gnome energy, short replies, no therapy talk.
 - AI mention handler: in `cogs/ai.py`. Strips `<@ID>` and `<@!ID>` variants. Falls through to OpenAI if no pure-function handler matches. Accesses persona data via `bot.cogs['Personas']`.
 - Pure function handlers (deterministic, no GPT): `utils/calculator.py` -> `maybe_calculate_reply`, `utils/letter_counter.py` -> `maybe_count_letter_reply`. Both return a bare fact string; `gpt_wrap_fact` wraps it with personality using assistant prefill to prevent prompt leakage.
 - URL rewriting: `utils/url_rewriter.py` -> `rewrite_social_urls`. Triggered by `cogs/url_filter.py` on_message listener.
