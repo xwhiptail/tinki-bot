@@ -11,7 +11,10 @@ import io
 import json
 import sys
 import os
+import shutil
+import subprocess
 import importlib.util
+from pathlib import Path
 from contextlib import ExitStack
 from types import SimpleNamespace
 
@@ -3129,3 +3132,125 @@ class TestNoMojibake:
         assert hits == [], f"Mojibake found:\n" + "\n".join(
             f"  {p}:{ln} [{lbl}]: {snip}" for p, ln, lbl, snip in hits
         )
+
+
+class TestRemoteCommonScript:
+    def test_remote_copy_recursive_streams_tar_instead_of_scp(self, tmp_path):
+        project_root = tmp_path / "project"
+        scripts_dir = project_root / "scripts"
+        scripts_dir.mkdir(parents=True)
+        shutil.copyfile(
+            Path(__file__).resolve().parent.parent / "scripts" / "remote-common.sh",
+            scripts_dir / "remote-common.sh",
+        )
+
+        fakebin = tmp_path / "fakebin"
+        fakebin.mkdir()
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir()
+
+        def _write_tool(name: str, body: str):
+            path = fakebin / name
+            path.write_text(body, encoding="utf-8")
+            path.chmod(0o755)
+
+        _write_tool(
+            "scp",
+            f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "{logs_dir / 'scp.log'}"
+exit 0
+""",
+        )
+        _write_tool(
+            "ssh",
+            f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "{logs_dir / 'ssh.log'}"
+cat >/dev/null
+exit 0
+""",
+        )
+        _write_tool(
+            "tar",
+            f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "{logs_dir / 'tar.log'}"
+cat /dev/null
+exit 0
+""",
+        )
+
+        source_dir = tmp_path / "cogs"
+        source_dir.mkdir()
+        (source_dir / "example.py").write_text("print('ok')\n", encoding="utf-8")
+
+        env = os.environ.copy()
+        env["PATH"] = f"{fakebin}:{env['PATH']}"
+        env["TINKI_EC2_HOST"] = "example-host"
+        env["TINKI_EC2_USER"] = "deploy-user"
+        env["TINKI_EC2_KEY_PATH"] = "/tmp/test-key.pem"
+
+        script = f"""
+set -euo pipefail
+source "{scripts_dir / 'remote-common.sh'}"
+remote_copy "{source_dir}" "/remote/repo/" true
+"""
+        subprocess.run(["bash", "-c", script], check=True, env=env, cwd=project_root)
+
+        scp_log = (logs_dir / "scp.log")
+        assert not scp_log.exists() or scp_log.read_text(encoding="utf-8").strip() == ""
+
+        tar_log = (logs_dir / "tar.log").read_text(encoding="utf-8")
+        assert f"-C {source_dir.parent}" in tar_log
+        assert "-cf -" in tar_log
+        assert source_dir.name in tar_log
+
+        ssh_log = (logs_dir / "ssh.log").read_text(encoding="utf-8")
+        assert "deploy-user@example-host" in ssh_log
+        assert "tar -xmf -" in ssh_log
+        assert "--no-overwrite-dir" in ssh_log
+        assert "-C /remote/repo/" in ssh_log
+
+    def test_remote_copy_file_keeps_using_scp(self, tmp_path):
+        project_root = tmp_path / "project"
+        scripts_dir = project_root / "scripts"
+        scripts_dir.mkdir(parents=True)
+        shutil.copyfile(
+            Path(__file__).resolve().parent.parent / "scripts" / "remote-common.sh",
+            scripts_dir / "remote-common.sh",
+        )
+
+        fakebin = tmp_path / "fakebin"
+        fakebin.mkdir()
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir()
+
+        for name in ("scp", "ssh"):
+            body = f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "{logs_dir / f'{name}.log'}"
+exit 0
+"""
+            path = fakebin / name
+            path.write_text(body, encoding="utf-8")
+            path.chmod(0o755)
+
+        source_file = tmp_path / "README.md"
+        source_file.write_text("hello\n", encoding="utf-8")
+
+        env = os.environ.copy()
+        env["PATH"] = f"{fakebin}:{env['PATH']}"
+        env["TINKI_EC2_HOST"] = "example-host"
+        env["TINKI_EC2_USER"] = "deploy-user"
+        env["TINKI_EC2_KEY_PATH"] = "/tmp/test-key.pem"
+
+        script = f"""
+set -euo pipefail
+source "{scripts_dir / 'remote-common.sh'}"
+remote_copy "{source_file}" "/remote/repo/"
+"""
+        subprocess.run(["bash", "-c", script], check=True, env=env, cwd=project_root)
+
+        scp_log = (logs_dir / "scp.log").read_text(encoding="utf-8")
+        assert str(source_file) in scp_log
+        assert "deploy-user@example-host:/remote/repo/" in scp_log
+
+        ssh_log = logs_dir / "ssh.log"
+        assert not ssh_log.exists() or ssh_log.read_text(encoding="utf-8").strip() == ""

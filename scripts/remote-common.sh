@@ -43,7 +43,13 @@ remote_copy() {
   local scp_args=("${SSH_ARGS[@]}")
 
   if [[ "$recursive" == "true" ]]; then
-    scp_args+=(-r)
+    local source_dir source_name remote_path_quoted
+    source_dir="$(cd "$(dirname "$source_path")" && pwd)"
+    source_name="$(basename "$source_path")"
+    printf -v remote_path_quoted '%q' "$remote_path"
+    tar -C "$source_dir" -cf - "$source_name" \
+      | ssh "${SSH_ARGS[@]}" "$SSH_TARGET" "mkdir -p ${remote_path_quoted} && tar -xmf - --no-overwrite-dir -C ${remote_path_quoted}"
+    return
   fi
 
   scp "${scp_args[@]}" "$source_path" "${SSH_TARGET}:${remote_path}"
