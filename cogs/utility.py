@@ -283,8 +283,6 @@ class Utility(commands.Cog):
 `!cat` - Sends a random cat.
 `!dog` - Sends a random dog.
 `!dogbark` - Sends a random bark word in block letters.
-`!listpersonas` - lists available personas
-`!erasememory [number]` - deletes past X interactions saved in memory
 `!emote [name] [1-4]` - displays the top 5 emotes from 7tv API
 `!spinny @[user]` - grinding activated for @user
 `!stopspinny @[user]` - grinding deactivated for @user

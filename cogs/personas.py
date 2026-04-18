@@ -45,29 +45,6 @@ class Personas(commands.Cog):
         user_convos[persona] = history[-10:]
         self.save_conversations()
 
-    @commands.command(name='listpersonas')
-    async def list_personas(self, ctx):
-        if self.personas:
-            await ctx.send(f"Available Personas:\n{chr(10).join(self.personas.keys())}")
-        else:
-            await ctx.send("No personas available.")
-
-    @commands.command(name='erasememory')
-    async def erase_memory(self, ctx, number_of_interactions: int = None):
-        user_id = str(ctx.author.id)
-        if user_id in self.conversations and self.current_persona in self.conversations[user_id]:
-            if number_of_interactions is None:
-                self.conversations[user_id][self.current_persona] = []
-                message = f"All memory of our conversations as '{self.current_persona}' has been erased."
-            else:
-                n = min(number_of_interactions * 2, len(self.conversations[user_id][self.current_persona]))
-                self.conversations[user_id][self.current_persona] = self.conversations[user_id][self.current_persona][:-n]
-                message = f"Erased the last {number_of_interactions} interactions."
-            self.save_conversations()
-            await ctx.send(message)
-        else:
-            await ctx.send("No conversation history found for you.")
-
 
 async def setup(bot):
     await bot.add_cog(Personas(bot))

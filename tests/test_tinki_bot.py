@@ -579,6 +579,21 @@ class TestAdminAWSCost:
         assert "skyfactoryserver" not in invoked
         assert "uptime" not in invoked
 
+    async def test_command_selftests_skip_removed_persona_commands(self):
+        invoked = []
+        self.cog.bot.get_command = MagicMock(side_effect=lambda name: name)
+
+        class DummyCtx:
+            async def invoke(self, cmd):
+                invoked.append(cmd)
+
+            send = AsyncMock()
+
+        await self.cog._run_command_selftests(DummyCtx())
+
+        assert "listpersonas" not in invoked
+        assert "erasememory" not in invoked
+
 
 class TestUtilityChangelog:
     def setup_method(self):
@@ -714,26 +729,6 @@ class TestTrackingGraphs:
 
         ctx.send.assert_awaited_once()
         assert "Error:" not in str(ctx.send.call_args.args)
-
-
-# ── persona commands ──────────────────────────────────────────────────────────
-
-class TestPersonaCommands:
-    def setup_method(self):
-        self.cog = make_personas_cog()
-
-    async def test_list_personas_when_empty(self):
-        ctx = make_ctx()
-        await self.cog.list_personas(ctx)
-        assert "No personas" in ctx.send.call_args[0][0]
-
-    async def test_list_personas_shows_all_names(self):
-        self.cog.personas["pirate"] = "arr"
-        self.cog.personas["robot"] = "beep"
-        ctx = make_ctx()
-        await self.cog.list_personas(ctx)
-        msg = ctx.send.call_args[0][0]
-        assert "pirate" in msg and "robot" in msg
 
 
 # ── Uma Musume gacha ──────────────────────────────────────────────────────────

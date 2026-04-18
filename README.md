@@ -321,8 +321,6 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 
 ### Personas And AI
 
-- `!listpersonas` - list available personas
-- `!erasememory [count]` - erase saved conversation memory for the active persona
 - `@Tinki-bot <message>` - get a reply from Tinki
 
 ### Reminders
