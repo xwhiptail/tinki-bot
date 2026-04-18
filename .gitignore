@@ -3,6 +3,7 @@ OPENAI.txt
 .venv/
 venv/
 myenv/
+worktrees/
 .idea/
 __pycache__/
 *.pyc
