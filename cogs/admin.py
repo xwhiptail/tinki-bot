@@ -155,7 +155,6 @@ class Admin(commands.Cog):
             "gif", "random", "github", "allemotes", "roulette", "cat", "dog", "dogbark",
             "remindme", "listpersonas",
             "sussy", "sussygraph", "explode", "explodegraph", "grindcount", "grindgraph",
-            "minecraftstatus", "minecraftserver", "uptime", "skyfactorystatus", "skyfactoryserver",
         ]
         results = []
         for name in tests:

@@ -561,6 +561,24 @@ class TestAdminAWSCost:
         report_text = kwargs["file"].fp.getvalue().decode("utf-8")
         assert "AWS cost" not in report_text
 
+    async def test_command_selftests_skip_retired_server_placeholders(self):
+        invoked = []
+        self.cog.bot.get_command = MagicMock(side_effect=lambda name: name)
+
+        class DummyCtx:
+            async def invoke(self, cmd):
+                invoked.append(cmd)
+
+            send = AsyncMock()
+
+        await self.cog._run_command_selftests(DummyCtx())
+
+        assert "minecraftstatus" not in invoked
+        assert "minecraftserver" not in invoked
+        assert "skyfactorystatus" not in invoked
+        assert "skyfactoryserver" not in invoked
+        assert "uptime" not in invoked
+
 
 class TestUtilityChangelog:
     def setup_method(self):
