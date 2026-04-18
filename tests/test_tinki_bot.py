@@ -929,6 +929,7 @@ class TestAdminAWSCost:
         insight_results=None,
         pytest_results=None,
         openai_balance="$1.23 remaining",
+        aws_cost_summary="AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30.",
     ):
         self.cog.bot.wait_until_ready = AsyncMock()
         test_channel = MagicMock()
@@ -942,7 +943,8 @@ class TestAdminAWSCost:
              patch("cogs.admin.run_letter_count_selftests", return_value=letter_results or [("letter", True, None)]), \
              patch("cogs.admin.run_bot_insight_selftests", return_value=insight_results or [("insight", True, None)]), \
              patch.object(self.cog, "_run_pytest_suite", new=AsyncMock(return_value=pytest_results or [("pytest", True, "passed")])), \
-             patch("cogs.admin.fetch_openai_balance", new=AsyncMock(return_value=openai_balance)):
+             patch("cogs.admin.fetch_openai_balance", new=AsyncMock(return_value=openai_balance)), \
+             patch("cogs.admin.fetch_aws_cost_summary", new=AsyncMock(return_value=aws_cost_summary)):
             await self.cog._run_startup_tests_inner()
 
         kwargs = test_channel.send.await_args.kwargs
@@ -1035,11 +1037,18 @@ class TestAdminAWSCost:
 
         ctx.send.assert_awaited_once_with("You do not have permission to use this command.")
 
-    async def test_startup_message_omits_aws_cost_summary(self):
+    async def test_startup_message_includes_aws_cost_summary(self):
         content, report_text = await self._run_startup_report(cmd_results=[("pb", True, None)])
 
-        assert "AWS cost" not in content
-        assert "AWS cost" not in report_text
+        assert "AWS cost" in content
+        assert "AWS cost" in report_text
+
+    async def test_startup_message_places_aws_cost_under_openai_balance(self):
+        content, report_text = await self._run_startup_report(cmd_results=[("pb", True, None)])
+
+        assert "OpenAI: $1.23 remaining\nAWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30." in content
+        assert "OpenAI: $1.23 remaining" in content
+        assert "AWS cost (Apr 2026): USD12.34 month-to-date, projected USD18.90 by Apr 30." in report_text
 
     async def test_startup_message_reports_command_availability_not_tests(self):
         content, report_text = await self._run_startup_report(cmd_results=[("pb", True, "available")])

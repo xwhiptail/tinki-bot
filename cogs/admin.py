@@ -127,6 +127,7 @@ class Admin(commands.Cog):
         insight_results = run_bot_insight_selftests()
         pytest_results = await self._run_pytest_suite()
         openai_balance = await fetch_openai_balance()
+        aws_cost_summary = await fetch_aws_cost_summary()
 
         def _counts(results):
             return sum(1 for _, ok, _ in results if ok), len(results)
@@ -153,6 +154,7 @@ class Admin(commands.Cog):
             summary_lines.append(f"- {section.summary_label}: {section.description}")
             summary_lines.append(self._summary_line(section.summary_label, passed, total, section.suffix).rstrip())
         summary_lines.append(f"OpenAI: {openai_balance}")
+        summary_lines.append(aws_cost_summary)
         summary = "\n".join(summary_lines) + "\n"
         if failures:
             summary += "\nAnomalies detected:\n" + "".join(f"- {TEST_FAIL_EMOJI} {failure}\n" for failure in failures)
@@ -170,6 +172,8 @@ class Admin(commands.Cog):
                     lines.append(f"  {TEST_PASS_EMOJI} {name}\n")
                 else:
                     lines.append(f"  {TEST_FAIL_EMOJI} {name} - {reason}\n")
+        lines.append(f"\nOpenAI: {openai_balance}\n")
+        lines.append(f"AWS cost: {aws_cost_summary}\n")
 
         buf = io.BytesIO("".join(lines).encode("utf-8"))
         try:
