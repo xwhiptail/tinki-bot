@@ -1163,6 +1163,16 @@ class TestAdminAWSCost:
         assert "url: broken rewrite rule" in content
         assert "🚨 url - broken rewrite rule" in report_text
 
+    async def test_startup_report_includes_detail_for_passing_checks(self):
+        content, report_text = await self._run_startup_report(
+            cmd_results=[("pb", True, "command loaded")],
+            pytest_results=[("pytest", True, "222 passed in 3.47s")],
+        )
+
+        assert "✅ pb - command loaded" in report_text
+        assert "✅ pytest - 222 passed in 3.47s" in report_text
+        assert "222 passed in 3.47s" in content
+
     async def test_command_selftests_skip_retired_server_placeholders(self):
         invoked = []
         self.cog.bot.get_command = MagicMock(side_effect=lambda name: name)

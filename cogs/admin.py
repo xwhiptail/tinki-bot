@@ -43,6 +43,12 @@ class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def _format_check_result(self, name: str, ok: bool, reason: str = None) -> str:
+        emoji = TEST_PASS_EMOJI if ok else TEST_FAIL_EMOJI
+        if reason:
+            return f"{emoji} {name} - {reason}"
+        return f"{emoji} {name}"
+
     def _status_emoji(self, passed: int, total: int) -> str:
         return TEST_PASS_EMOJI if total and passed == total else TEST_FAIL_EMOJI
 
@@ -153,6 +159,11 @@ class Admin(commands.Cog):
             passed, total = _counts(section.results)
             summary_lines.append(f"- {section.summary_label}: {section.description}")
             summary_lines.append(self._summary_line(section.summary_label, passed, total, section.suffix).rstrip())
+            detail_lines = [
+                f"  {self._format_check_result(name, ok, reason)}"
+                for name, ok, reason in section.results
+            ]
+            summary_lines.extend(detail_lines)
         summary_lines.append(f"OpenAI: {openai_balance}")
         summary_lines.append(aws_cost_summary)
         summary = "\n".join(summary_lines) + "\n"
@@ -168,10 +179,7 @@ class Admin(commands.Cog):
             lines.append(f"\n{self._summary_line(section.report_label, passed, total, section.suffix)}")
             lines.append(f"  Checks: {section.description}\n")
             for name, ok, reason in section.results:
-                if ok:
-                    lines.append(f"  {TEST_PASS_EMOJI} {name}\n")
-                else:
-                    lines.append(f"  {TEST_FAIL_EMOJI} {name} - {reason}\n")
+                lines.append(f"  {self._format_check_result(name, ok, reason)}\n")
         lines.append(f"\nOpenAI: {openai_balance}\n")
         lines.append(f"AWS cost: {aws_cost_summary}\n")
 
