@@ -74,13 +74,11 @@ function Copy-ToRemote {
     $normalizedRemotePath = $RemotePath.TrimEnd("/")
     $remoteTarget = "$normalizedRemotePath/$leafName"
 
-    Invoke-RemoteBash -Config $Config -Script @"
-if [ "$($Recursive.IsPresent.ToString().ToLowerInvariant())" = "true" ]; then
-  rm -rf $remoteTarget
-else
+    if (-not $Recursive) {
+        Invoke-RemoteBash -Config $Config -Script @"
   rm -f $remoteTarget
-fi
 "@
+    }
 
     $args = @("-batch", "-i", $Config.KeyPath)
     if ($Recursive) {

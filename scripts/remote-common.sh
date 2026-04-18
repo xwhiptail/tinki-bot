@@ -60,7 +60,7 @@ remote_copy() {
         -print0 \
         | COPYFILE_DISABLE=1 tar --format=ustar -C "$source_dir" --null -T - -cf -
     ) \
-      | ssh "${SSH_ARGS[@]}" "$SSH_TARGET" "rm -rf ${remote_target_quoted} && mkdir -p ${remote_target_quoted} && tar -xmf - --no-same-permissions --no-overwrite-dir -C ${remote_target_quoted}"
+      | ssh "${SSH_ARGS[@]}" "$SSH_TARGET" "mkdir -p ${remote_target_quoted} && tar -xmf - --no-same-permissions --no-overwrite-dir -C ${remote_target_quoted}"
     return
   fi
 
