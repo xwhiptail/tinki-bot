@@ -338,7 +338,7 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 - `$<emote_name> [count]` - send a named emote as the bot
 - `$randomemote [count]` - send a random emote as the bot
 - `!allemotes` - list the current server's emotes
-- `!emote <name> [1-4]` - search 7TV via direct API calls, see a visual preview sheet for up to 10 matches per page, then use numbered buttons to pick and send the chosen emote size
+- `!emote <name> [1x-4x]` - search 7TV via direct API calls, open a picker for up to 10 matches per page, preview animated emotes in the result grid, then pick a size and send
 - `!spinny @user` - enable SPINNY sticker grinding for a user
 - `!stopspinny @user|username` - disable SPINNY sticker grinding
 - `!silentspinny <username>` - enable silent grinding by username for whiptail only

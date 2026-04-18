@@ -42,7 +42,7 @@ This map is intentionally strict: it lists tests that directly call command meth
 | `!stopspinny` | `test_stopspinny_removes_user_by_mention`, `test_stopspinny_not_found_sends_error` |
 | `!silentspinny` | `test_silentspinny_denied_for_non_whiptail` |
 | `!allemotes` | `test_allemotes_reports_empty_server_list`, `test_allemotes_starts_menu_for_guild_emojis` |
-| `!emote` | `test_emote_command_sends_directly_for_single_result` plus the 7TV browser helper tests |
+| `!emote` | `test_emote_command_opens_picker_for_single_result`, `test_emote_command_opens_picker_for_single_exact_match`, `test_emote_command_rejects_invalid_x_size`, plus the 7TV browser helper tests |
 
 ## Reminders
 

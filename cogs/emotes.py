@@ -10,7 +10,7 @@ import aiohttp
 import discord
 from discord.ext import commands, menus
 from fuzzywuzzy import process
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageSequence
 
 from config import GRINDING_STATE_FILE, STICKER_SPINNY, USER_WHIPTAIL_ID, user_matches
 
@@ -19,6 +19,9 @@ EMOTE_BROWSER_MORE_EMOJI = "\U0001f4c4"
 EMOTE_BROWSER_CANCEL_EMOJI = "\u274c"
 EMOTE_BROWSER_COLOR = 0x55A7F7
 EMOTE_BROWSER_PAGE_SIZE = 10
+EMOTE_BROWSER_ANIMATED_MAX_BYTES = 7_500_000
+EMOTE_BROWSER_ANIMATED_MAX_FRAMES = 24
+EMOTE_BROWSER_ANIMATED_FALLBACK_NOTICE = "Animated preview unavailable; showing static grid."
 SEVENTV_GQL_ENDPOINT = "https://7tv.io/v3/gql"
 SEVENTV_SEARCH_QUERY = (
     "query SearchEmotes($query: String!, $page: Int, $sort: Sort, $limit: Int, $filter: EmoteSearchFilter) {\n"
@@ -44,6 +47,19 @@ class SevenTvEmoteResult:
     name: str
     host_url: str
     owner_username: str = ""
+
+
+@dataclass
+class SevenTvPreviewMedia:
+    frames: list
+    durations: list
+    animated: bool
+
+
+@dataclass
+class SevenTvBrowserPreview:
+    file: discord.File = None
+    notice: str = None
 
 
 async def _get_user_id_from_username(guild, username):
@@ -73,6 +89,16 @@ class SevenTvPreviewButton(discord.ui.Button):
         await self.browser.handle_selection(interaction, self.preview_index)
 
 
+class SevenTvSizeButton(discord.ui.Button):
+    def __init__(self, browser, size_value: int):
+        self.browser = browser
+        self.size_value = size_value
+        super().__init__(label=f"{size_value}x", style=discord.ButtonStyle.secondary, row=3)
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.browser.handle_size_selection(interaction, self.size_value)
+
+
 class SevenTvEmoteBrowserView(discord.ui.View):
     def __init__(self, cog, ctx, emote_name: str, size: int, session, emotes, exact_match: bool):
         super().__init__(timeout=60)
@@ -92,13 +118,23 @@ class SevenTvEmoteBrowserView(discord.ui.View):
         self.preview_buttons = [SevenTvPreviewButton(self, index) for index in range(EMOTE_BROWSER_PAGE_SIZE)]
         for button in self.preview_buttons:
             self.add_item(button)
+        self.size_buttons = [SevenTvSizeButton(self, size_value) for size_value in (1, 2, 3, 4)]
+        for button in self.size_buttons:
+            self.add_item(button)
         self._refresh_preview_buttons()
+        self._refresh_size_buttons()
 
     async def start(self):
-        file = await self.cog._build_7tv_browser_file(self.session, self.emotes, self.selected_index)
-        self.message = await self.ctx.send(embed=self.build_embed(file is not None), view=self, file=file)
+        preview = await self.cog._build_7tv_browser_preview(self.session, self.emotes, self.selected_index)
+        send_kwargs = {
+            "embed": self.build_embed(preview),
+            "view": self,
+        }
+        if preview.file is not None:
+            send_kwargs["file"] = preview.file
+        self.message = await self.ctx.send(**send_kwargs)
 
-    def build_embed(self, has_preview_grid: bool = False):
+    def build_embed(self, preview: SevenTvBrowserPreview = None):
         return self.cog._build_7tv_browser_embed(
             self.emote_name,
             self.size,
@@ -106,7 +142,8 @@ class SevenTvEmoteBrowserView(discord.ui.View):
             self.page,
             self.exact_match,
             selected_index=self.selected_index,
-            has_preview_grid=has_preview_grid,
+            preview_attachment_name=preview.file.filename if preview and preview.file is not None else None,
+            preview_notice=preview.notice if preview is not None else None,
         )
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -118,6 +155,11 @@ class SevenTvEmoteBrowserView(discord.ui.View):
     async def handle_selection(self, interaction: discord.Interaction, index: int):
         self.selected_index = max(0, min(index, len(self.emotes) - 1))
         self._refresh_preview_buttons()
+        await self._edit_with_preview(interaction)
+
+    async def handle_size_selection(self, interaction: discord.Interaction, size_value: int):
+        self.size = size_value
+        self._refresh_size_buttons()
         await self._edit_with_preview(interaction)
 
     def _refresh_preview_buttons(self):
@@ -135,12 +177,20 @@ class SevenTvEmoteBrowserView(discord.ui.View):
                 button.label = "-"
                 button.style = discord.ButtonStyle.secondary
 
+    def _refresh_size_buttons(self):
+        for button in self.size_buttons:
+            button.style = (
+                discord.ButtonStyle.primary
+                if button.size_value == self.size
+                else discord.ButtonStyle.secondary
+            )
+
     async def _edit_with_preview(self, interaction: discord.Interaction):
-        file = await self.cog._build_7tv_browser_file(self.session, self.emotes, self.selected_index)
+        preview = await self.cog._build_7tv_browser_preview(self.session, self.emotes, self.selected_index)
         await interaction.response.edit_message(
-            embed=self.build_embed(file is not None),
+            embed=self.build_embed(preview),
             view=self,
-            attachments=[file] if file is not None else [],
+            attachments=[preview.file] if preview.file is not None else [],
         )
 
     @discord.ui.button(label="Send", emoji="\u2705", style=discord.ButtonStyle.success, row=2)
@@ -226,6 +276,16 @@ class Emotes(commands.Cog):
         with open(GRINDING_STATE_FILE, 'w') as f:
             json.dump(self.sticker_users, f)
 
+    def _parse_emote_size(self, raw_size):
+        if raw_size is None:
+            return 2
+        normalized = str(raw_size).strip().lower()
+        if normalized.endswith("x"):
+            normalized = normalized[:-1]
+        if normalized not in {"1", "2", "3", "4"}:
+            return None
+        return int(normalized)
+
     def _preview_7tv_url(self, emote: SevenTvEmoteResult) -> str:
         return f"https:{emote.host_url}/2x.webp"
 
@@ -253,6 +313,8 @@ class Emotes(commands.Cog):
         *,
         selected_index: int = 0,
         has_preview_grid: bool = False,
+        preview_attachment_name=None,
+        preview_notice=None,
     ) -> discord.Embed:
         match_mode = "exact" if exact_match else "fuzzy"
         safe_selected_index = max(0, min(selected_index, len(emotes) - 1)) if emotes else 0
@@ -272,26 +334,45 @@ class Emotes(commands.Cog):
                 value=f"**{selected_emote.name}** by `{self._display_owner(selected_emote)}`",
                 inline=False,
             )
-            if has_preview_grid:
+            if preview_attachment_name:
+                embed.set_image(url=f"attachment://{preview_attachment_name}")
+            elif has_preview_grid:
                 embed.set_image(url="attachment://7tv-page.png")
             else:
                 embed.set_image(url=self._preview_7tv_url(selected_emote))
-        embed.set_footer(text=f"Page {page} - {match_mode} search - click a number to preview, Send to post at {size}x")
+        footer = f"Page {page} - {match_mode} search - click a number to preview, Send to post at {size}x"
+        if preview_notice:
+            footer = f"{footer} - {preview_notice}"
+        embed.set_footer(text=footer)
         return embed
 
-    async def _fetch_7tv_preview_tile(self, session: aiohttp.ClientSession, emote: SevenTvEmoteResult):
+    async def _fetch_7tv_preview_media(self, session: aiohttp.ClientSession, emote: SevenTvEmoteResult):
         try:
             async with session.get(self._preview_7tv_url(emote)) as resp:
                 if resp.status != 200:
                     return None
-                return Image.open(io.BytesIO(await resp.read())).convert("RGBA")
+                image = Image.open(io.BytesIO(await resp.read()))
+                is_animated = bool(getattr(image, "is_animated", False) and getattr(image, "n_frames", 1) > 1)
+                frames = []
+                durations = []
+                frame_limit = min(getattr(image, "n_frames", 1), EMOTE_BROWSER_ANIMATED_MAX_FRAMES)
+                for frame in ImageSequence.Iterator(image):
+                    rgba_frame = frame.convert("RGBA")
+                    rgba_frame.thumbnail((88, 88))
+                    frames.append(rgba_frame.copy())
+                    durations.append(max(40, int(frame.info.get("duration") or image.info.get("duration") or 100)))
+                    if len(frames) >= frame_limit:
+                        break
+                if not frames:
+                    fallback_frame = image.convert("RGBA")
+                    fallback_frame.thumbnail((88, 88))
+                    frames.append(fallback_frame)
+                    durations.append(100)
+                return SevenTvPreviewMedia(frames=frames, durations=durations, animated=is_animated and len(frames) > 1)
         except Exception:
             return None
 
-    async def _build_7tv_browser_file(self, session: aiohttp.ClientSession, emotes, selected_index: int):
-        if not emotes:
-            return None
-
+    def _browser_grid_dimensions(self, emotes):
         cols = 5
         rows = max(1, (len(emotes) + cols - 1) // cols)
         tile_size = 96
@@ -299,10 +380,12 @@ class Emotes(commands.Cog):
         label_height = 18
         width = cols * tile_size + (cols + 1) * gap
         height = rows * (tile_size + label_height) + (rows + 1) * gap
+        return cols, rows, tile_size, gap, label_height, width, height
+
+    def _render_7tv_browser_frame(self, previews, selected_index: int, frame_index: int = 0):
+        cols, rows, tile_size, gap, label_height, width, height = self._browser_grid_dimensions(previews)
         canvas = Image.new("RGBA", (width, height), (24, 26, 37, 255))
         draw = ImageDraw.Draw(canvas)
-
-        previews = await asyncio.gather(*(self._fetch_7tv_preview_tile(session, emote) for emote in emotes))
         for index, preview in enumerate(previews):
             col = index % cols
             row = index // cols
@@ -315,17 +398,66 @@ class Emotes(commands.Cog):
                 outline=(79, 172, 254, 255) if index == selected_index else (85, 88, 108, 255),
                 width=3 if index == selected_index else 1,
             )
-            if preview is not None:
-                preview.thumbnail((tile_size - 8, tile_size - 8))
-                px = x + (tile_size - preview.width) // 2
-                py = y + (tile_size - preview.height) // 2
-                canvas.alpha_composite(preview, (px, py))
+            if preview is not None and preview.frames:
+                frame = preview.frames[frame_index % len(preview.frames)] if preview.animated else preview.frames[0]
+                px = x + (tile_size - frame.width) // 2
+                py = y + (tile_size - frame.height) // 2
+                canvas.alpha_composite(frame, (px, py))
             draw.text((x + 6, y + tile_size + 2), str(index + 1), fill=(255, 255, 255, 255))
+        return canvas
 
+    def _build_static_7tv_browser_file(self, previews, selected_index: int):
         output = io.BytesIO()
-        canvas.save(output, format="PNG")
+        self._render_7tv_browser_frame(previews, selected_index).save(output, format="PNG")
         output.seek(0)
         return discord.File(output, filename="7tv-page.png")
+
+    def _build_animated_7tv_browser_file(self, previews, selected_index: int):
+        frame_count = max(len(preview.frames) for preview in previews if preview is not None)
+        if frame_count <= 1:
+            return None
+        rendered_frames = [self._render_7tv_browser_frame(previews, selected_index, frame_index) for frame_index in range(frame_count)]
+        durations = []
+        animated_previews = [preview for preview in previews if preview is not None and preview.animated]
+        for frame_index in range(frame_count):
+            frame_durations = [preview.durations[frame_index % len(preview.durations)] for preview in animated_previews]
+            durations.append(max(frame_durations) if frame_durations else 100)
+        output = io.BytesIO()
+        rendered_frames[0].save(
+            output,
+            format="GIF",
+            save_all=True,
+            append_images=rendered_frames[1:],
+            duration=durations,
+            loop=0,
+            disposal=2,
+        )
+        if output.tell() > EMOTE_BROWSER_ANIMATED_MAX_BYTES:
+            raise ValueError("animated preview exceeds size budget")
+        output.seek(0)
+        return discord.File(output, filename="7tv-page.gif")
+
+    async def _build_7tv_browser_preview(self, session: aiohttp.ClientSession, emotes, selected_index: int):
+        if not emotes:
+            return SevenTvBrowserPreview()
+
+        previews = await asyncio.gather(*(self._fetch_7tv_preview_media(session, emote) for emote in emotes))
+        if any(preview is not None and preview.animated for preview in previews):
+            try:
+                animated_file = self._build_animated_7tv_browser_file(previews, selected_index)
+                if animated_file is not None:
+                    return SevenTvBrowserPreview(file=animated_file)
+            except Exception:
+                pass
+            return SevenTvBrowserPreview(
+                file=self._build_static_7tv_browser_file(previews, selected_index),
+                notice=EMOTE_BROWSER_ANIMATED_FALLBACK_NOTICE,
+            )
+        return SevenTvBrowserPreview(file=self._build_static_7tv_browser_file(previews, selected_index))
+
+    async def _build_7tv_browser_file(self, session: aiohttp.ClientSession, emotes, selected_index: int):
+        preview = await self._build_7tv_browser_preview(session, emotes, selected_index)
+        return preview.file
 
     async def _search_7tv_page(
         self,
@@ -555,10 +687,11 @@ class Emotes(commands.Cog):
         await pages.start(ctx)
 
     @commands.command()
-    async def emote(self, ctx, emote_name: str, size: int = 2):
+    async def emote(self, ctx, emote_name: str, size_raw: str = "2x"):
         """Search 7TV and pick from a page of results."""
-        if size not in [1, 2, 3, 4]:
-            await ctx.send("Invalid size. Please choose a size between 1 and 4.")
+        size = self._parse_emote_size(size_raw)
+        if size is None:
+            await ctx.send("Invalid size. Please choose a size between 1x and 4x.")
             return
 
         session = aiohttp.ClientSession()
@@ -570,12 +703,6 @@ class Emotes(commands.Cog):
                 emotes = await self._search_7tv_page(session, emote_name, 1, exact_match=False)
             if not emotes:
                 await ctx.send(f"No 7TV emotes found for `{emote_name}`.")
-                return
-
-            if len(emotes) == 1:
-                url = await self._resolve_7tv_media_url(session, emotes[0], size, {})
-                await ctx.send(url)
-                await session.close()
                 return
 
             view = SevenTvEmoteBrowserView(

@@ -7,6 +7,7 @@ Install test deps (once):
 Run:
     pytest
 """
+import io
 import json
 import sys
 import os
@@ -16,6 +17,7 @@ from types import SimpleNamespace
 import pytest
 import discord
 from unittest.mock import AsyncMock, MagicMock, patch
+from PIL import Image
 
 # ── ensure project root is on sys.path ──────────────────────────────────────
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -94,6 +96,21 @@ def make_reaction(message, emoji):
     reaction.message = message
     reaction.emoji = emoji
     return reaction
+
+
+class FakeAiohttpResponse:
+    def __init__(self, payload: bytes, status: int = 200):
+        self.payload = payload
+        self.status = status
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return None
+
+    async def read(self):
+        return self.payload
 
 
 def _wire_cog(cog):
@@ -1268,7 +1285,7 @@ class TestUtilityChangelog:
         assert "!stopskyfactory" in sent_text
         assert "!skyfactorystatus" in sent_text
         assert "!uptime" in sent_text
-        assert "`!emote [name] [1-4]` - search 7TV and pick an emote result to send" in sent_text
+        assert "`!emote [name] [1x-4x]` - search 7TV, preview results in the picker, choose a size, and send" in sent_text
 
 
 class TestUtilityCommands:
@@ -2099,21 +2116,90 @@ class TestEmoteBrowserHelpers:
     def setup_method(self):
         self.cog = make_emotes_cog()
 
+    def _static_preview_bytes(self, color=(80, 120, 255, 255)):
+        image = Image.new("RGBA", (32, 32), color)
+        output = io.BytesIO()
+        image.save(output, format="WEBP")
+        return output.getvalue()
+
+    def _animated_preview_bytes(self):
+        frames = [
+            Image.new("RGBA", (32, 32), (255, 80, 80, 255)),
+            Image.new("RGBA", (32, 32), (80, 255, 120, 255)),
+        ]
+        output = io.BytesIO()
+        frames[0].save(output, format="GIF", save_all=True, append_images=frames[1:], duration=[80, 80], loop=0)
+        return output.getvalue()
+
+    def test_parse_emote_size_accepts_numeric_and_x_suffix(self):
+        assert self.cog._parse_emote_size("1") == 1
+        assert self.cog._parse_emote_size("2x") == 2
+        assert self.cog._parse_emote_size("4X") == 4
+
+    def test_parse_emote_size_rejects_invalid_values(self):
+        assert self.cog._parse_emote_size("0") is None
+        assert self.cog._parse_emote_size("5x") is None
+        assert self.cog._parse_emote_size("big") is None
+
     def test_build_7tv_browser_embed_lists_multiple_results(self):
         emotes = [
             SimpleNamespace(name="Alpha", host_url="//cdn.7tv.app/emote/alpha"),
             SimpleNamespace(name="Bravo", host_url="//cdn.7tv.app/emote/bravo"),
         ]
 
-        embed = self.cog._build_7tv_browser_embed("smile", 3, emotes, 2, exact_match=False, selected_index=1, has_preview_grid=True)
+        embed = self.cog._build_7tv_browser_embed(
+            "smile",
+            3,
+            emotes,
+            2,
+            exact_match=False,
+            selected_index=1,
+            preview_attachment_name="7tv-page.gif",
+            preview_notice="Animated preview unavailable; showing static grid.",
+        )
 
         assert embed.title == "7TV results for `smile`"
         assert "  `1.` **Alpha** by `unknown owner`" in embed.description
         assert "-> `2.` **Bravo** by `unknown owner`" in embed.description
-        assert embed.image.url == "attachment://7tv-page.png"
+        assert embed.image.url == "attachment://7tv-page.gif"
         assert embed.fields[0].name == "Selected"
         assert "**Bravo** by `unknown owner`" in embed.fields[0].value
-        assert embed.footer.text == "Page 2 - fuzzy search - click a number to preview, Send to post at 3x"
+        assert embed.footer.text == (
+            "Page 2 - fuzzy search - click a number to preview, Send to post at 3x - "
+            "Animated preview unavailable; showing static grid."
+        )
+
+    @pytest.mark.asyncio
+    async def test_build_7tv_browser_file_returns_gif_when_any_preview_is_animated(self):
+        animated_emote = SimpleNamespace(id="1", name="Alpha", host_url="//cdn.7tv.app/emote/alpha", owner_username="owner1")
+        static_emote = SimpleNamespace(id="2", name="Bravo", host_url="//cdn.7tv.app/emote/bravo", owner_username="owner2")
+        payloads = {
+            "https://preview.test/alpha": self._animated_preview_bytes(),
+            "https://preview.test/bravo": self._static_preview_bytes(),
+        }
+        session = MagicMock()
+        session.get = MagicMock(side_effect=lambda url: FakeAiohttpResponse(payloads[url]))
+
+        with patch.object(self.cog, "_preview_7tv_url", side_effect=["https://preview.test/alpha", "https://preview.test/bravo"]):
+            file = await self.cog._build_7tv_browser_file(session, [animated_emote, static_emote], 0)
+
+        assert file.filename == "7tv-page.gif"
+        file.fp.seek(0)
+        preview = Image.open(file.fp)
+        assert getattr(preview, "is_animated", False) is True
+
+    @pytest.mark.asyncio
+    async def test_build_7tv_browser_preview_falls_back_to_static_when_animated_grid_too_large(self):
+        emote = SimpleNamespace(id="1", name="Alpha", host_url="//cdn.7tv.app/emote/alpha", owner_username="owner1")
+        session = MagicMock()
+        session.get = MagicMock(return_value=FakeAiohttpResponse(self._animated_preview_bytes()))
+
+        with patch("cogs.emotes.EMOTE_BROWSER_ANIMATED_MAX_BYTES", 1), \
+             patch.object(self.cog, "_preview_7tv_url", return_value="https://preview.test/alpha"):
+            preview = await self.cog._build_7tv_browser_preview(session, [emote], 0)
+
+        assert preview.file.filename == "7tv-page.png"
+        assert preview.notice == "Animated preview unavailable; showing static grid."
 
     def test_7tv_preview_buttons_reflect_selection_and_page_size(self):
         from cogs.emotes import SevenTvEmoteBrowserView
@@ -2137,6 +2223,22 @@ class TestEmoteBrowserHelpers:
         assert view.preview_buttons[5].row == 1
         assert view.preview_buttons[9].disabled is True
 
+    def test_size_buttons_reflect_current_selection(self):
+        from cogs.emotes import SevenTvEmoteBrowserView
+
+        ctx = make_ctx()
+        session = MagicMock()
+        session.close = AsyncMock()
+        emotes = [
+            SimpleNamespace(id="1", name="Alpha", host_url="//cdn.7tv.app/emote/alpha", owner_username="owner1"),
+        ]
+
+        view = SevenTvEmoteBrowserView(self.cog, ctx, "sus", 2, session, emotes, True)
+
+        assert [button.label for button in view.size_buttons] == ["1x", "2x", "3x", "4x"]
+        assert view.size_buttons[1].style == discord.ButtonStyle.primary
+        assert view.size_buttons[0].style == discord.ButtonStyle.secondary
+
     async def test_7tv_picker_selection_updates_embed_preview(self):
         from cogs.emotes import SevenTvEmoteBrowserView
 
@@ -2153,7 +2255,8 @@ class TestEmoteBrowserHelpers:
         interaction.response.edit_message = AsyncMock()
         interaction.user.id = 42
 
-        with patch.object(self.cog, "_build_7tv_browser_file", new=AsyncMock(return_value=MagicMock())):
+        preview = SimpleNamespace(file=MagicMock(filename="7tv-page.png"), notice=None)
+        with patch.object(self.cog, "_build_7tv_browser_preview", new=AsyncMock(return_value=preview)):
             await view.handle_selection(interaction, 1)
 
         assert view.selected_index == 1
@@ -2164,6 +2267,59 @@ class TestEmoteBrowserHelpers:
         assert embed.image.url == "attachment://7tv-page.png"
         assert interaction.response.edit_message.await_args.kwargs["attachments"]
         assert "**Bravo** by `owner2`" in embed.fields[0].value
+
+    async def test_size_toggle_updates_selected_size(self):
+        from cogs.emotes import SevenTvEmoteBrowserView
+
+        ctx = make_ctx()
+        ctx.author.id = 42
+        session = MagicMock()
+        session.close = AsyncMock()
+        emotes = [
+            SimpleNamespace(id="1", name="Alpha", host_url="//cdn.7tv.app/emote/alpha", owner_username="owner1"),
+        ]
+        view = SevenTvEmoteBrowserView(self.cog, ctx, "sus", 2, session, emotes, True)
+        interaction = MagicMock()
+        interaction.user.id = 42
+        interaction.response.edit_message = AsyncMock()
+
+        preview = SimpleNamespace(file=MagicMock(filename="7tv-page.png"), notice=None)
+        with patch.object(self.cog, "_build_7tv_browser_preview", new=AsyncMock(return_value=preview)):
+            await view.handle_size_selection(interaction, 4)
+
+        assert view.size == 4
+        assert view.size_buttons[3].style == discord.ButtonStyle.primary
+        assert view.size_buttons[1].style == discord.ButtonStyle.secondary
+
+    async def test_resolve_7tv_media_url_returns_gif_for_animated_emotes(self):
+        emote = SimpleNamespace(id="1", name="sus", host_url="//cdn.7tv.app/emote/sus", owner_username="owner1")
+        session = MagicMock()
+
+        with patch.object(self.cog, "_detect_7tv_ext", new=AsyncMock(return_value="gif")):
+            url = await self.cog._resolve_7tv_media_url(session, emote, 4, {})
+
+        assert url == "https://cdn.7tv.app/emote/sus/4x.gif"
+
+    async def test_send_selected_uses_current_size_toggle(self):
+        from cogs.emotes import SevenTvEmoteBrowserView
+
+        ctx = make_ctx()
+        ctx.author.id = 42
+        session = MagicMock()
+        session.close = AsyncMock()
+        emote = SimpleNamespace(id="1", name="sus", host_url="//cdn.7tv.app/emote/sus", owner_username="owner1")
+        view = SevenTvEmoteBrowserView(self.cog, ctx, "sus", 2, session, [emote], True)
+        interaction = MagicMock()
+        interaction.user.id = 42
+        interaction.response.defer = AsyncMock()
+
+        view.size = 4
+        with patch.object(self.cog, "_resolve_7tv_media_url", new=AsyncMock(return_value="https://cdn.7tv.app/emote/sus/4x.gif")) as resolve_mock, \
+             patch.object(view, "_finish", new=AsyncMock()):
+            await view.send_selected.callback(interaction)
+
+        resolve_mock.assert_awaited_once_with(session, emote, 4, view.ext_cache)
+        ctx.send.assert_awaited_once_with("https://cdn.7tv.app/emote/sus/4x.gif")
 
     async def test_7tv_picker_timeout_deletes_command_message(self):
         from cogs.emotes import SevenTvEmoteBrowserView
@@ -2198,20 +2354,44 @@ class TestEmoteBrowserHelpers:
         assert deduped[0].id == "1"
         assert deduped[1].id == "2"
 
-    async def test_emote_command_sends_directly_for_single_result(self):
+    async def test_emote_command_opens_picker_for_single_result(self):
         ctx = make_ctx()
         session = MagicMock()
         session.close = AsyncMock()
         emote = SimpleNamespace(id="1", name="sus", host_url="//cdn.7tv.app/emote/sus", owner_username="owner1")
+        fake_view = MagicMock()
+        fake_view.start = AsyncMock()
 
         with patch("cogs.emotes.aiohttp.ClientSession", return_value=session), \
              patch.object(self.cog, "_search_7tv_page", new=AsyncMock(return_value=[emote])), \
-             patch.object(self.cog, "_resolve_7tv_media_url", new=AsyncMock(return_value="https://cdn.7tv.app/emote/sus/2x.png")) as resolve_mock:
+             patch("cogs.emotes.SevenTvEmoteBrowserView", return_value=fake_view):
             await self.cog.emote.callback(self.cog, ctx, "sus", 2)
 
-        ctx.send.assert_awaited_once_with("https://cdn.7tv.app/emote/sus/2x.png")
-        resolve_mock.assert_awaited_once()
-        session.close.assert_awaited_once()
+        fake_view.start.assert_awaited_once()
+        ctx.send.assert_not_awaited()
+
+    async def test_emote_command_opens_picker_for_single_exact_match(self):
+        ctx = make_ctx()
+        session = MagicMock()
+        session.close = AsyncMock()
+        emote = SimpleNamespace(id="1", name="sus", host_url="//cdn.7tv.app/emote/sus", owner_username="owner1")
+        fake_view = MagicMock()
+        fake_view.start = AsyncMock()
+
+        with patch("cogs.emotes.aiohttp.ClientSession", return_value=session), \
+             patch.object(self.cog, "_search_7tv_page", new=AsyncMock(return_value=[emote])), \
+             patch("cogs.emotes.SevenTvEmoteBrowserView", return_value=fake_view):
+            await self.cog.emote.callback(self.cog, ctx, "sus", "2x")
+
+        fake_view.start.assert_awaited_once()
+        ctx.send.assert_not_awaited()
+
+    async def test_emote_command_rejects_invalid_x_size(self):
+        ctx = make_ctx()
+
+        await self.cog.emote.callback(self.cog, ctx, "sus", "9x")
+
+        ctx.send.assert_awaited_once_with("Invalid size. Please choose a size between 1x and 4x.")
 
     async def test_allemotes_reports_empty_server_list(self):
         ctx = make_ctx()

@@ -285,7 +285,7 @@ class Utility(commands.Cog):
 `!cat` - Sends a random cat.
 `!dog` - Sends a random dog.
 `!dogbark` - Sends a random bark word in block letters.
-`!emote [name] [1-4]` - search 7TV and pick an emote result to send
+`!emote [name] [1x-4x]` - search 7TV, preview results in the picker, choose a size, and send
 `!spinny @[user]` - grinding activated for @user
 `!stopspinny @[user]` - grinding deactivated for @user
 `!sussy` - shows how sussy lhea is
