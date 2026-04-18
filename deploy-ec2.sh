@@ -86,8 +86,8 @@ done
 
 remote_bash <<EOF
 printf '%s\n' "$LOCAL_COMMIT" > "$REMOTE_REPO_DIR/.deploy-commit"
-find "$REMOTE_REPO_DIR" \( -type d -name '__pycache__' -o -type d -name '.pytest_cache' -o -type d -name 'pytest-cache-files-*' \) -prune -exec rm -rf {} + 2>/dev/null || true
-find "$REMOTE_REPO_DIR" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete 2>/dev/null || true
+find "$REMOTE_REPO_DIR" \( -type d -name '__pycache__' -o -type d -name '.pytest_cache' -o -type d -name 'pytest-cache-files-*' -o -type d -name '._*' \) -prune -exec rm -rf {} + 2>/dev/null || true
+find "$REMOTE_REPO_DIR" -type f \( -name '._*' -o -name '.DS_Store' -o -name '*.pyc' -o -name '*.pyo' \) -delete 2>/dev/null || true
 sudo systemctl restart tinki-bot
 sleep 3
 sudo systemctl status tinki-bot --no-pager
