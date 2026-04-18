@@ -132,6 +132,15 @@ def make_utility_cog():
     return _wire_cog(Utility(MagicMock()))
 
 
+def make_tracking_cog():
+    from cogs.tracking import Tracking
+    cog = Tracking(MagicMock())
+    cog.sus_and_sticker_usage.clear()
+    cog.explode.clear()
+    cog.spinny.clear()
+    return _wire_cog(cog)
+
+
 # ── rewrite_social_urls ──────────────────────────────────────────────────────
 
 class TestRewriteSocialUrls:
@@ -669,6 +678,24 @@ class TestBowlingScorePersistence:
         assert json.loads(new_scores_file.read_text(encoding="utf-8")) == [
             [123, "2024-01-02T03:04:05+00:00"]
         ]
+
+
+class TestTrackingGraphs:
+    async def test_explode_graph_accepts_mixed_naive_and_aware_timestamps(self):
+        from datetime import datetime, timezone
+
+        cog = make_tracking_cog()
+        ctx = make_ctx()
+        cog.explode[:] = [
+            {"timestamp": datetime(2024, 1, 1, tzinfo=timezone.utc).isoformat()},
+            {"timestamp": datetime(2024, 1, 2, 12, 0, 0).isoformat()},
+            {"timestamp": datetime(2024, 1, 3, tzinfo=timezone.utc).isoformat()},
+        ]
+
+        await cog.explode_graph(ctx)
+
+        ctx.send.assert_awaited_once()
+        assert "Error:" not in str(ctx.send.call_args.args)
 
 
 # ── persona commands ──────────────────────────────────────────────────────────

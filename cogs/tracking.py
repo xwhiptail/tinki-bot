@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import discord
 import matplotlib.dates as mdates
@@ -92,7 +92,8 @@ class Tracking(commands.Cog):
 
     def _build_cumulative_graph(self, data, title, xlabel, start_date, filename):
         data_sorted = sorted(data, key=lambda x: x['timestamp'])
-        timestamps = [datetime.fromisoformat(e['timestamp']) for e in data_sorted]
+        timestamps = [self._normalize_timestamp(datetime.fromisoformat(e['timestamp'])) for e in data_sorted]
+        start_date = self._normalize_timestamp(start_date)
         filtered_ts = [timestamps[0]]
         filtered_counts = [1]
         for i in range(1, len(timestamps)):
@@ -113,6 +114,12 @@ class Tracking(commands.Cog):
         plt.savefig(path)
         plt.close()
         return path
+
+    @staticmethod
+    def _normalize_timestamp(timestamp):
+        if timestamp.tzinfo is None or timestamp.tzinfo.utcoffset(timestamp) is None:
+            return timestamp.replace(tzinfo=timezone.utc)
+        return timestamp.astimezone(timezone.utc)
 
     @commands.command(name='sussy')
     async def sussy_count(self, ctx):
