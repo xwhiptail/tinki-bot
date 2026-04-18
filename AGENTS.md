@@ -63,6 +63,7 @@ For macOS/Linux-to-EC2 maintenance tasks, prefer `deploy-ec2.sh` and the shell w
 - Prefer additive docs and small code changes.
 - Back up the live server script before risky changes.
 - Preserve rollback paths in docs and scripts.
+- Default to verified local merges into `main` after focused testing. Use branch or PR flow only when the user asks for it or when temporary isolation is genuinely helpful.
 
 ## Normal Flow
 
@@ -77,18 +78,20 @@ For ordinary repo work, follow this order unless the user explicitly asks for so
 7. If user-facing text or emojis changed, scan for mojibake before finishing.
 8. Update docs when commands, deploy flow, setup, or operational behavior changed. When command behavior changes, update tests and `docs/command-test-map.md` in the same pass.
 9. Review `git diff` before committing.
-10. Commit and push the change unless the user explicitly says not to push yet.
-11. Push the committed change to GitLab as part of the normal release flow when that mirror is in use on this machine.
-12. Deploy the change to the bot with `.\deploy-ec2.ps1` when the user wants it live.
-13. On macOS/Linux, use `./deploy-ec2.sh` when the user wants the change live.
-14. For repeated host checks, prefer wrapper scripts such as `.\scripts\Run-RemotePytest.ps1`, `.\scripts\Check-RemoteAwsCost.ps1`, `./scripts/run-remote-pytest.sh`, and `./scripts/check-remote-awscost.sh`.
+10. Commit the change and merge it locally into `main` unless the user explicitly asks to keep it on a branch.
+11. Push the updated `main` branch unless the user explicitly says not to push yet.
+12. Push the committed change to GitLab as part of the normal release flow when that mirror is in use on this machine.
+13. Deploy the change to the bot with `.\deploy-ec2.ps1` when the user wants it live.
+14. On macOS/Linux, use `./deploy-ec2.sh` when the user wants the change live.
+15. For repeated host checks, prefer wrapper scripts such as `.\scripts\Run-RemotePytest.ps1`, `.\scripts\Check-RemoteAwsCost.ps1`, `./scripts/run-remote-pytest.sh`, and `./scripts/check-remote-awscost.sh`.
 
 ## Cross-Agent Handoff
 
 - `HANDOFF.md` is the shared resume file for both Codex and Claude Code.
 - At the start of work, pull or otherwise sync from the real remote branch before making changes.
-- After making repo changes, push them before handing the task off, unless the user explicitly says not to push yet.
+- After making repo changes, prefer merging locally into `main` before handing the task off, unless the user explicitly asks to keep a separate branch.
+- Push merged `main` before handing the task off, unless the user explicitly says not to push yet.
 - Before switching tools, update `HANDOFF.md` with current status, next step, tests run, and any active stash.
-- Prefer handing work off on a branch or commit, not as unstaged local edits.
+- Prefer handing work off as a commit on `main`, not as unstaged local edits.
 - If you must stash work, use a descriptive stash message and record it in `HANDOFF.md`.
 - Never create local branches with names that look like remote refs, such as `origin/main`.

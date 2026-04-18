@@ -116,9 +116,10 @@ Startup diagnostics in `cogs/admin.py` also run `pytest -q` and post the result 
 
 - `HANDOFF.md` is the canonical place to leave resume notes for either Claude Code or Codex.
 - At the start of work, pull or otherwise sync from the real remote branch before making changes.
-- After making repo changes, push them before handing the task off, unless the user explicitly says not to push yet.
+- After making repo changes, prefer merging locally into `main` before handing the task off, unless the user explicitly asks to keep a separate branch.
+- Push merged `main` before handing the task off, unless the user explicitly says not to push yet.
 - Before switching tools, update `HANDOFF.md` with the current task, next concrete step, tests run, and any active stash.
-- Prefer handing work off on a branch or committed state rather than as unstaged local edits.
+- Prefer handing work off as a commit on `main` rather than as unstaged local edits.
 - If work must be stashed, use a descriptive stash message and record the stash entry in `HANDOFF.md`.
 - Do not create local branches named like remote refs such as `origin/main`; that makes later fetch/rebase/push flows ambiguous.
 
@@ -135,10 +136,11 @@ For routine work in this repo, prefer this default order:
 7. If user-facing text, labels, or emojis changed, run the mojibake scan before finishing.
 8. Update docs if commands, setup, deploy flow, or operational behavior changed.
 9. Review `git diff`.
-10. Commit and push unless the user explicitly says not to push yet.
-11. Push the committed change to GitLab as part of the normal release flow when that mirror is in use on this machine.
-12. Deploy the change to the bot with `.\deploy-ec2.ps1` when the user wants it live.
-13. For repeated EC2 checks, prefer `.\scripts\Run-RemotePytest.ps1` and `.\scripts\Check-RemoteAwsCost.ps1`.
+10. Commit the change and merge it locally into `main` unless the user explicitly asks to keep it on a branch.
+11. Push the updated `main` branch unless the user explicitly says not to push yet.
+12. Push the committed change to GitLab as part of the normal release flow when that mirror is in use on this machine.
+13. Deploy the change to the bot with `.\deploy-ec2.ps1` when the user wants it live.
+14. For repeated EC2 checks, prefer `.\scripts\Run-RemotePytest.ps1` and `.\scripts\Check-RemoteAwsCost.ps1`.
 
 ## Operational Rules
 

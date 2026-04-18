@@ -6,6 +6,7 @@ Use this file as the shared resume point between Codex and Claude Code.
 
 - Status: new AL2023 host is live, hardened, and running Python 3.11; local macOS repo now has a working `.venv` pytest setup and the deploy helper is adjusted for the hardened host ownership model
 - Active branch: `main`
+- Default integration preference: verify changes, then merge locally into `main`; only keep branch or PR flow when explicitly requested
 - Last known good verification: `. .venv/bin/activate && pytest -q` locally (`236 passed`) and `./deploy-ec2.sh` against the new EC2 host with clean restart output
 - Next concrete task: if doing future host migration or rebuild work, copy `/opt/apps/tinki-bot/data` and `/etc/tinki-bot.env` before cutover
 
@@ -30,15 +31,17 @@ Use this as the default workflow unless the user says otherwise:
 7. If text or emoji output changed, run the mojibake scan.
 8. Update docs when behavior, commands, setup, or deploy flow changed. Keep command-related edits paired with test updates and a refreshed `docs/command-test-map.md`.
 9. Review the diff.
-10. Commit and push before handing off, unless the user said not to push.
-11. Push to GitLab too when that mirror is part of the normal release path on this machine.
-12. Deploy to the bot with `.\deploy-ec2.ps1` when the user wants the change live.
+10. Commit the change and merge it locally into `main` unless the user explicitly asks to keep it on a branch.
+11. Push the updated `main` branch before handing off, unless the user said not to push.
+12. Push to GitLab too when that mirror is part of the normal release path on this machine.
+13. Deploy to the bot with `.\deploy-ec2.ps1` when the user wants the change live.
 
 ## Cross-Agent Git Rules
 
 - Start by pulling or syncing from the real remote branch.
-- After making repo changes, push them before handing the task off unless the user explicitly says not to push yet.
-- Prefer a real branch or a real commit over unstaged local changes.
+- After making repo changes, prefer merging locally into `main` before handing the task off unless the user explicitly asks to keep a separate branch.
+- Push merged `main` before handing the task off unless the user explicitly says not to push yet.
+- Prefer a real commit on `main` over unstaged local changes.
 - If work is not ready to commit, use a named stash and record it here.
 - Do not create local branches named like remote refs such as `origin/main`.
 - Before handing work from one tool to the other, update this file with:
