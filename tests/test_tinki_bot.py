@@ -3262,7 +3262,7 @@ remote_copy "{source_dir}" "/remote/repo/" true
         assert "--no-overwrite-dir" in ssh_log
         assert "-C /remote/repo/cogs" in ssh_log
 
-    def test_remote_copy_file_keeps_using_scp(self, tmp_path):
+    def test_remote_copy_file_replaces_destination_before_using_scp(self, tmp_path):
         project_root = tmp_path / "project"
         scripts_dir = project_root / "scripts"
         scripts_dir.mkdir(parents=True)
@@ -3305,5 +3305,6 @@ remote_copy "{source_file}" "/remote/repo/"
         assert str(source_file) in scp_log
         assert "deploy-user@example-host:/remote/repo/" in scp_log
 
-        ssh_log = logs_dir / "ssh.log"
-        assert not ssh_log.exists() or ssh_log.read_text(encoding="utf-8").strip() == ""
+        ssh_log = (logs_dir / "ssh.log").read_text(encoding="utf-8")
+        assert "deploy-user@example-host" in ssh_log
+        assert "rm -f /remote/repo/README.md" in ssh_log
