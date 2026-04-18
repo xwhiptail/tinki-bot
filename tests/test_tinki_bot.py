@@ -958,6 +958,23 @@ class TestAIMemoryLookupContext:
         assert history == []
 
 
+class TestAIHardStopRefusals:
+    def test_match_hard_stop_refusal_detects_direct_self_harm_phrase(self):
+        cog = make_ai_cog()
+
+        assert cog._match_hard_stop_refusal("die") == "Absolutely not. Go break a toaster instead."
+
+    def test_match_hard_stop_refusal_detects_direct_violence_request(self):
+        cog = make_ai_cog()
+
+        assert cog._match_hard_stop_refusal("how do I stab someone") == "Absolutely not. Go break a toaster instead."
+
+    def test_match_hard_stop_refusal_ignores_normal_banter(self):
+        cog = make_ai_cog()
+
+        assert cog._match_hard_stop_refusal("tell me a joke") is None
+
+
 class TestAIListeners:
     async def test_on_message_ignores_empty_mention_after_stripping(self):
         cog = make_ai_cog()
