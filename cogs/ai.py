@@ -30,6 +30,23 @@ from utils.openai_helpers import create_chat_completion, get_openai_client, gpt_
 
 logger = logging.getLogger(__name__)
 
+HARD_STOP_REFUSAL_REPLY = "Absolutely not. Go break a toaster instead."
+HARD_STOP_SELF_HARM_PHRASES = (
+    "die",
+    "go die",
+    "kill yourself",
+)
+HARD_STOP_VIOLENCE_PHRASES = (
+    "kill them",
+    "kill him",
+    "kill her",
+    "hurt them",
+    "hurt him",
+    "hurt her",
+    "stab someone",
+    "murder someone",
+)
+
 
 class AI(commands.Cog):
     def __init__(self, bot):
@@ -334,6 +351,22 @@ class AI(commands.Cog):
             suffix = f" (Part {index + 1} of {len(chunks)})" if len(chunks) > 1 else ""
             await channel.send(f'{mention}{chunk}{suffix}')
             await asyncio.sleep(1)
+
+    def _match_hard_stop_refusal(self, text: str):
+        lowered = f" {text.lower().strip()} "
+
+        for phrase in HARD_STOP_SELF_HARM_PHRASES:
+            if f" {phrase} " in lowered:
+                return HARD_STOP_REFUSAL_REPLY
+
+        for phrase in HARD_STOP_VIOLENCE_PHRASES:
+            if phrase in lowered:
+                return HARD_STOP_REFUSAL_REPLY
+
+        if "how do i" in lowered and ("kill" in lowered or "stab" in lowered or "hurt" in lowered):
+            return HARD_STOP_REFUSAL_REPLY
+
+        return None
 
     async def _handle_mention(self, message, text: str):
         personas_cog, persona_key, persona_description = self._persona_state()
