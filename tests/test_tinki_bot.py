@@ -74,6 +74,14 @@ def make_message(content):
     return message
 
 
+def _async_iter(items):
+    async def _generator():
+        for item in items:
+            yield item
+
+    return _generator()
+
+
 def make_reaction(message, emoji):
     reaction = MagicMock()
     reaction.message = message
@@ -331,13 +339,27 @@ class TestAIBrain:
     def test_classify_intent_detects_repo_question(self):
         assert classify_intent("how are you deployed on ec2") == "bot_repo"
 
+    def test_classify_intent_keeps_remember_command_questions_grounded(self):
+        assert classify_intent("do you remember what !gacha does?") == "command_help"
+
+    def test_classify_intent_keeps_remember_repo_questions_grounded(self):
+        assert classify_intent("remember when we deployed to ec2") == "bot_repo"
+
     def test_classify_intent_detects_general_question(self):
         assert classify_intent("why is gold ship so cursed?") == "question_answer"
+
+    def test_classify_intent_marks_memory_lookup_questions(self):
+        assert classify_intent("didn't i tell you my main is hunter?") == "memory_lookup"
 
     def test_extract_user_facts_finds_simple_profile_facts(self):
         facts = extract_user_facts("my name is Matt and I like WoW")
         assert "Matt" in facts[0]
         assert any("WoW" in fact for fact in facts)
+
+    def test_extract_user_facts_captures_preference_style_statements(self):
+        facts = extract_user_facts("my main is hunter and my favorite spec is marksman")
+        assert any("main hunter" in fact.lower() for fact in facts)
+        assert any("favorite spec marksman" in fact.lower() for fact in facts)
 
     def test_update_memory_state_stores_user_facts_and_topics(self):
         state = update_memory_state({"users": {}, "guilds": {}}, "123", "456", "my name is Matt and I like raiding")
@@ -403,6 +425,76 @@ class TestAINaturalCommands:
         cog.bot.process_commands.assert_awaited_once()
         assert seen["content"] == "!gacha 10"
         assert message.content == original
+
+
+class TestAIChannelHistoryLookup:
+    async def test_ai_uses_channel_history_for_memory_lookup_questions(self):
+        cog = make_ai_cog()
+        message = make_message("@bot what did I say about hunter last week?")
+        message.guild = MagicMock(id=123)
+        message.author.id = 42
+        message.channel.history = MagicMock(
+            return_value=_async_iter([
+                SimpleNamespace(
+                    author=SimpleNamespace(bot=False, id=message.author.id),
+                    content="my main is hunter",
+                    created_at=None,
+                ),
+            ])
+        )
+
+        history = await cog._search_channel_history(message, "hunter")
+        assert any("my main is hunter" in line for line in history)
+
+    async def test_ai_returns_empty_history_when_no_matches_found(self):
+        cog = make_ai_cog()
+        message = make_message("@bot what did I say about pizza?")
+        message.guild = MagicMock(id=123)
+        message.author.id = 42
+        message.channel.history = MagicMock(return_value=_async_iter([]))
+
+        history = await cog._search_channel_history(message, "pizza")
+        assert history == []
+
+    async def test_ai_ignores_matching_messages_from_other_users(self):
+        cog = make_ai_cog()
+        message = make_message("@bot what did I say about hunter last week?")
+        message.guild = MagicMock(id=123)
+        message.author.id = 42
+        message.channel.history = MagicMock(
+            return_value=_async_iter([
+                SimpleNamespace(
+                    author=SimpleNamespace(bot=False, id=999),
+                    content="my main is hunter",
+                    created_at=None,
+                ),
+            ])
+        )
+
+        history = await cog._search_channel_history(message, "hunter")
+        assert history == []
+
+
+class TestAIMemoryLookupContext:
+    async def test_ai_prefers_history_context_for_memory_lookup_prompts(self):
+        cog = make_ai_cog()
+        with patch.object(cog, "_search_channel_history", new=AsyncMock(return_value=["my main is hunter"])):
+            history = await cog._memory_lookup_context(
+                make_message("what did i say about hunter"),
+                "what did i say about hunter",
+            )
+
+        assert history == ["my main is hunter"]
+
+    async def test_ai_memory_lookup_falls_back_cleanly_when_history_is_empty(self):
+        cog = make_ai_cog()
+        with patch.object(cog, "_search_channel_history", new=AsyncMock(return_value=[])):
+            history = await cog._memory_lookup_context(
+                make_message("remember my pizza order"),
+                "remember my pizza order",
+            )
+
+        assert history == []
 
 
 # ── score commands ────────────────────────────────────────────────────────────

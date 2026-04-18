@@ -89,6 +89,27 @@ class AI(commands.Cog):
         fallback = [str(entry.get("content", "")) for entry in history[-limit:]]
         return [item for item in fallback if item]
 
+    async def _search_channel_history(self, message, query: str, limit: int = 4, scan_limit: int = 250) -> List[str]:
+        matches = []
+        author_id = getattr(getattr(message, "author", None), "id", None)
+        async for entry in message.channel.history(limit=scan_limit):
+            if getattr(getattr(entry, "author", None), "bot", False):
+                continue
+            if author_id is not None and getattr(getattr(entry, "author", None), "id", None) != author_id:
+                continue
+            content = str(getattr(entry, "content", ""))
+            score = score_overlap(query, content)
+            if score <= 0:
+                continue
+            matches.append((score, len(matches), content))
+        matches.sort(key=lambda item: (-item[0], item[1]))
+        return [content for _, _, content in matches[:limit]]
+
+    async def _memory_lookup_context(self, message, text: str) -> List[str]:
+        if classify_intent(text) != "memory_lookup":
+            return []
+        return await self._search_channel_history(message, text)
+
     def _command_context(self, query: str) -> List[str]:
         commands_available = sorted(f"!{command.name}" for command in self.bot.commands if command.enabled)
         lowered = query.lower()
@@ -344,6 +365,13 @@ class AI(commands.Cog):
 
         memory_context = build_memory_context(self.ai_memory, user_id, guild_id, text)
         history_context = self._relevant_history(history, text)
+        if intent == "memory_lookup":
+            looked_up_history = await self._memory_lookup_context(message, text)
+            if looked_up_history:
+                history_context = looked_up_history + [
+                    item for item in history_context[:2]
+                    if item not in looked_up_history
+                ]
         repo_context = []
         if intent in {"command_help", "bot_repo", "question_answer"}:
             repo_context = self._command_context(text) + retrieve_repo_context(text, self.repo_documents)

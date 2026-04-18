@@ -322,6 +322,8 @@ Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-
 ### Personas And AI
 
 - `@Tinki-bot <message>` - get a reply from Tinki
+- Tinki keeps lightweight memory of explicit user facts and preferences.
+- For memory-style questions, Tinki can search recent accessible channel history instead of guessing.
 
 ### Reminders
 

@@ -16,6 +16,8 @@ FACT_PATTERNS = (
     re.compile(r"\bi am ([a-z0-9 _-]{2,40})", re.IGNORECASE),
     re.compile(r"\bi'm ([a-z0-9 _-]{2,40})", re.IGNORECASE),
     re.compile(r"\bmy favorite ([a-z0-9 _-]{2,20}) is ([a-z0-9 _-]{2,40})", re.IGNORECASE),
+    re.compile(r"\bmy main is ([a-z0-9 _-]{2,40})", re.IGNORECASE),
+    re.compile(r"\bmy favorite spec is ([a-z0-9 _-]{2,40})", re.IGNORECASE),
     re.compile(r"\bi like ([a-z0-9 ,_'/-]{2,60})", re.IGNORECASE),
     re.compile(r"\bi play ([a-z0-9 ,_'/-]{2,60})", re.IGNORECASE),
     re.compile(r"\bi work on ([a-z0-9 ,_'/-]{2,60})", re.IGNORECASE),
@@ -35,10 +37,14 @@ def classify_intent(text: str) -> str:
     lowered = normalize_text(text)
     if not lowered:
         return "chat"
+    if re.search(r"![a-z0-9_]+", lowered):
+        return "command_help"
     if any(token in lowered for token in ("!help", "!commands", "command", "how do i use !", "what command")):
         return "command_help"
     if any(token in lowered for token in ("gpt", "model", "repo", "github", "deploy", "host", "ec2", "service", "bot work", "architecture")):
         return "bot_repo"
+    if any(token in lowered for token in ("didn't i tell you", "remember", "what did i say", "you remember", "what happened with")):
+        return "memory_lookup"
     if any(token in lowered for token in ("uma", "gacha", "horse girl", "pity", "ssr")):
         return "uma"
     if any(token in lowered for token in ("remind", "reminder", "remindme")):
@@ -58,7 +64,12 @@ def extract_user_facts(text: str) -> List[str]:
             continue
         parts = [part.strip(" .,!?:;") for part in match.groups() if part.strip(" .,!?:;")]
         if parts:
-            facts.append(" ".join(parts))
+            fact = " ".join(parts)
+            if pattern.pattern == r"\bmy main is ([a-z0-9 _-]{2,40})":
+                fact = f"main {parts[0]}"
+            if pattern.pattern == r"\bmy favorite spec is ([a-z0-9 _-]{2,40})":
+                fact = f"favorite spec {parts[0]}"
+            facts.append(fact)
     return facts[:3]
 
 
