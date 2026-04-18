@@ -1002,6 +1002,20 @@ class TestAIListeners:
         assert len(stripped) == 1000
         assert stripped == "x" * 1000
 
+    async def test_on_message_short_circuits_hard_stop_refusal_before_ai_generation(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> die")
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> Absolutely not. Go break a toaster instead."
+        )
+
     async def test_on_message_reports_handle_mention_errors(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)

@@ -374,6 +374,13 @@ class AI(commands.Cog):
         guild_id = str(message.guild.id) if message.guild else "dm"
         history = self._conversation_history(personas_cog, user_id, persona_key)
         intent = classify_intent(text)
+        refusal = self._match_hard_stop_refusal(text)
+        if refusal:
+            await self._send_reply_chunks(message.channel, f'{message.author.mention} ', refusal)
+            self._update_conversation_history(personas_cog, user_id, persona_key, text, refusal)
+            self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
+            self._save_ai_memory()
+            return
         command_spec = parse_natural_command(text)
         if command_spec:
             executed = await self._execute_natural_command(message, command_spec)
