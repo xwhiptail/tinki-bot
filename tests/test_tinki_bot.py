@@ -43,6 +43,21 @@ except Exception:  # pragma: no cover - optional dependency in test env
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
+@pytest.fixture(autouse=True)
+def isolate_bowling_scores_file(tmp_path, monkeypatch):
+    scores_file = tmp_path / "scores.json"
+    scores_file.write_text("[]", encoding="utf-8")
+
+    monkeypatch.setattr(config, "SCORES_FILE", str(scores_file), raising=False)
+
+    if "cogs.bowling" in sys.modules:
+        bowling_module = sys.modules["cogs.bowling"]
+        monkeypatch.setattr(bowling_module, "SCORES_FILE", str(scores_file), raising=False)
+        monkeypatch.setattr(bowling_module, "LEGACY_SCORES_FILES", [], raising=False)
+
+    return scores_file
+
 def make_ctx():
     ctx = MagicMock()
     ctx.send = AsyncMock()
