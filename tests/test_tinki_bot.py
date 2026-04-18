@@ -10,6 +10,7 @@ Run:
 import json
 import sys
 import os
+import importlib.util
 from types import SimpleNamespace
 
 import pytest
@@ -34,7 +35,7 @@ from utils.calculator import maybe_calculate_reply
 from utils.bot_insight import maybe_bot_insight_reply
 from utils.letter_counter import maybe_count_letter_reply
 import config
-from utils.aws_costs import AWSCostSummary, _format_client_error
+from utils.aws_costs import AWSCostSummary, _format_client_error, _month_bounds, _to_money, fetch_aws_cost_summary
 
 try:
     from botocore.exceptions import ClientError
@@ -69,8 +70,14 @@ def make_message(content):
     message.content = content
     message.author = MagicMock()
     message.author.bot = False
+    message.author.mention = "<@123>"
     message.channel = MagicMock()
     message.channel.send = AsyncMock()
+    message.channel.fetch_message = AsyncMock()
+    message.delete = AsyncMock()
+    message.embeds = []
+    message.mentions = []
+    message.reference = None
     return message
 
 
@@ -147,6 +154,16 @@ def make_tracking_cog():
     cog.explode.clear()
     cog.spinny.clear()
     return _wire_cog(cog)
+
+
+def load_tinki_bot_module():
+    module_name = "tinki_bot_entrypoint_test"
+    module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tinki-bot.py"))
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    with patch("discord.ext.commands.Bot.run"):
+        spec.loader.exec_module(module)
+    return module
 
 
 # ── rewrite_social_urls ──────────────────────────────────────────────────────
@@ -475,6 +492,32 @@ class TestAIChannelHistoryLookup:
         assert history == []
 
 
+class TestAISendReplyChunks:
+    async def test_send_reply_chunks_sends_single_message_when_short(self):
+        cog = make_ai_cog()
+        channel = MagicMock()
+        channel.send = AsyncMock()
+
+        await cog._send_reply_chunks(channel, "<@1> ", "hello")
+
+        channel.send.assert_awaited_once_with("<@1> hello")
+
+    async def test_send_reply_chunks_splits_long_messages_with_suffixes(self):
+        cog = make_ai_cog()
+        channel = MagicMock()
+        channel.send = AsyncMock()
+        text = "x" * 5000
+
+        with patch("cogs.ai.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+            await cog._send_reply_chunks(channel, "<@1> ", text)
+
+        assert channel.send.await_count == 3
+        assert channel.send.await_args_list[0].args[0].endswith("(Part 1 of 3)")
+        assert channel.send.await_args_list[1].args[0].endswith("(Part 2 of 3)")
+        assert channel.send.await_args_list[2].args[0].endswith("(Part 3 of 3)")
+        assert sleep_mock.await_count == 3
+
+
 class TestAIMemoryLookupContext:
     async def test_ai_prefers_history_context_for_memory_lookup_prompts(self):
         cog = make_ai_cog()
@@ -495,6 +538,95 @@ class TestAIMemoryLookupContext:
             )
 
         assert history == []
+
+
+class TestAIListeners:
+    async def test_on_message_ignores_empty_mention_after_stripping(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99>")
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle_mock:
+            await cog.on_message(message)
+
+        handle_mock.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
+
+    async def test_on_message_strips_mention_and_truncates_text(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message(f"<@!99> {'x' * 1200}")
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle_mock:
+            await cog.on_message(message)
+
+        handle_mock.assert_awaited_once()
+        stripped = handle_mock.await_args.args[1]
+        assert len(stripped) == 1000
+        assert stripped == "x" * 1000
+
+    async def test_on_message_reports_handle_mention_errors(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> hello")
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_handle_mention", new=AsyncMock(side_effect=RuntimeError("boom"))):
+            await cog.on_message(message)
+
+        message.channel.send.assert_awaited_once_with("<@123> Sorry, I encountered an issue: boom")
+
+    async def test_on_message_replies_to_tracked_random_ai_reply(self):
+        cog = make_ai_cog()
+        cog.random_ai_message_ids.add(55)
+        author = SimpleNamespace(display_name="Tester", mention="<@123>", bot=False)
+        replied_to = SimpleNamespace(id=55, content="feral thought")
+        sent_reply = SimpleNamespace(id=77)
+        message = make_message("you are so wrong")
+        message.author = author
+        message.reference = SimpleNamespace(message_id=55)
+        message.channel.fetch_message = AsyncMock(return_value=replied_to)
+        message.channel.send = AsyncMock(return_value=sent_reply)
+
+        with patch.object(cog, "_generate_reply_to_reply", new=AsyncMock(return_value="absolutely not")) as reply_mock:
+            await cog.on_message(message)
+
+        reply_mock.assert_awaited_once_with(
+            original_text="feral thought",
+            user=author,
+            user_text="you are so wrong",
+        )
+        message.channel.send.assert_awaited_once_with("<@123> absolutely not")
+        assert 77 in cog.random_ai_message_ids
+
+    async def test_on_raw_reaction_add_ignores_unknown_message_ids(self):
+        cog = make_ai_cog()
+        payload = SimpleNamespace(user_id=123, message_id=999, channel_id=1, member=None, emoji="🔥")
+
+        await cog.on_raw_reaction_add(payload)
+
+        assert cog.random_ai_message_ids == set()
+
+    async def test_on_raw_reaction_add_fetches_user_and_replies(self):
+        cog = make_ai_cog()
+        cog.random_ai_message_ids.add(42)
+        channel = MagicMock()
+        tracked_message = SimpleNamespace(content="wow", id=42)
+        sent_reply = SimpleNamespace(id=88)
+        channel.fetch_message = AsyncMock(return_value=tracked_message)
+        channel.send = AsyncMock(return_value=sent_reply)
+        cog.bot.get_channel = MagicMock(return_value=channel)
+        cog.bot.fetch_user = AsyncMock(return_value=SimpleNamespace(display_name="Tester", mention="<@321>"))
+        payload = SimpleNamespace(user_id=321, message_id=42, channel_id=7, member=None, emoji="🔥")
+
+        with patch.object(cog, "_generate_reaction_reply", new=AsyncMock(return_value="calm down")) as reply_mock:
+            await cog.on_raw_reaction_add(payload)
+
+        reply_mock.assert_awaited_once_with("wow", "Tester", "🔥")
+        channel.send.assert_awaited_once_with("<@321> calm down")
+        assert 88 in cog.random_ai_message_ids
 
 
 # ── score commands ────────────────────────────────────────────────────────────
@@ -531,6 +663,89 @@ class TestAINaturalCommands:
         assert cog._select_reply_model("chat", long_text, [], []) == config.OPENAI_MODEL
 
 
+class TestEntrypointEvents:
+    async def test_setup_hook_loads_all_cogs(self):
+        module = load_tinki_bot_module()
+        bot = module.TinkiBot(command_prefix="!", intents=discord.Intents.none())
+        bot.load_extension = AsyncMock()
+
+        await bot.setup_hook()
+
+        assert bot.load_extension.await_count == len(module.COGS)
+        loaded = [call.args[0] for call in bot.load_extension.await_args_list]
+        assert loaded == module.COGS
+
+    async def test_on_ready_sets_presence_and_starts_startup_tests(self):
+        module = load_tinki_bot_module()
+        admin_cog = MagicMock()
+        admin_cog.run_startup_tests = AsyncMock()
+        module.bot.change_presence = AsyncMock()
+        module.bot._BotBase__cogs = {"Admin": admin_cog}
+
+        created = []
+
+        def fake_create_task(coro):
+            created.append(coro)
+            return MagicMock()
+
+        with patch.object(module.asyncio, "create_task", side_effect=fake_create_task):
+            await module.on_ready()
+
+        module.bot.change_presence.assert_awaited_once()
+        activity = module.bot.change_presence.await_args.kwargs["activity"]
+        assert activity.name == "!commands"
+        assert len(created) == 1
+        await created[0]
+        admin_cog.run_startup_tests.assert_awaited_once()
+
+    async def test_on_message_ignores_self_and_dollar_commands(self):
+        module = load_tinki_bot_module()
+        module.bot.process_commands = AsyncMock()
+        module.bot._connection.user = MagicMock()
+
+        self_message = make_message("hello")
+        self_message.author = module.bot.user
+        await module.on_message(self_message)
+
+        dollar_message = make_message("$sus")
+        await module.on_message(dollar_message)
+
+        module.bot.process_commands.assert_not_awaited()
+
+    async def test_on_message_processes_normal_messages(self):
+        module = load_tinki_bot_module()
+        module.bot.process_commands = AsyncMock()
+        module.bot._connection.user = MagicMock()
+        message = make_message("!pb")
+
+        await module.on_message(message)
+
+        module.bot.process_commands.assert_awaited_once_with(message)
+
+    async def test_on_command_error_suggests_close_match(self):
+        module = load_tinki_bot_module()
+        ctx = make_ctx()
+        ctx.invoked_with = "comands"
+        module.bot.all_commands = {
+            "commands": MagicMock(name="commands"),
+            "github": MagicMock(name="github"),
+        }
+
+        with patch.object(module.process, "extractOne", return_value=("commands", 90)):
+            await module.on_command_error(ctx, module.commands.CommandNotFound("missing"))
+
+        ctx.send.assert_awaited_once_with(
+            "`!comands` doesn't exist, genius. Did you mean `!commands`?"
+        )
+
+    async def test_on_command_error_reraises_non_command_not_found(self):
+        module = load_tinki_bot_module()
+        ctx = make_ctx()
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await module.on_command_error(ctx, RuntimeError("boom"))
+
+
 class TestAdminStatusFormatting:
     def setup_method(self):
         self.cog = make_admin_cog()
@@ -544,6 +759,56 @@ class TestAdminStatusFormatting:
         line = self.cog._summary_line("Pytest suite", 10, 10, "passed")
         assert line.startswith("\u2705 ")
         assert "10/10 passed" in line
+
+
+class TestURLFilter:
+    def setup_method(self):
+        from cogs.url_filter import URLFilter
+        self.cog = _wire_cog(URLFilter(MagicMock()))
+
+    async def test_social_url_rewrite_reposts_and_deletes_original(self):
+        message = make_message("look https://twitter.com/foo/status/123")
+
+        with patch("cogs.url_filter.asyncio.sleep", new=AsyncMock()):
+            await self.cog.on_message(message)
+
+        message.channel.send.assert_awaited_once()
+        sent_text = message.channel.send.await_args.args[0]
+        assert "originally posted" in sent_text
+        assert "vxtwitter.com/foo/status/123" in sent_text
+        assert message.channel.send.await_args.kwargs["silent"] is True
+        message.delete.assert_awaited_once()
+
+    async def test_twitch_clip_retry_stops_when_video_embed_appears(self):
+        message = make_message("https://clips.twitch.tv/somechannel/clip/FancyClip")
+        first_sent = MagicMock(id=1)
+        second_sent = MagicMock(id=2)
+        fetched_first = SimpleNamespace(id=1, embeds=[], delete=AsyncMock())
+        fetched_second = SimpleNamespace(id=2, embeds=[SimpleNamespace(type="video")], delete=AsyncMock())
+        message.channel.send = AsyncMock(side_effect=[first_sent, second_sent])
+        message.channel.fetch_message = AsyncMock(side_effect=[
+            fetched_first,
+            fetched_second,
+        ])
+
+        with patch("cogs.url_filter.asyncio.sleep", new=AsyncMock()):
+            await self.cog.on_message(message)
+
+        assert message.channel.send.await_count == 2
+        assert message.channel.send.await_args_list[0].args[0].endswith("#")
+        assert message.channel.send.await_args_list[1].args[0].endswith("?a")
+        fetched_first.delete.assert_awaited_once()
+        fetched_second.delete.assert_not_called()
+        message.delete.assert_awaited_once()
+
+    async def test_twitch_clip_does_nothing_when_video_embed_already_present(self):
+        message = make_message("https://clips.twitch.tv/somechannel/clip/FancyClip")
+        message.embeds = [SimpleNamespace(type="video")]
+
+        await self.cog.on_message(message)
+
+        message.channel.send.assert_not_awaited()
+        message.delete.assert_not_awaited()
 
 
 class TestAWSCostSummary:
@@ -578,10 +843,81 @@ class TestAWSCostSummary:
         assert "AccessDeniedException" in message
         assert "not authorized" in message
 
+    def test_month_bounds_cover_current_month_window(self):
+        from datetime import date
+
+        start, end, next_month = _month_bounds(date(2026, 4, 17))
+
+        assert start.isoformat() == "2026-04-01"
+        assert end.isoformat() == "2026-04-18"
+        assert next_month.isoformat() == "2026-05-01"
+
+    def test_to_money_normalizes_invalid_values(self):
+        assert _to_money("12") == "12.00"
+        assert _to_money("12.345") == "12.34"
+        assert _to_money("wat") == "0.00"
+
+    async def test_fetch_aws_cost_summary_reports_runtime_error(self):
+        loop = MagicMock()
+        loop.run_in_executor = AsyncMock(side_effect=RuntimeError("boto3 is not installed"))
+
+        with patch("utils.aws_costs.asyncio.get_running_loop", return_value=loop):
+            message = await fetch_aws_cost_summary()
+
+        assert message == "AWS cost unavailable: boto3 is not installed."
+
 
 class TestAdminAWSCost:
     def setup_method(self):
         self.cog = make_admin_cog()
+
+    async def test_run_pytest_suite_reports_success_summary(self):
+        proc = MagicMock()
+        proc.communicate = AsyncMock(return_value=(b"144 passed in 1.23s\n", b""))
+        proc.returncode = 0
+
+        with patch("cogs.admin.asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
+            result = await self.cog._run_pytest_suite()
+
+        assert result == [("pytest", True, "144 passed in 1.23s")]
+
+    async def test_run_pytest_suite_reports_failure_summary(self):
+        proc = MagicMock()
+        proc.communicate = AsyncMock(return_value=(b"FAILED tests/test_tinki_bot.py::test_nope\n", b""))
+        proc.returncode = 1
+
+        with patch("cogs.admin.asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
+            result = await self.cog._run_pytest_suite()
+
+        assert result == [("pytest", False, "FAILED tests/test_tinki_bot.py::test_nope")]
+
+    async def test_fetch_json_with_retries_retries_then_succeeds(self):
+        good_response = MagicMock()
+        good_response.__aenter__ = AsyncMock(return_value=good_response)
+        good_response.__aexit__ = AsyncMock(return_value=None)
+        good_response.raise_for_status = MagicMock()
+        good_response.json = AsyncMock(return_value={"ok": True})
+
+        session = MagicMock()
+        session.get.side_effect = [RuntimeError("temporary"), good_response]
+
+        with patch("cogs.admin.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+            payload = await self.cog._fetch_json_with_retries(session, "https://example.com", attempts=2)
+
+        assert payload == {"ok": True}
+        assert session.get.call_count == 2
+        sleep_mock.assert_awaited_once_with(1)
+
+    async def test_fetch_bytes_with_retries_exhausts_attempts(self):
+        session = MagicMock()
+        session.get.side_effect = RuntimeError("still broken")
+
+        with patch("cogs.admin.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+            with pytest.raises(RuntimeError, match="still broken"):
+                await self.cog._fetch_bytes_with_retries(session, "https://example.com/archive.zip", attempts=3)
+
+        assert session.get.call_count == 3
+        assert sleep_mock.await_count == 2
 
     async def _run_startup_report(
         self,
@@ -642,6 +978,45 @@ class TestAdminAWSCost:
             await self.cog.deploy_latest.callback(self.cog, ctx)
 
         assert ctx.send.await_args_list[0].args[0] == "Deploy check: current `abc1234` vs GitHub main `abc1234`"
+
+    async def test_deploy_aborts_truncated_archive(self):
+        ctx = make_ctx()
+        commit_data = {"sha": "def5678", "commit": {"message": "Ship it"}}
+
+        with patch.object(self.cog, "_read_deployed_commit", return_value="abc1234"), \
+             patch.object(self.cog, "_fetch_json_with_retries", new=AsyncMock(return_value=commit_data)), \
+             patch.object(self.cog, "_fetch_bytes_with_retries", new=AsyncMock(return_value=b"tiny")), \
+             patch("aiohttp.ClientSession") as session_cls:
+            fake_session = MagicMock()
+            fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+            fake_session.__aexit__ = AsyncMock(return_value=None)
+            session_cls.return_value = fake_session
+
+            await self.cog.deploy_latest.callback(self.cog, ctx)
+
+        assert ctx.send.await_args_list[-1].args[0] == "Deploy aborted: download looks truncated (4 bytes)."
+
+    async def test_deploy_fails_when_archive_extracts_no_root_directory(self):
+        ctx = make_ctx()
+        commit_data = {"sha": "def5678", "commit": {"message": "Ship it"}}
+        zip_mock = MagicMock()
+        zip_mock.__enter__.return_value = zip_mock
+        zip_mock.__exit__.return_value = None
+
+        with patch.object(self.cog, "_read_deployed_commit", return_value="abc1234"), \
+             patch.object(self.cog, "_fetch_json_with_retries", new=AsyncMock(return_value=commit_data)), \
+             patch.object(self.cog, "_fetch_bytes_with_retries", new=AsyncMock(return_value=b"x" * 6000)), \
+             patch("aiohttp.ClientSession") as session_cls, \
+             patch("cogs.admin.zipfile.ZipFile", return_value=zip_mock), \
+             patch("cogs.admin.Path.iterdir", return_value=[]):
+            fake_session = MagicMock()
+            fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+            fake_session.__aexit__ = AsyncMock(return_value=None)
+            session_cls.return_value = fake_session
+
+            await self.cog.deploy_latest.callback(self.cog, ctx)
+
+        assert ctx.send.await_args_list[-1].args[0] == "Deploy failed: extracted archive was empty."
 
     def test_format_deploy_error_sanitizes_github_503(self):
         message = self.cog._format_deploy_error(
@@ -792,6 +1167,95 @@ class TestUtilityChangelog:
         assert "`!emote [name] [1-4]` - search 7TV and pick an emote result to send" in sent_text
 
 
+class TestUtilityCommands:
+    def setup_method(self):
+        self.cog = make_utility_cog()
+
+    async def test_github_command_sends_repo_url(self):
+        ctx = make_ctx()
+
+        await self.cog.github_repo.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with(f"Tinki-bot source: {config.GITHUB_REPO_URL}")
+
+    async def test_gif_command_sends_url_from_giphy(self):
+        ctx = make_ctx()
+        session = MagicMock()
+        response = MagicMock()
+        response.json = AsyncMock(return_value={"data": {"images": {"original": {"url": "https://giphy.example/gif"}}}})
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+        session.get = AsyncMock(return_value=response)
+
+        with patch("cogs.utility.aiohttp.ClientSession", return_value=session):
+            await self.cog.send_gif.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("https://giphy.example/gif")
+
+    async def test_random_command_reports_no_pins(self):
+        ctx = make_ctx()
+        ctx.channel.pins = AsyncMock(return_value=[])
+
+        await self.cog.random_cmd.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("There are no pinned messages in this channel.")
+
+    async def test_dog_command_reports_unexpected_api_payload(self):
+        ctx = make_ctx()
+
+        with patch.object(self.cog, "_fetch_url", new=AsyncMock(return_value={"status": "nope"})):
+            await self.cog.dog.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once()
+        assert "Dog API responded unexpectedly" in ctx.send.await_args.args[0]
+
+    async def test_purge_denies_non_whiptail(self):
+        ctx = make_ctx()
+        ctx.author = SimpleNamespace(id=0, name="other", mention="<@0>")
+
+        await self.cog.purge_bot_messages.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("You do not have permission to use this command.")
+
+    async def test_purge_deletes_matching_messages(self):
+        ctx = make_ctx()
+        ctx.author = SimpleNamespace(id=config.USER_WHIPTAIL_ID, name="whiptail", mention="<@1>")
+        self.cog.bot.user = SimpleNamespace()
+        purged_messages = [SimpleNamespace(), SimpleNamespace()]
+        ctx.channel.purge = AsyncMock(return_value=purged_messages)
+
+        await self.cog.purge_bot_messages.callback(self.cog, ctx)
+
+        ctx.channel.purge.assert_awaited_once()
+        ctx.send.assert_awaited_once_with("Deleted 2 messages.", delete_after=5)
+
+    async def test_pin_reaction_forwards_message_to_pins_channel(self):
+        payload = SimpleNamespace(user_id=123, emoji="📌", channel_id=5, message_id=9, member=SimpleNamespace(id=123))
+        source_channel = MagicMock()
+        pinned_channel = MagicMock()
+        pinned_channel.send = AsyncMock()
+        source_message = SimpleNamespace(
+            content="hello pins",
+            author=SimpleNamespace(display_name="Poster"),
+            created_at=SimpleNamespace(strftime=lambda fmt: "2026-04-17 10:00:00"),
+            attachments=[],
+            jump_url="https://discord.example/message",
+            guild=SimpleNamespace(channels=[pinned_channel]),
+            add_reaction=AsyncMock(),
+            remove_reaction=AsyncMock(),
+        )
+        source_channel.fetch_message = AsyncMock(return_value=source_message)
+        self.cog.bot.user = SimpleNamespace(id=999)
+        self.cog.bot.get_channel = MagicMock(return_value=source_channel)
+
+        with patch("cogs.utility.discord.utils.get", return_value=pinned_channel):
+            await self.cog.on_raw_reaction_add(payload)
+
+        pinned_channel.send.assert_awaited_once()
+        source_message.add_reaction.assert_awaited_once_with('✅')
+        source_message.remove_reaction.assert_awaited_once_with("📌", payload.member)
+
+
 class TestScoreCommands:
     def setup_method(self):
         self.cog = make_bowling_cog()
@@ -878,6 +1342,54 @@ class TestTrackingGraphs:
 
         ctx.send.assert_awaited_once()
         assert "Error:" not in str(ctx.send.call_args.args)
+
+
+class TestTrackingListenersAndCounts:
+    async def test_on_message_tracks_explode_and_spinny_usage(self):
+        cog = make_tracking_cog()
+        message = make_message("I did an :explode: again")
+        message.author = SimpleNamespace(bot=False, id=config.USER_WHIPTAIL_ID, name="whiptail")
+        message.stickers = [SimpleNamespace(name=config.STICKER_SPINNY)]
+        message.created_at = SimpleNamespace(isoformat=lambda: "2026-04-17T12:00:00+00:00")
+        message.id = 12
+
+        with patch.object(cog, "_save_explode"), patch.object(cog, "_save_spinny"):
+            await cog.on_message(message)
+
+        assert len(cog.explode) == 1
+        assert len(cog.spinny) == 1
+
+    async def test_on_message_tracks_sus_variants_for_lhea(self):
+        cog = make_tracking_cog()
+        emoji = SimpleNamespace(name="sus_blob")
+        message = make_message("sus sussy <:sus_blob:123>")
+        message.author = SimpleNamespace(bot=False, id=config.USER_LHEA_ID, name="lhea.")
+        message.guild = SimpleNamespace(emojis=[emoji])
+        message.stickers = [SimpleNamespace(name="sus")]
+        message.created_at = SimpleNamespace(isoformat=lambda: "2026-04-17T12:00:00+00:00")
+        message.id = 13
+
+        with patch.object(cog, "_save_sus"):
+            await cog.on_message(message)
+
+        assert len(cog.sus_and_sticker_usage) == 3
+
+    async def test_count_commands_report_totals(self):
+        cog = make_tracking_cog()
+        cog.sus_and_sticker_usage[:] = [1, 2]
+        cog.spinny[:] = [1]
+        cog.explode[:] = [1, 2, 3]
+        ctx = make_ctx()
+        ctx.guild = SimpleNamespace(emojis=[])
+        cog.bot.guilds = []
+
+        await cog.sussy_count.callback(cog, ctx)
+        await cog.spinny_count.callback(cog, ctx)
+        await cog.explode_count.callback(cog, ctx)
+
+        assert "2 times" in ctx.send.await_args_list[0].args[0]
+        assert "1 times" in ctx.send.await_args_list[1].args[0]
+        assert "3 times" in ctx.send.await_args_list[2].args[0]
 
 
 # ── Uma Musume gacha ──────────────────────────────────────────────────────────
@@ -1248,6 +1760,90 @@ class TestBowlingUndoWindow:
         assert check(reaction, bad_user)  is False
 
 
+class TestBowlingMessageAndCommands:
+    def setup_method(self):
+        self.cog = make_bowling_cog()
+
+    async def test_on_message_records_new_score_and_adds_reactions(self):
+        from datetime import datetime, timezone
+
+        message = make_message("150")
+        message.author = SimpleNamespace(bot=False, id=config.USER_CATE_ID, name="_cate")
+        message.created_at = datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc)
+        message.add_reaction = AsyncMock()
+        confirm = MagicMock()
+        confirm.add_reaction = AsyncMock()
+        message.channel.send = AsyncMock(return_value=confirm)
+
+        def discard_task(coro):
+            coro.close()
+            return MagicMock()
+
+        with patch("cogs.bowling.asyncio.create_task", side_effect=discard_task), patch.object(self.cog, "_save"):
+            await self.cog.on_message(message)
+
+        assert self.cog.scores == [(150, message.created_at)]
+        message.add_reaction.assert_awaited_once_with("🎳")
+        confirm.add_reaction.assert_awaited_once_with("❌")
+
+    async def test_delete_score_reports_multiple_matches(self):
+        from datetime import datetime
+
+        self.cog.scores[:] = [
+            (100, datetime(2026, 4, 17, 12, 30, 0)),
+            (140, datetime(2026, 4, 17, 12, 30, 59)),
+        ]
+        ctx = make_ctx()
+
+        await self.cog.delete_score.callback(self.cog, ctx, timestamp_str="2026-04-17 12:30:00")
+
+        ctx.send.assert_awaited_once()
+        assert "Multiple scores found" in ctx.send.await_args.args[0]
+
+    async def test_add_score_reports_invalid_timestamp(self):
+        ctx = make_ctx()
+
+        await self.cog.add_score.callback(self.cog, ctx, 150, timestamp_str="bad timestamp")
+
+        ctx.send.assert_awaited_once_with("Invalid timestamp format. Please use %Y-%m-%d %H:%M:%S.")
+
+    async def test_all_scores_splits_long_output(self):
+        from datetime import datetime, timedelta
+
+        start = datetime(2026, 1, 1, 0, 0, 0)
+        self.cog.scores[:] = [(100 + i, start + timedelta(minutes=i)) for i in range(80)]
+        ctx = make_ctx()
+
+        await self.cog.all_scores.callback(self.cog, ctx)
+
+        assert ctx.send.await_count >= 2
+        assert ctx.send.await_args_list[0].args[0].startswith("Jun's scores:")
+        assert ctx.send.await_args_list[1].args[0].startswith("Jun's scores (contd.):")
+
+    async def test_graph_scores_sends_generated_file(self):
+        from datetime import datetime
+
+        self.cog.scores[:] = [
+            (100, datetime(2026, 1, 1, 0, 0, 0)),
+            (150, datetime(2026, 1, 2, 0, 0, 0)),
+        ]
+        ctx = make_ctx()
+
+        with patch("cogs.bowling.plt.savefig"), patch("cogs.bowling.discord.File", return_value="graph-file"):
+            await self.cog.graph_scores.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with(file="graph-file")
+
+    async def test_distribution_graph_sends_generated_file(self):
+        self.cog.scores[:] = [(100, "a"), (150, "b"), (130, "c")]
+        ctx = make_ctx()
+
+        with patch("cogs.bowling.plt.savefig"), patch("cogs.bowling.discord.File", return_value="dist-file"):
+            await self.cog.distribution_graph.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with(file="dist-file")
+
+
 # ── spinny commands ───────────────────────────────────────────────────────────
 
 def make_emotes_cog():
@@ -1537,6 +2133,151 @@ class TestReminderHelpers:
         conn.close()
 
         assert rows == [('1', 0), ('2', 1)]
+
+
+class TestReminderCommands(TestReminderHelpers):
+    async def test_remind_shows_usage(self):
+        ctx = make_ctx()
+
+        await self.cog.remind.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("Please follow this format: !remindme in X seconds/minutes/hours/days.")
+
+    async def test_remindme_without_entries_reports_none(self):
+        ctx = make_ctx()
+        ctx.author = SimpleNamespace(id=123, mention="<@123>")
+
+        await self.cog.remindme.callback(self.cog, ctx, args=None)
+
+        ctx.send.assert_awaited_once_with("<@123>, you have no reminders set.")
+
+    async def test_remindme_lists_upcoming_and_past(self):
+        from datetime import datetime, timedelta
+
+        now = datetime.utcnow()
+        upcoming = (now + timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
+        past = (now - timedelta(minutes=5)).strftime('%Y-%m-%d %H:%M:%S')
+        conn = self._connect()
+        c = conn.cursor()
+        c.executemany(
+            "INSERT INTO reminders (user_id, channel_id, reminder_time, message, sent) VALUES (?,?,?,?,0)",
+            [
+                ('123', '1', upcoming, 'future reminder'),
+                ('123', '1', past, 'past reminder'),
+            ]
+        )
+        conn.commit()
+        conn.close()
+
+        ctx = make_ctx()
+        ctx.author = SimpleNamespace(id=123, mention="<@123>")
+
+        await self.cog.remindme.callback(self.cog, ctx, args=None)
+
+        assert ctx.send.await_count == 2
+        assert "upcoming reminders" in ctx.send.await_args_list[0].args[0]
+        assert "future reminder" in ctx.send.await_args_list[0].args[0]
+        assert "past reminders" in ctx.send.await_args_list[1].args[0]
+        assert "past reminder" in ctx.send.await_args_list[1].args[0]
+
+    async def test_remindme_relative_time_creates_reminder_with_reply_link(self):
+        ctx = make_ctx()
+        ctx.author = SimpleNamespace(id=123, mention="<@123>")
+        ctx.guild = SimpleNamespace(id=555)
+        ctx.channel = SimpleNamespace(id=777)
+        ctx.message = SimpleNamespace(id=888, reference=SimpleNamespace(message_id=999))
+
+        await self.cog.remindme.callback(self.cog, ctx, args="in 2 hours, 30 minutes")
+
+        ctx.send.assert_awaited_once()
+        sent = ctx.send.await_args.args[0]
+        assert "reminder set for" in sent
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute("SELECT message FROM reminders WHERE user_id='123'")
+        stored = c.fetchone()[0]
+        conn.close()
+        assert stored == "Reminder! [Link](https://discord.com/channels/555/777/999)"
+
+    async def test_remindme_invalid_time_unit_reports_error(self):
+        ctx = make_ctx()
+        ctx.author = SimpleNamespace(id=123, mention="<@123>")
+        ctx.guild = SimpleNamespace(id=555)
+        ctx.channel = SimpleNamespace(id=777)
+        ctx.message = SimpleNamespace(id=888, reference=None)
+
+        await self.cog.remindme.callback(self.cog, ctx, args="in 3 fortnights")
+
+        ctx.send.assert_awaited_once()
+        assert "couldn't understand time unit" in ctx.send.await_args.args[0]
+
+    async def test_deletereminder_deletes_owned_reminder(self):
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO reminders (reminder_id, user_id, channel_id, reminder_time, message, sent) VALUES (?,?,?,?,?,0)",
+            (7, '123', '1', '2099-01-01 00:00:00', 'owned reminder')
+        )
+        conn.commit()
+        conn.close()
+
+        ctx = make_ctx()
+        ctx.author = SimpleNamespace(id=123, mention="<@123>")
+
+        await self.cog.deletereminder.callback(self.cog, ctx, 7)
+
+        ctx.send.assert_awaited_once_with("<@123>, reminder `7` deleted!")
+
+    async def test_deletereminder_reports_missing_reminder(self):
+        ctx = make_ctx()
+        ctx.author = SimpleNamespace(id=123, mention="<@123>")
+
+        await self.cog.deletereminder.callback(self.cog, ctx, 404)
+
+        ctx.send.assert_awaited_once_with("<@123>, no reminder found with ID `404`.")
+
+    async def test_currenttime_returns_timestamp_string(self):
+        ctx = make_ctx()
+
+        await self.cog.currenttime.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once()
+        assert ctx.send.await_args.args[0].count(":") == 2
+
+
+class TestPersonas:
+    def test_load_personas_sets_cute_as_default_when_present(self, tmp_path):
+        from cogs.personas import Personas
+
+        persona_file = tmp_path / "personas.json"
+        conversation_file = tmp_path / "conversations.json"
+        persona_file.write_text(json.dumps({"cute": "be nice", "mean": "be mean"}), encoding="utf-8")
+        conversation_file.write_text("{}", encoding="utf-8")
+
+        with patch("cogs.personas.PERSONA_FILE", str(persona_file)), patch("cogs.personas.CONVERSATION_FILE", str(conversation_file)):
+            cog = Personas(MagicMock())
+
+        assert cog.current_persona == "cute"
+        assert cog.personas["cute"] == "be nice"
+
+    def test_update_conversation_trims_history_to_last_ten_entries(self, tmp_path):
+        from cogs.personas import Personas
+
+        persona_file = tmp_path / "personas.json"
+        conversation_file = tmp_path / "conversations.json"
+        persona_file.write_text("{}", encoding="utf-8")
+        conversation_file.write_text("{}", encoding="utf-8")
+
+        with patch("cogs.personas.PERSONA_FILE", str(persona_file)), patch("cogs.personas.CONVERSATION_FILE", str(conversation_file)):
+            cog = Personas(MagicMock())
+
+        for index in range(6):
+            cog.update_conversation("123", "cute", f"user {index}", f"bot {index}")
+
+        history = cog.conversations["123"]["cute"]
+        assert len(history) == 10
+        assert history[0]["content"] == "user 1"
+        assert history[-1]["content"] == "bot 5"
 
 
 # ── mojibake scan ─────────────────────────────────────────────────────────────
