@@ -3126,14 +3126,17 @@ class TestPersonas:
 
         persona_file = tmp_path / "personas.json"
         conversation_file = tmp_path / "conversations.json"
-        persona_file.write_text(json.dumps({"cute": "be nice", "mean": "be mean"}), encoding="utf-8")
+        persona_file.write_text(
+            json.dumps({"cute": "cute but snarky gnome engineer", "mean": "be mean"}),
+            encoding="utf-8",
+        )
         conversation_file.write_text("{}", encoding="utf-8")
 
         with patch("cogs.personas.PERSONA_FILE", str(persona_file)), patch("cogs.personas.CONVERSATION_FILE", str(conversation_file)):
             cog = Personas(MagicMock())
 
         assert cog.current_persona == "cute"
-        assert cog.personas["cute"] == "be nice"
+        assert cog.personas["cute"] == "cute but snarky gnome engineer"
 
     def test_update_conversation_trims_history_to_last_ten_entries(self, tmp_path):
         from cogs.personas import Personas
