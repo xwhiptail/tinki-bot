@@ -10,8 +10,17 @@ def get_openai_client() -> OpenAI:
     return OpenAI()
 
 
+async def run_blocking(func, *args, **kwargs):
+    to_thread = getattr(asyncio, "to_thread", None)
+    if to_thread is not None:
+        return await to_thread(func, *args, **kwargs)
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+
+
 async def create_chat_completion(client: OpenAI, **kwargs):
-    return await asyncio.to_thread(client.chat.completions.create, **kwargs)
+    return await run_blocking(client.chat.completions.create, **kwargs)
 
 
 async def fetch_openai_balance() -> str:

@@ -664,17 +664,17 @@ class TestOpenAIHelpers:
         fake_client = MagicMock()
         fake_client.chat.completions.create = MagicMock(return_value=completion)
 
-        async def fake_to_thread(func, *args, **kwargs):
+        async def fake_run_blocking(func, *args, **kwargs):
             return func(*args, **kwargs)
 
         with patch("utils.openai_helpers.get_openai_client", return_value=fake_client):
-            with patch("utils.openai_helpers.asyncio.to_thread", new=AsyncMock(side_effect=fake_to_thread)) as to_thread_mock:
+            with patch("utils.openai_helpers.run_blocking", new=AsyncMock(side_effect=fake_run_blocking)) as run_blocking_mock:
                 from utils.openai_helpers import gpt_wrap_fact
 
                 wrapped = await gpt_wrap_fact("4", "2+2", "persona")
 
         assert wrapped.startswith("4")
-        to_thread_mock.assert_awaited_once()
+        run_blocking_mock.assert_awaited_once()
 
 
 # ── score commands ────────────────────────────────────────────────────────────
