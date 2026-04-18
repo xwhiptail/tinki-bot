@@ -80,7 +80,7 @@ class Admin(commands.Cog):
         summary = (
             "Bot restarted - running startup diagnostics...\n"
             "```ini\n[BOOT SEQUENCE COMPLETED]\n```\n"
-            f"{self._summary_line('Command grid', cmd_p, cmd_t)}"
+            f"{self._summary_line('Command availability', cmd_p, cmd_t, 'commands available')}"
             f"{self._summary_line('URL filter matrix', url_p, url_t)}"
             f"{self._summary_line('Calculator gnome', calc_p, calc_t)}"
             f"{self._summary_line('Letter gnome', let_p, let_t)}"
@@ -96,7 +96,7 @@ class Admin(commands.Cog):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         lines = [f"Startup Diagnostic Results - {timestamp}\n", "=" * 60 + "\n"]
         for section, results in [
-            ("Command Tests", cmd_results),
+            ("Command Availability", cmd_results),
             ("URL Tests", url_results),
             ("Calculator Tests", calc_results),
             ("Letter Count Tests", letter_results),
@@ -104,7 +104,8 @@ class Admin(commands.Cog):
             ("Pytest", pytest_results),
         ]:
             passed, total = _counts(results)
-            lines.append(f"\n{self._summary_line(section, passed, total, 'passed')}")
+            suffix = "commands available" if section == "Command Availability" else "passed"
+            lines.append(f"\n{self._summary_line(section, passed, total, suffix)}")
             for name, ok, reason in results:
                 if ok:
                     lines.append(f"  {TEST_PASS_EMOJI} {name}\n")

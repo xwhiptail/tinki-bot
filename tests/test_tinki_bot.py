@@ -653,6 +653,27 @@ class TestAdminAWSCost:
         report_text = kwargs["file"].fp.getvalue().decode("utf-8")
         assert "AWS cost" not in report_text
 
+    async def test_startup_message_reports_command_availability_not_tests(self):
+        self.cog.bot.wait_until_ready = AsyncMock()
+        test_channel = MagicMock()
+        test_channel.name = config.CHANNEL_BOT_TEST
+        test_channel.send = AsyncMock()
+        self.cog.bot.get_all_channels = MagicMock(return_value=[test_channel])
+
+        with patch.object(self.cog, "_run_command_selftests", new=AsyncMock(return_value=[("pb", True, "available")])), \
+             patch("cogs.admin.run_url_selftests", return_value=[("url", True, None)]), \
+             patch("cogs.admin.run_calculate_selftests", return_value=[("calc", True, None)]), \
+             patch("cogs.admin.run_letter_count_selftests", return_value=[("letter", True, None)]), \
+             patch("cogs.admin.run_bot_insight_selftests", return_value=[("insight", True, None)]), \
+             patch.object(self.cog, "_run_pytest_suite", new=AsyncMock(return_value=[("pytest", True, "passed")])), \
+             patch("cogs.admin.fetch_openai_balance", new=AsyncMock(return_value="$1.23 remaining")):
+            await self.cog._run_startup_tests_inner()
+
+        kwargs = test_channel.send.await_args.kwargs
+        assert "Command availability" in kwargs["content"]
+        report_text = kwargs["file"].fp.getvalue().decode("utf-8")
+        assert "Command Availability" in report_text
+
     async def test_command_selftests_skip_retired_server_placeholders(self):
         invoked = []
         self.cog.bot.get_command = MagicMock(side_effect=lambda name: name)
@@ -733,6 +754,22 @@ class TestUtilityChangelog:
             await self.cog.changelog.callback(self.cog, ctx, 5)
 
         ctx.send.assert_awaited_once_with("I couldn't read recent commits right now.")
+
+    async def test_commands_dm_mentions_current_reminder_and_retired_commands(self):
+        ctx = make_ctx()
+        ctx.author.send = AsyncMock()
+        ctx.author.mention = "<@123>"
+
+        await self.cog.show_commands.callback(self.cog, ctx)
+
+        sent_text = "\n".join(call.args[0] for call in ctx.author.send.await_args_list)
+        assert "!currenttime" in sent_text
+        assert "!remind" in sent_text
+        assert "!startskyfactory" in sent_text
+        assert "!stopskyfactory" in sent_text
+        assert "!skyfactorystatus" in sent_text
+        assert "!uptime" in sent_text
+        assert "`!emote [name] [1-4]` - search 7TV and pick an emote result to send" in sent_text
 
 
 class TestScoreCommands:
@@ -1444,6 +1481,42 @@ class TestReminderHelpers:
         c.execute("SELECT COUNT(*) FROM reminders")
         assert c.fetchone()[0] == 1
         conn.close()
+
+    async def test_check_reminders_continues_after_single_delivery_failure(self):
+        from datetime import datetime, timezone, timedelta
+
+        due = (datetime.now(timezone.utc) - timedelta(minutes=1)).strftime('%Y-%m-%d %H:%M:%S')
+        conn = self._connect()
+        c = conn.cursor()
+        c.executemany(
+            "INSERT INTO reminders (user_id, channel_id, reminder_time, message, sent) VALUES (?,?,?,?,0)",
+            [
+                ('1', '10', due, 'first reminder'),
+                ('2', '10', due, 'second reminder'),
+            ]
+        )
+        conn.commit()
+        conn.close()
+
+        self.cog.bot.fetch_user = AsyncMock(side_effect=[
+            SimpleNamespace(mention="<@1>"),
+            SimpleNamespace(mention="<@2>"),
+        ])
+        self.cog.bot.get_channel = MagicMock(return_value=None)
+        channel = MagicMock()
+        channel.name = config.CHANNEL_REMINDERS
+        channel.send = AsyncMock(side_effect=[RuntimeError("boom"), None])
+        self.cog.bot.get_all_channels = MagicMock(return_value=[channel])
+
+        await self.cog.check_reminders.coro(self.cog)
+
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute("SELECT user_id, sent FROM reminders ORDER BY reminder_id")
+        rows = c.fetchall()
+        conn.close()
+
+        assert rows == [('1', 0), ('2', 1)]
 
 
 # ── mojibake scan ─────────────────────────────────────────────────────────────

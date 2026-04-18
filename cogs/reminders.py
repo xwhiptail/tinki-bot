@@ -1,3 +1,4 @@
+import logging
 import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -8,6 +9,8 @@ import pytz
 from discord.ext import commands, tasks
 
 from config import CHANNEL_REMINDERS, DATABASE_FILE
+
+log = logging.getLogger("discord.cogs.reminders")
 
 
 class Reminders(commands.Cog):
@@ -49,12 +52,18 @@ class Reminders(commands.Cog):
             c.execute('SELECT user_id, channel_id, reminder_time, message FROM reminders WHERE reminder_time<=? AND sent=0', (now,))
             reminders = c.fetchall()
             for user_id, channel_id, reminder_time, message in reminders:
-                user = await self.bot.fetch_user(user_id)
-                channel = discord.utils.get(self.bot.get_all_channels(), name=CHANNEL_REMINDERS)
-                if channel:
+                try:
+                    user = await self.bot.fetch_user(user_id)
+                    channel = self.bot.get_channel(int(channel_id)) if str(channel_id).isdigit() else None
+                    if channel is None:
+                        channel = discord.utils.get(self.bot.get_all_channels(), name=CHANNEL_REMINDERS)
+                    if channel is None:
+                        raise RuntimeError(f"reminder channel unavailable for channel_id={channel_id}")
                     await channel.send(f"{user.mention}, {message}")
                     c.execute('UPDATE reminders SET sent=1 WHERE user_id=? AND reminder_time=?', (user_id, reminder_time))
                     conn.commit()
+                except Exception:
+                    log.exception("Failed to deliver reminder user_id=%s reminder_time=%s", user_id, reminder_time)
 
     @check_reminders.before_loop
     async def before_check_reminders(self):

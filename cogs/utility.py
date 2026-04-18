@@ -266,9 +266,11 @@ class Utility(commands.Cog):
 `!purge` - Purges messages sent by the bot. Only usable by whiptail.
 `!gif` - Posts a random bowling gif.
 `!random` - Posts a random pinned message to the chat.
+`!remind` - Shows the reminder command format.
 `!remindme in [x]` - Sets a reminder with a link to the message.
 `!remindme` - Lists upcoming reminders.
 `!deletereminder [ID]` - Deletes a reminder with the specified ID.
+`!currenttime` - Shows the current server time.
 `!github` - Links to the bot source repository.
 `!changelog [count]` - Shows recent commit summaries.
 `!awscost` - Shows AWS month-to-date and projected monthly cost (admin only).
@@ -283,7 +285,7 @@ class Utility(commands.Cog):
 `!cat` - Sends a random cat.
 `!dog` - Sends a random dog.
 `!dogbark` - Sends a random bark word in block letters.
-`!emote [name] [1-4]` - displays the top 5 emotes from 7tv API
+`!emote [name] [1-4]` - search 7TV and pick an emote result to send
 `!spinny @[user]` - grinding activated for @user
 `!stopspinny @[user]` - grinding deactivated for @user
 `!sussy` - shows how sussy lhea is
@@ -299,6 +301,11 @@ class Utility(commands.Cog):
 `!stopminecraft` - retired command; server hosting was removed
 `!minecraftstatus` - retired command; server hosting was removed
 `!minecraftserver` - retired command; server hosting was removed
+`!startskyfactory` - retired command; server hosting was removed
+`!stopskyfactory` - retired command; server hosting was removed
+`!skyfactorystatus` - retired command; server hosting was removed
+`!skyfactoryserver` - retired command; server hosting was removed
+`!uptime` - retired command placeholder
 `!testurls` - tests the url rewrites
 `!runtests` - unit tests for the commands
 `!restart` - restarts the bot (admin only)
