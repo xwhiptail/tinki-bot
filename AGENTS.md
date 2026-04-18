@@ -28,6 +28,7 @@ Primary files:
 - Do not make deploy changes that overwrite runtime data by default.
 - Update `README.md` and `INSTALL.md` when deploy or operational steps change.
 - If changing bot commands, keep the command list in sync.
+- If adding or changing bot commands or listeners, add or update pytest coverage in `tests/test_tinki_bot.py` and refresh `docs/command-test-map.md`.
 
 ## Deploy Guidance
 
@@ -74,7 +75,7 @@ For ordinary repo work, follow this order unless the user explicitly asks for so
 5. Make the smallest focused change that solves the task.
 6. Run the narrowest relevant test first; run `python -m pytest` when the change is broad or touches shared behavior.
 7. If user-facing text or emojis changed, scan for mojibake before finishing.
-8. Update docs when commands, deploy flow, setup, or operational behavior changed.
+8. Update docs when commands, deploy flow, setup, or operational behavior changed. When command behavior changes, update tests and `docs/command-test-map.md` in the same pass.
 9. Review `git diff` before committing.
 10. Commit and push the change unless the user explicitly says not to push yet.
 11. Push the committed change to GitLab as part of the normal release flow when that mirror is in use on this machine.

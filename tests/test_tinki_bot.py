@@ -517,6 +517,20 @@ class TestAISendReplyChunks:
         assert channel.send.await_args_list[2].args[0].endswith("(Part 3 of 3)")
         assert sleep_mock.await_count == 3
 
+    async def test_send_reply_chunks_splits_when_mention_pushes_payload_over_limit(self):
+        cog = make_ai_cog()
+        channel = MagicMock()
+        channel.send = AsyncMock()
+        mention = "<@123456789012345678> "
+        text = "x" * 1990
+
+        with patch("cogs.ai.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+            await cog._send_reply_chunks(channel, mention, text)
+
+        assert channel.send.await_count == 2
+        assert all(len(call.args[0]) <= 2000 for call in channel.send.await_args_list)
+        assert sleep_mock.await_count == 2
+
 
 class TestAIMemoryLookupContext:
     async def test_ai_prefers_history_context_for_memory_lookup_prompts(self):
@@ -576,7 +590,9 @@ class TestAIListeners:
         with patch.object(cog, "_handle_mention", new=AsyncMock(side_effect=RuntimeError("boom"))):
             await cog.on_message(message)
 
-        message.channel.send.assert_awaited_once_with("<@123> Sorry, I encountered an issue: boom")
+        message.channel.send.assert_awaited_once_with(
+            "<@123> Sorry, something went wrong on my side."
+        )
 
     async def test_on_message_replies_to_tracked_random_ai_reply(self):
         cog = make_ai_cog()
@@ -627,6 +643,38 @@ class TestAIListeners:
         reply_mock.assert_awaited_once_with("wow", "Tester", "🔥")
         channel.send.assert_awaited_once_with("<@321> calm down")
         assert 88 in cog.random_ai_message_ids
+
+
+class TestAIRandomMessageTracking:
+    def test_track_random_ai_message_ids_prunes_oldest_entries(self):
+        cog = make_ai_cog()
+        cog._track_random_ai_message_id(1, max_ids=3)
+        cog._track_random_ai_message_id(2, max_ids=3)
+        cog._track_random_ai_message_id(3, max_ids=3)
+        cog._track_random_ai_message_id(4, max_ids=3)
+
+        assert cog.random_ai_message_ids == {2, 3, 4}
+
+
+class TestOpenAIHelpers:
+    async def test_gpt_wrap_fact_offloads_sync_openai_call_to_thread(self):
+        completion = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="4 — obviously"))]
+        )
+        fake_client = MagicMock()
+        fake_client.chat.completions.create = MagicMock(return_value=completion)
+
+        async def fake_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        with patch("utils.openai_helpers.get_openai_client", return_value=fake_client):
+            with patch("utils.openai_helpers.asyncio.to_thread", new=AsyncMock(side_effect=fake_to_thread)) as to_thread_mock:
+                from utils.openai_helpers import gpt_wrap_fact
+
+                wrapped = await gpt_wrap_fact("4", "2+2", "persona")
+
+        assert wrapped.startswith("4")
+        to_thread_mock.assert_awaited_once()
 
 
 # ── score commands ────────────────────────────────────────────────────────────
@@ -1037,6 +1085,43 @@ class TestAdminAWSCost:
 
         ctx.send.assert_awaited_once_with("You do not have permission to use this command.")
 
+    async def test_runtests_reports_start_and_summary(self):
+        ctx = make_ctx()
+
+        with patch.object(self.cog, "_run_command_selftests", new=AsyncMock(return_value=[
+            ("pb", True, None),
+            ("avg", False, "boom"),
+        ])):
+            await self.cog.runtests.callback(self.cog, ctx)
+
+        assert ctx.send.await_args_list[0].args[0] == "Starting command self-tests..."
+        assert ctx.send.await_args_list[-1].args[0] == "🚨 Command tests complete: 1/2 passed"
+
+    async def test_testurls_reports_each_result_and_summary(self):
+        ctx = make_ctx()
+
+        with patch("cogs.admin.run_url_selftests", return_value=[
+            ("twitter", True, None),
+            ("twitch", False, "retry failed"),
+        ]):
+            await self.cog.testurls.callback(self.cog, ctx)
+
+        assert ctx.send.await_args_list[0].args[0] == "Starting URL rewrite tests..."
+        assert ctx.send.await_args_list[1].args[0] == "✅ twitter: passed"
+        assert ctx.send.await_args_list[2].args[0] == "🚨 twitch: retry failed"
+        assert ctx.send.await_args_list[-1].args[0] == "🚨 URL tests complete: 1/2 passed"
+
+    async def test_restart_sends_message_and_invokes_systemctl(self):
+        ctx = make_ctx()
+
+        with patch("cogs.admin.asyncio.sleep", new=AsyncMock()) as sleep_mock, \
+             patch("cogs.admin.subprocess.Popen") as popen_mock:
+            await self.cog.restart_bot.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("Restarting... brb")
+        sleep_mock.assert_awaited_once_with(1)
+        popen_mock.assert_called_once_with(["sudo", "systemctl", "restart", "tinki-bot"])
+
     async def test_startup_message_includes_aws_cost_summary(self):
         content, report_text = await self._run_startup_report(cmd_results=[("pb", True, None)])
 
@@ -1264,6 +1349,70 @@ class TestUtilityCommands:
         source_message.add_reaction.assert_awaited_once_with('✅')
         source_message.remove_reaction.assert_awaited_once_with("📌", payload.member)
 
+    async def test_roulette_command_sends_url_from_giphy(self):
+        ctx = make_ctx()
+        session = MagicMock()
+        response = MagicMock()
+        response.json = AsyncMock(return_value={"data": {"images": {"original": {"url": "https://giphy.example/random"}}}})
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+        session.get = AsyncMock(return_value=response)
+
+        with patch("cogs.utility.aiohttp.ClientSession", return_value=session):
+            await self.cog.roulette.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("https://giphy.example/random")
+
+    async def test_dogbark_command_sends_figlet_bark(self):
+        ctx = make_ctx()
+
+        with patch("cogs.utility.random.choice", return_value="Bark"), \
+             patch("cogs.utility.pyfiglet.figlet_format", return_value="BARK\n"):
+            await self.cog.dogbark.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("```\nBARK\n\n```")
+
+    async def test_ss_command_sends_static_image_url(self):
+        ctx = make_ctx()
+
+        await self.cog.ss.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once()
+        assert "redirect.jpg" in ctx.send.await_args.args[0]
+
+    async def test_retired_server_commands_send_removed_message(self):
+        ctx = make_ctx()
+
+        for command in (
+            self.cog.startminecraft,
+            self.cog.stopminecraft,
+            self.cog.minecraftstatus,
+            self.cog.fetch_server_ip,
+            self.cog.startskyfactory,
+            self.cog.stopskyfactory,
+            self.cog.skyfactorystatus,
+            self.cog.fetch_skyfactory_ip,
+            self.cog.uptime,
+        ):
+            await command.callback(self.cog, ctx)
+
+        assert ctx.send.await_count == 9
+        assert all(
+            call.args[0] == config.SERVER_FEATURE_REMOVED_MESSAGE
+            for call in ctx.send.await_args_list
+        )
+
+    async def test_commands_handles_dm_forbidden(self):
+        ctx = make_ctx()
+        ctx.author.send = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "blocked"))
+        ctx.author.mention = "<@123>"
+
+        await self.cog.show_commands.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with(
+            "<@123>, I couldn't send you a DM. Please check your privacy settings."
+        )
+
 
 class TestScoreCommands:
     def setup_method(self):
@@ -1351,6 +1500,26 @@ class TestTrackingGraphs:
 
         ctx.send.assert_awaited_once()
         assert "Error:" not in str(ctx.send.call_args.args)
+
+    async def test_sussy_graph_sends_generated_file(self):
+        cog = make_tracking_cog()
+        ctx = make_ctx()
+
+        with patch.object(cog, "_build_cumulative_graph", return_value="/tmp/sus.png"), \
+             patch("cogs.tracking.discord.File", return_value="sus-file"):
+            await cog.sussy_graph.callback(cog, ctx)
+
+        ctx.send.assert_awaited_once_with(file="sus-file")
+
+    async def test_grind_graph_sends_generated_file(self):
+        cog = make_tracking_cog()
+        ctx = make_ctx()
+
+        with patch.object(cog, "_build_cumulative_graph", return_value="/tmp/grind.png"), \
+             patch("cogs.tracking.discord.File", return_value="grind-file"):
+            await cog.spinny_graph.callback(cog, ctx)
+
+        ctx.send.assert_awaited_once_with(file="grind-file")
 
 
 class TestTrackingListenersAndCounts:
@@ -1683,6 +1852,58 @@ class TestUmaMediaAndTriggers:
 
         gacha_mock.assert_awaited_once_with(ctx, 10)
 
+    async def test_race_requires_at_least_two_members(self):
+        ctx = make_ctx()
+        member = SimpleNamespace(display_name="Solo")
+
+        await self.cog.uma_race.callback(self.cog, ctx, member)
+
+        ctx.send.assert_awaited_once_with("Tag at least 2 people to race.")
+
+    async def test_race_sends_narration_and_gif(self):
+        ctx = make_ctx()
+        alice = SimpleNamespace(display_name="Alice")
+        bob = SimpleNamespace(display_name="Bob")
+        completion = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Alice wins in a cloud of dust."))]
+        )
+        fake_client = MagicMock()
+        fake_client.chat.completions.create = MagicMock(return_value=completion)
+
+        with patch("cogs.uma.get_openai_client", return_value=fake_client), \
+             patch.object(self.cog, "_gif", new=AsyncMock(return_value="https://gif.example/uma")):
+            await self.cog.uma_race.callback(self.cog, ctx, alice, bob)
+
+        assert ctx.send.await_args_list[0].args[0] == "RACE START\nAlice wins in a cloud of dust."
+        assert ctx.send.await_args_list[1].args[0] == "https://gif.example/uma"
+
+    async def test_umagif_sends_fallback_when_giphy_empty(self):
+        ctx = make_ctx()
+
+        with patch.object(self.cog, "_gif", new=AsyncMock(return_value=None)):
+            await self.cog.uma_gif_cmd.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("Giphy came up empty. The gremlin is disappointed.")
+
+    async def test_umagif_sends_gif_when_available(self):
+        ctx = make_ctx()
+
+        with patch.object(self.cog, "_gif", new=AsyncMock(return_value="https://gif.example/uma")):
+            await self.cog.uma_gif_cmd.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("https://gif.example/uma")
+
+    async def test_uma_assign_uses_target_member_and_rarity_prefix(self):
+        ctx = make_ctx()
+        ctx.author = SimpleNamespace(display_name="Author")
+        member = SimpleNamespace(display_name="Runner")
+
+        with patch("cogs.uma.random.choices", return_value=["SSR"]), \
+             patch("cogs.uma.random.choice", return_value="Special Week"):
+            await self.cog.uma_assign.callback(self.cog, ctx, member)
+
+        ctx.send.assert_awaited_once_with("* **Runner** is **Special Week** [SSR]")
+
 
 # ── bowling undo window ───────────────────────────────────────────────────────
 
@@ -1981,6 +2202,27 @@ class TestEmoteBrowserHelpers:
         ctx.send.assert_awaited_once_with("https://cdn.7tv.app/emote/sus/2x.png")
         resolve_mock.assert_awaited_once()
         session.close.assert_awaited_once()
+
+    async def test_allemotes_reports_empty_server_list(self):
+        ctx = make_ctx()
+        ctx.guild = SimpleNamespace(emojis=[])
+
+        await self.cog.all_emotes.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("No emotes found on the server.")
+
+    async def test_allemotes_starts_menu_for_guild_emojis(self):
+        ctx = make_ctx()
+        emote = SimpleNamespace(name="sus")
+        emote.__str__ = lambda: "<:sus:1>"
+        ctx.guild = SimpleNamespace(emojis=[emote])
+        menu = MagicMock()
+        menu.start = AsyncMock()
+
+        with patch("cogs.emotes.EmotesMenu", return_value=menu):
+            await self.cog.all_emotes.callback(self.cog, ctx)
+
+        menu.start.assert_awaited_once_with(ctx)
 
 
 class TestSpinnyCommands:

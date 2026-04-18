@@ -1,3 +1,4 @@
+import asyncio
 import os
 import aiohttp
 from openai import OpenAI
@@ -7,6 +8,10 @@ from config import GREMLIN_SYSTEM_STYLE, OPENAI_FAST_MODEL, OPENAI_MODEL
 
 def get_openai_client() -> OpenAI:
     return OpenAI()
+
+
+async def create_chat_completion(client: OpenAI, **kwargs):
+    return await asyncio.to_thread(client.chat.completions.create, **kwargs)
 
 
 async def fetch_openai_balance() -> str:
@@ -37,7 +42,8 @@ async def gpt_wrap_fact(fact: str, user_text: str, system_prompt, model: str = O
         f"Use this persona description as extra flavor: {system_prompt}"
     )
     try:
-        completion = client.chat.completions.create(
+        completion = await create_chat_completion(
+            client,
             model=model,
             messages=[
                 {"role": "system", "content": system},

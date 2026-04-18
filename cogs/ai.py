@@ -1,6 +1,8 @@
 import asyncio
 import json
+import logging
 import random
+from collections import deque
 from pathlib import Path
 from typing import List, Set
 
@@ -23,7 +25,10 @@ from utils.ai_brain import (
 from utils.bot_insight import maybe_bot_insight_reply
 from utils.calculator import maybe_calculate_reply
 from utils.letter_counter import maybe_count_letter_reply
-from utils.openai_helpers import get_openai_client, gpt_wrap_fact
+from utils.openai_helpers import create_chat_completion, get_openai_client, gpt_wrap_fact
+
+
+logger = logging.getLogger(__name__)
 
 
 class AI(commands.Cog):
@@ -31,6 +36,7 @@ class AI(commands.Cog):
         self.bot = bot
         self.random_ai_enabled = False
         self.random_ai_message_ids: Set[int] = set()
+        self._random_ai_message_order = deque()
         self._ai_task_started = False
         self.memory_file = Path(AI_MEMORY_FILE)
         self.ai_memory = self._load_ai_memory()
@@ -110,6 +116,15 @@ class AI(commands.Cog):
             return []
         return await self._search_channel_history(message, text)
 
+    def _track_random_ai_message_id(self, message_id: int, max_ids: int = 500):
+        if message_id in self.random_ai_message_ids:
+            return
+        self.random_ai_message_ids.add(message_id)
+        self._random_ai_message_order.append(message_id)
+        while len(self.random_ai_message_ids) > max_ids:
+            stale_id = self._random_ai_message_order.popleft()
+            self.random_ai_message_ids.discard(stale_id)
+
     def _command_context(self, query: str) -> List[str]:
         commands_available = sorted(f"!{command.name}" for command in self.bot.commands if command.enabled)
         lowered = query.lower()
@@ -158,7 +173,8 @@ class AI(commands.Cog):
 
     async def _generate_random_thought(self) -> str:
         client = get_openai_client()
-        response = client.chat.completions.create(
+        response = await create_chat_completion(
+            client,
             model=OPENAI_FAST_MODEL,
             messages=[
                 {
@@ -180,7 +196,8 @@ class AI(commands.Cog):
 
     async def _generate_reaction_reply(self, original_text: str, username: str, emoji: str) -> str:
         client = get_openai_client()
-        response = client.chat.completions.create(
+        response = await create_chat_completion(
+            client,
             model=OPENAI_FAST_MODEL,
             messages=[
                 {
@@ -207,7 +224,8 @@ class AI(commands.Cog):
 
     async def _generate_reply_to_reply(self, original_text: str, user: discord.User, user_text: str) -> str:
         client = get_openai_client()
-        response = client.chat.completions.create(
+        response = await create_chat_completion(
+            client,
             model=OPENAI_FAST_MODEL,
             messages=[
                 {
@@ -258,7 +276,8 @@ class AI(commands.Cog):
             "- If repo or command context is provided, only use that factual context.\n"
             "- If the context is insufficient, say so briefly instead of guessing.\n"
         )
-        completion = client.chat.completions.create(
+        completion = await create_chat_completion(
+            client,
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -276,7 +295,8 @@ class AI(commands.Cog):
             return reply
 
         if repo_context:
-            correction = client.chat.completions.create(
+            correction = await create_chat_completion(
+                client,
                 model=OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -305,7 +325,7 @@ class AI(commands.Cog):
     async def _send_reply_chunks(self, channel, mention: str, text: str):
         limit = 2000
         max_chunk = limit - len(mention) - 30
-        if len(text) <= limit:
+        if len(f'{mention}{text}') <= limit:
             await channel.send(f'{mention}{text}')
             return
 
@@ -405,7 +425,7 @@ class AI(commands.Cog):
             if self.random_ai_enabled and channel:
                 thought = await self._generate_random_thought()
                 msg = await channel.send(thought)
-                self.random_ai_message_ids.add(msg.id)
+                self._track_random_ai_message_id(msg.id)
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -424,7 +444,7 @@ class AI(commands.Cog):
                     user_text=message.content,
                 )
                 bot_reply = await message.channel.send(f"{message.author.mention} {reply}")
-                self.random_ai_message_ids.add(bot_reply.id)
+                self._track_random_ai_message_id(bot_reply.id)
                 return
 
         if message.reference is None and self.bot.user in message.mentions:
@@ -439,8 +459,9 @@ class AI(commands.Cog):
             text = text[:1000]  # hard cap — prevents novel-pasting from blowing up token budget
             try:
                 await self._handle_mention(message, text)
-            except Exception as error:
-                await message.channel.send(f'{message.author.mention} Sorry, I encountered an issue: {error}')
+            except Exception:
+                logger.exception("AI mention handling failed")
+                await message.channel.send(f'{message.author.mention} Sorry, something went wrong on my side.')
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
@@ -460,7 +481,7 @@ class AI(commands.Cog):
         user = payload.member or await self.bot.fetch_user(payload.user_id)
         reply = await self._generate_reaction_reply(message.content, user.display_name, str(payload.emoji))
         bot_reply = await channel.send(f"{user.mention} {reply}")
-        self.random_ai_message_ids.add(bot_reply.id)
+        self._track_random_ai_message_id(bot_reply.id)
 
 
 async def setup(bot):

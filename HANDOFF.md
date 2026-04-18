@@ -15,6 +15,7 @@ Use this file as the shared resume point between Codex and Claude Code.
 2. `git status --short --branch`
 3. Read this file, then read `AGENTS.md` and `CLAUDE.md`
 4. If the task touches runtime behavior, run the narrowest relevant test first
+5. If commands or listeners changed, update `tests/test_tinki_bot.py` and `docs/command-test-map.md` before handing off
 
 ## Normal Flow
 
@@ -27,7 +28,7 @@ Use this as the default workflow unless the user says otherwise:
 5. Make the smallest focused change.
 6. Run the narrowest relevant test first; run full `python -m pytest` when the change is broad.
 7. If text or emoji output changed, run the mojibake scan.
-8. Update docs when behavior, commands, setup, or deploy flow changed.
+8. Update docs when behavior, commands, setup, or deploy flow changed. Keep command-related edits paired with test updates and a refreshed `docs/command-test-map.md`.
 9. Review the diff.
 10. Commit and push before handing off, unless the user said not to push.
 11. Push to GitLab too when that mirror is part of the normal release path on this machine.
