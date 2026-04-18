@@ -41,12 +41,14 @@ remote_copy() {
   local remote_path="$2"
   local recursive="${3:-false}"
   local scp_args=("${SSH_ARGS[@]}")
+  local source_name remote_target_quoted
+
+  source_name="$(basename "$source_path")"
+  printf -v remote_target_quoted '%q' "${remote_path%/}/$source_name"
 
   if [[ "$recursive" == "true" ]]; then
-    local source_dir source_name remote_target_quoted
+    local source_dir
     source_dir="$(cd "$source_path" && pwd)"
-    source_name="$(basename "$source_dir")"
-    printf -v remote_target_quoted '%q' "${remote_path%/}/$source_name"
     (
       cd "$source_dir"
       find . \( -type f -o -type l \) \
@@ -58,9 +60,10 @@ remote_copy() {
         -print0 \
         | COPYFILE_DISABLE=1 tar --format=ustar -C "$source_dir" --null -T - -cf -
     ) \
-      | ssh "${SSH_ARGS[@]}" "$SSH_TARGET" "mkdir -p ${remote_target_quoted} && tar -xmf - --no-same-permissions --no-overwrite-dir -C ${remote_target_quoted}"
+      | ssh "${SSH_ARGS[@]}" "$SSH_TARGET" "rm -rf ${remote_target_quoted} && mkdir -p ${remote_target_quoted} && tar -xmf - --no-same-permissions --no-overwrite-dir -C ${remote_target_quoted}"
     return
   fi
 
+  ssh "${SSH_ARGS[@]}" "$SSH_TARGET" "rm -f ${remote_target_quoted}"
   scp "${scp_args[@]}" "$source_path" "${SSH_TARGET}:${remote_path}"
 }
