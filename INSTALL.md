@@ -75,6 +75,11 @@ full host under `NOPASSWD: ALL`. The in-bot `!restart` and `!deploy` flows now t
 service process and let systemd bring it back via `Restart=always`, so they do not depend on sudo
 from the `tinki-bot` runtime user.
 
+On startup, the bot also self-heals the virtualenv by restoring group-write permissions under
+`/opt/apps/tinki-bot/myenv` and installing the pinned `python-Levenshtein` package if that optional
+`fuzzywuzzy` speedup is missing. That keeps future `ec2-user` maintenance installs from getting
+stuck on the hardened ownership model.
+
 On the current `t3a.nano` host, an additional `/swapfile_tinki` swapfile is enabled to give
 package installs and venv rebuilds enough headroom during maintenance work.
 

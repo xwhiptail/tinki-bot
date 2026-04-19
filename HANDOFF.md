@@ -63,6 +63,7 @@ Use this as the default workflow unless the user says otherwise:
 - Admin diagnostics now use a shared in-bot lock plus per-step timeouts, so startup diagnostics, `!runtests`, and `!testurls` no longer stack on top of each other and pin the `t3a.nano`.
 - Local and remote pytest noise is reduced by pinning `python-Levenshtein` for `fuzzywuzzy` and filtering the known third-party `matplotlib`/`pyparsing`, `discord.py audioop`, and pre-speedup `SequenceMatcher` warnings in `pytest.ini`.
 - The live host venv is currently not writable by `ec2-user`, so the bot now also suppresses the optional `fuzzywuzzy` speedup warning at import time until the venv permissions are normalized.
+- The bot runtime now self-heals `/opt/apps/tinki-bot/myenv` group-write permissions on startup and installs the pinned `python-Levenshtein` speedup package if it is missing.
 - Remote wrapper scripts now use `/opt/apps/tinki-bot/myenv/bin/python` instead of the retired `python3.8` path.
 - New host runtime upgrade: `/opt/apps/tinki-bot/myenv/bin/python` is now Python `3.11.14`; previous venv backup is kept at `/opt/apps/tinki-bot/myenv.py39.20260418_175337`.
 - Host maintenance headroom: `/swapfile_tinki` is enabled and persisted in `/etc/fstab` to avoid OOM kills during `dnf` and venv rebuilds on the `t3a.nano`.

@@ -74,6 +74,7 @@ Current server layout:
 - SSH/deploy user: `ec2-user` with limited passwordless sudo for `systemctl ... tinki-bot`
 - in-bot `!restart` / `!deploy` restarts: service self-terminates and systemd restarts it via `Restart=always`
 - bot venv runtime: Python `3.11`
+- runtime bootstrap: on startup the service user normalizes venv group-write permissions and installs the pinned `python-Levenshtein` speedup package if it is missing
 - deploy helper on this Windows machine: `deploy-ec2.ps1`
 - deploy helper on macOS/Linux: `./deploy-ec2.sh`
 - local deploy config on this Windows machine: `deploy-ec2.local.ps1`

@@ -9,9 +9,9 @@ from dataclasses import dataclass
 import aiohttp
 import discord
 from discord.ext import commands, menus
-from utils.warning_filters import suppress_fuzzywuzzy_sequence_matcher_warning
+from utils.runtime_bootstrap import prepare_fuzzywuzzy_runtime
 
-suppress_fuzzywuzzy_sequence_matcher_warning()
+prepare_fuzzywuzzy_runtime()
 from fuzzywuzzy import process
 from PIL import Image, ImageDraw, ImageSequence
 

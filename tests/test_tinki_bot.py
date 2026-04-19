@@ -12,6 +12,7 @@ import json
 import asyncio
 import sys
 import os
+import stat
 import signal
 import shutil
 import subprocess
@@ -52,6 +53,12 @@ from utils.infra_monitoring import (
     monthly_public_ipv4_cost,
     parse_meminfo_used_percent,
     summarize_cost_posture,
+)
+from utils.runtime_bootstrap import (
+    ensure_group_writable_venv,
+    normalize_group_write_permissions,
+    prepare_fuzzywuzzy_runtime,
+    read_requirement_spec,
 )
 from utils.warning_filters import suppress_fuzzywuzzy_sequence_matcher_warning
 
@@ -3595,3 +3602,106 @@ class TestWarningConfig:
 
         assert len(caught) == 1
         assert str(caught[0].message) == "different warning"
+
+
+class TestRuntimeBootstrap:
+    def test_read_requirement_spec_returns_pinned_package(self, tmp_path):
+        requirements = tmp_path / "requirements.txt"
+        requirements.write_text("fuzzywuzzy==0.18.0\npython-Levenshtein==0.26.1\n", encoding="utf-8")
+
+        assert read_requirement_spec(requirements) == "python-Levenshtein==0.26.1"
+
+    def test_normalize_group_write_permissions_updates_tree(self, tmp_path):
+        venv_root = tmp_path / "myenv"
+        bin_dir = venv_root / "bin"
+        site_packages = venv_root / "lib" / "python3.11" / "site-packages"
+        package_file = site_packages / "pkg.py"
+        script_file = bin_dir / "tool"
+
+        site_packages.mkdir(parents=True)
+        bin_dir.mkdir(parents=True)
+        package_file.write_text("value = 1\n", encoding="utf-8")
+        script_file.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+
+        os.chmod(venv_root, 0o755)
+        os.chmod(bin_dir, 0o755)
+        os.chmod(site_packages, 0o755)
+        os.chmod(package_file, 0o644)
+        os.chmod(script_file, 0o755)
+
+        changed = normalize_group_write_permissions(venv_root)
+
+        assert changed >= 4
+        assert stat.S_IWGRP & venv_root.stat().st_mode
+        assert stat.S_ISGID & venv_root.stat().st_mode
+        assert stat.S_IWGRP & site_packages.stat().st_mode
+        assert stat.S_IWGRP & package_file.stat().st_mode
+        assert stat.S_IXGRP & script_file.stat().st_mode
+
+    def test_ensure_group_writable_venv_skips_when_already_writable(self, tmp_path):
+        venv_root = tmp_path / "myenv"
+        site_packages = venv_root / "lib" / "python3.11" / "site-packages"
+        site_packages.mkdir(parents=True)
+        os.chmod(venv_root, 0o2775)
+        os.chmod(venv_root / "lib", 0o2775)
+        os.chmod(venv_root / "lib" / "python3.11", 0o2775)
+        os.chmod(site_packages, 0o2775)
+
+        assert ensure_group_writable_venv(venv_root, site_packages) == 0
+
+    def test_prepare_fuzzywuzzy_runtime_installs_missing_speedup(self, tmp_path, monkeypatch):
+        requirements = tmp_path / "requirements.txt"
+        requirements.write_text("python-Levenshtein==0.26.1\n", encoding="utf-8")
+        venv_root = tmp_path / "myenv"
+        site_packages = venv_root / "lib" / "python3.11" / "site-packages"
+        site_packages.mkdir(parents=True)
+        os.chmod(venv_root, 0o755)
+        os.chmod(venv_root / "lib", 0o755)
+        os.chmod(venv_root / "lib" / "python3.11", 0o755)
+        os.chmod(site_packages, 0o755)
+
+        install_calls = []
+
+        monkeypatch.setattr("utils.runtime_bootstrap._BOOTSTRAP_COMPLETED", False)
+        monkeypatch.setattr("utils.runtime_bootstrap.optional_speedup_installed", lambda: False)
+
+        def fake_install(package_spec, *, repo_root, timeout):
+            install_calls.append((package_spec, repo_root, timeout))
+            return True, "installed"
+
+        monkeypatch.setattr("utils.runtime_bootstrap.install_optional_speedup", fake_install)
+
+        prepare_fuzzywuzzy_runtime(
+            requirements_path=requirements,
+            venv_root=venv_root,
+            site_packages_dir=site_packages,
+            timeout=5,
+        )
+
+        assert install_calls
+        assert install_calls[0][0] == "python-Levenshtein==0.26.1"
+        assert stat.S_IWGRP & site_packages.stat().st_mode
+
+    def test_prepare_fuzzywuzzy_runtime_skips_install_when_speedup_exists(self, tmp_path, monkeypatch):
+        requirements = tmp_path / "requirements.txt"
+        requirements.write_text("python-Levenshtein==0.26.1\n", encoding="utf-8")
+        venv_root = tmp_path / "myenv"
+        site_packages = venv_root / "lib" / "python3.11" / "site-packages"
+        site_packages.mkdir(parents=True)
+        os.chmod(venv_root, 0o2775)
+        os.chmod(venv_root / "lib", 0o2775)
+        os.chmod(venv_root / "lib" / "python3.11", 0o2775)
+        os.chmod(site_packages, 0o2775)
+
+        monkeypatch.setattr("utils.runtime_bootstrap._BOOTSTRAP_COMPLETED", False)
+        monkeypatch.setattr("utils.runtime_bootstrap.optional_speedup_installed", lambda: True)
+        install_mock = MagicMock()
+        monkeypatch.setattr("utils.runtime_bootstrap.install_optional_speedup", install_mock)
+
+        prepare_fuzzywuzzy_runtime(
+            requirements_path=requirements,
+            venv_root=venv_root,
+            site_packages_dir=site_packages,
+        )
+
+        install_mock.assert_not_called()

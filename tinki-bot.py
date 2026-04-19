@@ -2,9 +2,9 @@ import asyncio
 import logging
 import discord
 from discord.ext import commands
-from utils.warning_filters import suppress_fuzzywuzzy_sequence_matcher_warning
+from utils.runtime_bootstrap import prepare_fuzzywuzzy_runtime
 
-suppress_fuzzywuzzy_sequence_matcher_warning()
+prepare_fuzzywuzzy_runtime()
 from fuzzywuzzy import process
 
 import config
