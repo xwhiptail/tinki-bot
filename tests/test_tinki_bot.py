@@ -16,6 +16,7 @@ import signal
 import shutil
 import subprocess
 import importlib.util
+import warnings
 from pathlib import Path
 from contextlib import ExitStack
 from types import SimpleNamespace
@@ -52,6 +53,7 @@ from utils.infra_monitoring import (
     parse_meminfo_used_percent,
     summarize_cost_posture,
 )
+from utils.warning_filters import suppress_fuzzywuzzy_sequence_matcher_warning
 
 try:
     from botocore.exceptions import ClientError
@@ -3570,3 +3572,26 @@ class TestWarningConfig:
         assert "matplotlib\\._fontconfig_pattern" in pytest_ini
         assert "Using slow pure-python SequenceMatcher" in pytest_ini
         assert "audioop" in pytest_ini
+
+    def test_runtime_filter_suppresses_fuzzywuzzy_speedup_warning(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            suppress_fuzzywuzzy_sequence_matcher_warning()
+            exec(
+                'warnings.warn("Using slow pure-python SequenceMatcher. Install python-Levenshtein to remove this warning", UserWarning)',
+                {"__name__": "fuzzywuzzy.fuzz", "warnings": warnings},
+            )
+
+        assert caught == []
+
+    def test_runtime_filter_keeps_other_user_warnings_visible(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            suppress_fuzzywuzzy_sequence_matcher_warning()
+            exec(
+                'warnings.warn("different warning", UserWarning)',
+                {"__name__": "fuzzywuzzy.fuzz", "warnings": warnings},
+            )
+
+        assert len(caught) == 1
+        assert str(caught[0].message) == "different warning"
