@@ -3386,3 +3386,19 @@ remote_copy "{source_file}" "/remote/repo/"
         ssh_log = (logs_dir / "ssh.log").read_text(encoding="utf-8")
         assert "deploy-user@example-host" in ssh_log
         assert "rm -f /remote/repo/README.md" in ssh_log
+
+
+class TestDeployScripts:
+    def test_shell_deploy_normalizes_repo_permissions_for_service_user(self):
+        script = (Path(__file__).resolve().parent.parent / "deploy-ec2.sh").read_text(encoding="utf-8")
+
+        assert "chmod g+rws" in script
+        assert "chmod g+rw" in script
+        assert ".deploy-commit" in script
+
+    def test_powershell_deploy_normalizes_repo_permissions_for_service_user(self):
+        script = (Path(__file__).resolve().parent.parent / "deploy-ec2.ps1").read_text(encoding="utf-8")
+
+        assert "chmod g+rws" in script
+        assert "chmod g+rw" in script
+        assert ".deploy-commit" in script

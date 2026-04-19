@@ -90,6 +90,8 @@ foreach ($dir in $repoDirs) {
 
 Invoke-RemoteBash -Config $config -Script @"
 printf '%s\n' '$localCommit' > $($config.RemoteRepoDir)/.deploy-commit
+find $($config.RemoteRepoDir) -type d -exec chmod g+rws {} + 2>/dev/null || true
+find $($config.RemoteRepoDir) -type f -exec chmod g+rw {} + 2>/dev/null || true
 find $($config.RemoteRepoDir) \( -type d -name '__pycache__' -o -type d -name '.pytest_cache' -o -type d -name 'pytest-cache-files-*' \) -prune -exec rm -rf {} +
 find $($config.RemoteRepoDir) -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
 sudo systemctl restart tinki-bot
