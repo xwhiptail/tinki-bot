@@ -1507,7 +1507,7 @@ class TestAdminAWSCost:
             result = await self.cog._run_pytest_suite()
 
         proc.kill.assert_called_once_with()
-        assert result == [("pytest", False, "timed out after 20s")]
+        assert result == [("pytest", False, "timed out after 35s")]
 
     async def test_fetch_json_with_retries_retries_then_succeeds(self):
         good_response = MagicMock()

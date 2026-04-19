@@ -350,7 +350,7 @@ pytest
 
 121 tests covering pure functions, isolated command helpers, and key admin/emote formatting helpers. No live Discord calls needed.
 
-Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-test`, alongside the command, URL, calculator, letter-count, bot-insight self-tests, OpenAI balance, and AWS month-to-date/projected cost summary. Failing sections are marked with `🚨` and clean sections with `✅`. The bot now allows only one in-process diagnostics run at a time and applies timeouts to heavy diagnostic steps so deploy-time startup checks do not pile up on the host. Pytest cache-provider warnings are disabled in this repo so the startup run stays clean on Windows.
+Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-test`, alongside the command, URL, calculator, letter-count, bot-insight self-tests, OpenAI balance, and AWS month-to-date/projected cost summary. Failing sections are marked with `🚨` and clean sections with `✅`. The bot now allows only one in-process diagnostics run at a time and applies timeouts to heavy diagnostic steps so deploy-time startup checks do not pile up on the host; the startup pytest subprocess currently gets a `35s` wall-clock timeout to leave headroom for the `t3a.nano` EC2 host. Pytest cache-provider warnings are disabled in this repo so the startup run stays clean on Windows.
 
 For infrastructure cost control outside the bot runtime, use the repo maintenance helpers in `scripts/` to set up free AWS Budgets alerts plus a small CloudWatch alarm set, rather than adding a paid third-party monitoring stack by default.
 
