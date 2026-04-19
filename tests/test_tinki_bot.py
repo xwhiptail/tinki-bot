@@ -59,6 +59,7 @@ from utils.runtime_bootstrap import (
     normalize_group_write_permissions,
     prepare_fuzzywuzzy_runtime,
     read_requirement_spec,
+    venv_root_from_executable,
 )
 from utils.warning_filters import suppress_fuzzywuzzy_sequence_matcher_warning
 
@@ -3605,6 +3606,13 @@ class TestWarningConfig:
 
 
 class TestRuntimeBootstrap:
+    def test_venv_root_from_executable_preserves_virtualenv_path(self, tmp_path):
+        venv_python = tmp_path / "myenv" / "bin" / "python"
+        venv_python.parent.mkdir(parents=True)
+        os.symlink("/usr/bin/python3", venv_python)
+
+        assert venv_root_from_executable(str(venv_python)) == tmp_path / "myenv"
+
     def test_read_requirement_spec_returns_pinned_package(self, tmp_path):
         requirements = tmp_path / "requirements.txt"
         requirements.write_text("fuzzywuzzy==0.18.0\npython-Levenshtein==0.26.1\n", encoding="utf-8")

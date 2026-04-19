@@ -25,6 +25,10 @@ OPTIONAL_SPEEDUP_INSTALL_TIMEOUT_SECONDS = 180
 _BOOTSTRAP_COMPLETED = False
 
 
+def venv_root_from_executable(executable: str = sys.executable) -> Path:
+    return Path(executable).absolute().parent.parent
+
+
 def read_requirement_spec(requirements_path: Path, package_name: str = OPTIONAL_SPEEDUP_PACKAGE) -> Optional[str]:
     for raw_line in requirements_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -112,7 +116,7 @@ def prepare_fuzzywuzzy_runtime(
 
     repo_root = Path(__file__).resolve().parent.parent
     requirements_path = requirements_path or (repo_root / "requirements.txt")
-    venv_root = venv_root or Path(sys.executable).resolve().parent.parent
+    venv_root = venv_root or venv_root_from_executable()
     site_packages_dir = site_packages_dir or Path(sysconfig.get_path("purelib"))
     lock_path = venv_root / ".runtime-bootstrap.lock"
 
