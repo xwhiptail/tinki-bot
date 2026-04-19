@@ -43,6 +43,12 @@ class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def _copy_deploy_file(self, source: Path, target: Path) -> None:
+        shutil.copyfile(source, target)
+
+    def _copy_deploy_dir(self, source: Path, target: Path) -> None:
+        shutil.copytree(source, target, dirs_exist_ok=True, copy_function=shutil.copyfile)
+
     def _host_admin_allowed(self, author) -> bool:
         return user_matches(author, USER_WHIPTAIL_ID, 'whiptail')
 
@@ -373,13 +379,13 @@ class Admin(commands.Cog):
                     source = extracted_root / file_name
                     target = repo_root / file_name
                     if source.exists():
-                        shutil.copy2(source, target)
+                        self._copy_deploy_file(source, target)
 
                 for dir_name in self._deploy_dirs():
                     source_dir = extracted_root / dir_name
                     target_dir = repo_root / dir_name
                     if source_dir.exists():
-                        shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
+                        self._copy_deploy_dir(source_dir, target_dir)
 
             self._write_deployed_commit(repo_root, github_commit)
 

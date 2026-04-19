@@ -1590,6 +1590,31 @@ class TestAdminAWSCost:
 
         assert ctx.send.await_args_list[-1].args[0] == "Deploy failed: extracted archive was empty."
 
+    def test_copy_deploy_file_uses_content_copy_without_metadata_preservation(self):
+        source = Path("/tmp/source.py")
+        target = Path("/tmp/target.py")
+
+        with patch("cogs.admin.shutil.copyfile") as copyfile_mock, \
+             patch("cogs.admin.shutil.copy2") as copy2_mock:
+            self.cog._copy_deploy_file(source, target)
+
+        copyfile_mock.assert_called_once_with(source, target)
+        copy2_mock.assert_not_called()
+
+    def test_copy_deploy_dir_uses_copytree_with_copyfile(self):
+        source = Path("/tmp/source-dir")
+        target = Path("/tmp/target-dir")
+
+        with patch("cogs.admin.shutil.copytree") as copytree_mock:
+            self.cog._copy_deploy_dir(source, target)
+
+        copytree_mock.assert_called_once_with(
+            source,
+            target,
+            dirs_exist_ok=True,
+            copy_function=shutil.copyfile,
+        )
+
     def test_format_deploy_error_sanitizes_github_503(self):
         message = self.cog._format_deploy_error(
             RuntimeError("503 Service Unavailable: upstream connect error or disconnect/reset before headers")
