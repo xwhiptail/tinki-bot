@@ -1,8 +1,9 @@
 import asyncio
 import io
 import logging
+import os
+import signal
 import shutil
-import subprocess
 import sys
 import tempfile
 import zipfile
@@ -42,6 +43,10 @@ class StartupCheckSection:
 class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    def _request_service_restart(self) -> None:
+        # Let systemd restart the bot without requiring sudo from the service user.
+        os.kill(os.getpid(), signal.SIGTERM)
 
     def _copy_deploy_file(self, source: Path, target: Path) -> None:
         shutil.copyfile(source, target)
@@ -330,7 +335,7 @@ class Admin(commands.Cog):
             return
         await ctx.send("Restarting... brb")
         await asyncio.sleep(1)
-        subprocess.Popen(["sudo", "systemctl", "restart", "tinki-bot"])
+        self._request_service_restart()
 
     @commands.command(name="deploy")
     @commands.has_permissions(administrator=True)
@@ -409,7 +414,7 @@ class Admin(commands.Cog):
 
             await ctx.send(f"Deployed `{self._short_commit(github_commit)}` — {commit_message}. Restarting... brb 👾")
             await asyncio.sleep(1)
-            subprocess.Popen(["sudo", "systemctl", "restart", "tinki-bot"])
+            self._request_service_restart()
         except Exception as e:
             await ctx.send(f"Deploy failed: {self._format_deploy_error(e)}")
 

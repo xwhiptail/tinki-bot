@@ -70,8 +70,10 @@ Service:
 - bot virtualenv runtime: Python `3.11`
 
 On the hardened AL2023 host, `ec2-user` keeps limited passwordless sudo only for
-`systemctl ... tinki-bot` so `!restart`, `!deploy`, and the checked-in deploy helpers still work
-without leaving the full host under `NOPASSWD: ALL`.
+`systemctl ... tinki-bot`, which keeps the checked-in deploy helpers working without leaving the
+full host under `NOPASSWD: ALL`. The in-bot `!restart` and `!deploy` flows now terminate the
+service process and let systemd bring it back via `Restart=always`, so they do not depend on sudo
+from the `tinki-bot` runtime user.
 
 On the current `t3a.nano` host, an additional `/swapfile_tinki` swapfile is enabled to give
 package installs and venv rebuilds enough headroom during maintenance work.

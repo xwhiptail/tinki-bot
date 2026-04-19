@@ -59,7 +59,7 @@ Use this as the default workflow unless the user says otherwise:
 - Live bot host is now `t3a.nano` AL2023 at `98.92.242.38`.
 - Old host `52.91.60.81` has `tinki-bot.service` stopped and disabled.
 - `deploy-ec2.local.sh` points at the new host.
-- New host hardening: `tinki-bot.service` runs as service user `tinki-bot`; `ec2-user` only keeps limited passwordless sudo for `systemctl ... tinki-bot`.
+- New host hardening: `tinki-bot.service` runs as service user `tinki-bot`; `ec2-user` only keeps limited passwordless sudo for `systemctl ... tinki-bot`, while in-bot `!restart`/`!deploy` now rely on `Restart=always` by terminating the service process instead of invoking sudo.
 - Remote wrapper scripts now use `/opt/apps/tinki-bot/myenv/bin/python` instead of the retired `python3.8` path.
 - New host runtime upgrade: `/opt/apps/tinki-bot/myenv/bin/python` is now Python `3.11.14`; previous venv backup is kept at `/opt/apps/tinki-bot/myenv.py39.20260418_175337`.
 - Host maintenance headroom: `/swapfile_tinki` is enabled and persisted in `/etc/fstab` to avoid OOM kills during `dnf` and venv rebuilds on the `t3a.nano`.

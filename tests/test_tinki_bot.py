@@ -11,6 +11,7 @@ import io
 import json
 import sys
 import os
+import signal
 import shutil
 import subprocess
 import importlib.util
@@ -279,7 +280,7 @@ def _build_command_smoke_cases(tmp_path, monkeypatch):
         with ExitStack() as stack:
             if command_name == "restart":
                 stack.enter_context(patch("cogs.admin.asyncio.sleep", new=AsyncMock()))
-                stack.enter_context(patch("cogs.admin.subprocess.Popen"))
+                stack.enter_context(patch.object(cog, "_request_service_restart"))
                 await cog.restart_bot.callback(cog, ctx)
             elif command_name == "deploy":
                 fake_session = _make_client_session_cm()
@@ -1658,19 +1659,65 @@ class TestAdminAWSCost:
         assert ctx.send.await_args_list[2].args[0] == "🚨 twitch: retry failed"
         assert ctx.send.await_args_list[-1].args[0] == "🚨 URL tests complete: 1/2 passed"
 
-    async def test_restart_sends_message_and_invokes_systemctl(self):
+    def test_request_service_restart_terminates_current_process(self):
+        with patch("cogs.admin.os.getpid", return_value=4321), \
+             patch("cogs.admin.os.kill") as kill_mock:
+            self.cog._request_service_restart()
+
+        kill_mock.assert_called_once_with(4321, signal.SIGTERM)
+
+    async def test_restart_sends_message_and_requests_service_restart(self):
         ctx = make_ctx()
         ctx.author = MagicMock()
         ctx.author.id = 0
         ctx.author.name = "whiptail"
 
         with patch("cogs.admin.asyncio.sleep", new=AsyncMock()) as sleep_mock, \
-             patch("cogs.admin.subprocess.Popen") as popen_mock:
+             patch.object(self.cog, "_request_service_restart") as restart_mock:
             await self.cog.restart_bot.callback(self.cog, ctx)
 
         ctx.send.assert_awaited_once_with("Restarting... brb")
         sleep_mock.assert_awaited_once_with(1)
-        popen_mock.assert_called_once_with(["sudo", "systemctl", "restart", "tinki-bot"])
+        restart_mock.assert_called_once_with()
+
+    async def test_deploy_success_requests_service_restart(self, tmp_path):
+        ctx = make_ctx()
+        ctx.author = MagicMock()
+        ctx.author.id = 0
+        ctx.author.name = "whiptail"
+        commit_data = {"sha": "def5678", "commit": {"message": "Ship it"}}
+        proc = MagicMock()
+        proc.communicate = AsyncMock(return_value=(b"", b""))
+        proc.returncode = 0
+        zip_mock = MagicMock()
+        zip_mock.__enter__.return_value = zip_mock
+        zip_mock.__exit__.return_value = None
+        extracted_root = tmp_path / "repo-main"
+        extracted_root.mkdir()
+
+        with patch.object(self.cog, "_read_deployed_commit", return_value="abc1234"), \
+             patch.object(self.cog, "_fetch_json_with_retries", new=AsyncMock(return_value=commit_data)), \
+             patch.object(self.cog, "_fetch_bytes_with_retries", new=AsyncMock(return_value=b"x" * 6000)), \
+             patch.object(self.cog, "_deploy_files", return_value=[]), \
+             patch.object(self.cog, "_deploy_dirs", return_value=[]), \
+             patch.object(self.cog, "_write_deployed_commit") as write_commit_mock, \
+             patch.object(self.cog, "_request_service_restart") as restart_mock, \
+             patch("cogs.admin.asyncio.sleep", new=AsyncMock()) as sleep_mock, \
+             patch("cogs.admin.asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)), \
+             patch("aiohttp.ClientSession") as session_cls, \
+             patch("cogs.admin.zipfile.ZipFile", return_value=zip_mock), \
+             patch("cogs.admin.Path.iterdir", return_value=[extracted_root]):
+            fake_session = MagicMock()
+            fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+            fake_session.__aexit__ = AsyncMock(return_value=None)
+            session_cls.return_value = fake_session
+
+            await self.cog.deploy_latest.callback(self.cog, ctx)
+
+        write_commit_mock.assert_called_once()
+        sleep_mock.assert_awaited_once_with(1)
+        restart_mock.assert_called_once_with()
+        assert ctx.send.await_args_list[-1].args[0] == "Deployed `def5678` — Ship it. Restarting... brb 👾"
 
     async def test_startup_message_includes_aws_cost_summary(self):
         content, report_text = await self._run_startup_report(cmd_results=[("pb", True, None)])

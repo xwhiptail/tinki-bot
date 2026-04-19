@@ -72,6 +72,7 @@ Current server layout:
 - live secrets file: `/etc/tinki-bot.env`
 - service user: `tinki-bot`
 - SSH/deploy user: `ec2-user` with limited passwordless sudo for `systemctl ... tinki-bot`
+- in-bot `!restart` / `!deploy` restarts: service self-terminates and systemd restarts it via `Restart=always`
 - bot venv runtime: Python `3.11`
 - deploy helper on this Windows machine: `deploy-ec2.ps1`
 - deploy helper on macOS/Linux: `./deploy-ec2.sh`
