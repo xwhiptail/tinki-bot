@@ -29,6 +29,8 @@ if [[ "$LOCAL_COMMIT" != "$GITHUB_COMMIT" ]]; then
 fi
 
 REPO_FILES=(
+  "deploy-ec2.sh"
+  "deploy-ec2.ps1"
   "tinki-bot.py"
   "config.py"
   "README.md"

@@ -31,6 +31,8 @@ if ($localCommit -ne $githubCommit) {
 }
 
 $repoFiles = @(
+    "deploy-ec2.sh",
+    "deploy-ec2.ps1",
     "tinki-bot.py",
     "config.py",
     "README.md",
