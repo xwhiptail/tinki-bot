@@ -29,6 +29,9 @@ log = logging.getLogger("discord.cogs.admin")
 
 TEST_PASS_EMOJI = "\u2705"
 TEST_FAIL_EMOJI = "\U0001f6a8"
+DIAGNOSTICS_BUSY_MESSAGE = "Diagnostics already running. Try again in a minute."
+DIAGNOSTIC_STEP_TIMEOUT_SECONDS = 10
+PYTEST_TIMEOUT_SECONDS = 20
 
 
 @dataclass(frozen=True)
@@ -43,10 +46,35 @@ class StartupCheckSection:
 class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self._diagnostics_lock = asyncio.Lock()
 
     def _request_service_restart(self) -> None:
         # Let systemd restart the bot without requiring sudo from the service user.
         os.kill(os.getpid(), signal.SIGTERM)
+
+    async def _run_async_diagnostic_check(self, name: str, awaitable, timeout: int = DIAGNOSTIC_STEP_TIMEOUT_SECONDS):
+        try:
+            return await asyncio.wait_for(awaitable, timeout=timeout)
+        except asyncio.TimeoutError:
+            return [(name, False, f"timed out after {timeout}s")]
+        except Exception as e:
+            return [(name, False, f"{type(e).__name__}: {e}")]
+
+    async def _run_sync_diagnostic_check(self, name: str, func, timeout: int = DIAGNOSTIC_STEP_TIMEOUT_SECONDS):
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(func), timeout=timeout)
+        except asyncio.TimeoutError:
+            return [(name, False, f"timed out after {timeout}s")]
+        except Exception as e:
+            return [(name, False, f"{type(e).__name__}: {e}")]
+
+    async def _run_status_check_with_timeout(self, label: str, awaitable, timeout: int = DIAGNOSTIC_STEP_TIMEOUT_SECONDS):
+        try:
+            return await asyncio.wait_for(awaitable, timeout=timeout)
+        except asyncio.TimeoutError:
+            return f"{label} check timed out after {timeout}s."
+        except Exception as e:
+            return f"{label} check failed: {type(e).__name__}: {e}"
 
     def _copy_deploy_file(self, source: Path, target: Path) -> None:
         shutil.copyfile(source, target)
@@ -124,11 +152,15 @@ class Admin(commands.Cog):
         ]
 
     async def run_startup_tests(self):
+        if self._diagnostics_lock.locked():
+            log.warning("[startup tests] skipped; diagnostics already running")
+            return
         log.warning("[startup tests] task started")
-        try:
-            await self._run_startup_tests_inner()
-        except Exception as e:
-            log.error("[startup tests] unhandled exception: %s: %s", type(e).__name__, e)
+        async with self._diagnostics_lock:
+            try:
+                await self._run_startup_tests_inner()
+            except Exception as e:
+                log.error("[startup tests] unhandled exception: %s: %s", type(e).__name__, e)
 
     async def _run_startup_tests_inner(self):
         await self.bot.wait_until_ready()
@@ -140,14 +172,14 @@ class Admin(commands.Cog):
             return
         log.info("[startup tests] found #%s, running tests...", CHANNEL_BOT_TEST)
 
-        cmd_results = await self._run_command_selftests(ctx=None)
-        url_results = run_url_selftests()
-        calc_results = run_calculate_selftests()
-        letter_results = run_letter_count_selftests()
-        insight_results = run_bot_insight_selftests()
+        cmd_results = await self._run_async_diagnostic_check("command availability", self._run_command_selftests(ctx=None))
+        url_results = await self._run_sync_diagnostic_check("url selftests", run_url_selftests)
+        calc_results = await self._run_sync_diagnostic_check("calculator selftests", run_calculate_selftests)
+        letter_results = await self._run_sync_diagnostic_check("letter selftests", run_letter_count_selftests)
+        insight_results = await self._run_sync_diagnostic_check("bot insight selftests", run_bot_insight_selftests)
         pytest_results = await self._run_pytest_suite()
-        openai_balance = await fetch_openai_balance()
-        aws_cost_summary = await fetch_aws_cost_summary()
+        openai_balance = await self._run_status_check_with_timeout("OpenAI", fetch_openai_balance())
+        aws_cost_summary = await self._run_status_check_with_timeout("AWS cost", fetch_aws_cost_summary())
 
         def _counts(results):
             return sum(1 for _, ok, _ in results if ok), len(results)
@@ -194,8 +226,12 @@ class Admin(commands.Cog):
         buf = io.BytesIO("".join(lines).encode("utf-8"))
         try:
             await test_channel.send(content=summary, file=discord.File(buf, filename="startup_test_results.txt"))
+            log.info("[startup tests] posted startup diagnostics to #%s", CHANNEL_BOT_TEST)
         except discord.Forbidden:
             await test_channel.send(content=summary)
+            log.info("[startup tests] posted startup diagnostics without attachment to #%s", CHANNEL_BOT_TEST)
+        except discord.HTTPException as e:
+            log.error("[startup tests] failed to post startup diagnostics: %s: %s", type(e).__name__, e)
 
     async def _run_pytest_suite(self):
         repo_root = Path(__file__).resolve().parent.parent
@@ -212,7 +248,15 @@ class Admin(commands.Cog):
         except Exception as e:
             return [("pytest", False, f"unable to start: {type(e).__name__}: {e}")]
 
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=PYTEST_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            proc.kill()
+            try:
+                await proc.communicate()
+            except Exception:
+                pass
+            return [("pytest", False, f"timed out after {PYTEST_TIMEOUT_SECONDS}s")]
         output = "\n".join(
             part.strip()
             for part in (
@@ -429,22 +473,30 @@ class Admin(commands.Cog):
     @commands.command(name="runtests")
     @commands.has_permissions(administrator=True)
     async def runtests(self, ctx):
+        if self._diagnostics_lock.locked():
+            await ctx.send(DIAGNOSTICS_BUSY_MESSAGE)
+            return
         await ctx.send("Starting command self-tests...")
-        results = await self._run_command_selftests(ctx)
-        passed = sum(1 for _, ok, _ in results if ok)
-        await ctx.send(self._summary_line("Command tests complete", passed, len(results), "passed").strip())
+        async with self._diagnostics_lock:
+            results = await self._run_async_diagnostic_check("command selftests", self._run_command_selftests(ctx))
+            passed = sum(1 for _, ok, _ in results if ok)
+            await ctx.send(self._summary_line("Command tests complete", passed, len(results), "passed").strip())
 
     @commands.command(name="testurls")
     @commands.has_permissions(administrator=True)
     async def testurls(self, ctx):
+        if self._diagnostics_lock.locked():
+            await ctx.send(DIAGNOSTICS_BUSY_MESSAGE)
+            return
         await ctx.send("Starting URL rewrite tests...")
-        results = run_url_selftests()
-        for name, ok, reason in results:
-            status = TEST_PASS_EMOJI if ok else TEST_FAIL_EMOJI
-            detail = "passed" if ok else reason
-            await ctx.send(f"{status} {name}: {detail}")
-        passed = sum(1 for _, ok, _ in results if ok)
-        await ctx.send(self._summary_line("URL tests complete", passed, len(results), "passed").strip())
+        async with self._diagnostics_lock:
+            results = await self._run_sync_diagnostic_check("url rewrite tests", run_url_selftests)
+            for name, ok, reason in results:
+                status = TEST_PASS_EMOJI if ok else TEST_FAIL_EMOJI
+                detail = "passed" if ok else reason
+                await ctx.send(f"{status} {name}: {detail}")
+            passed = sum(1 for _, ok, _ in results if ok)
+            await ctx.send(self._summary_line("URL tests complete", passed, len(results), "passed").strip())
 
 
 async def setup(bot):

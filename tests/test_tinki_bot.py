@@ -9,6 +9,7 @@ Run:
 """
 import io
 import json
+import asyncio
 import sys
 import os
 import signal
@@ -1430,6 +1431,38 @@ class TestAdminAWSCost:
     def setup_method(self):
         self.cog = make_admin_cog()
 
+    async def test_run_async_diagnostic_check_returns_timeout_result(self):
+        task = AsyncMock()
+        async def fake_wait_for(awaitable, timeout):
+            awaitable.close()
+            raise asyncio.TimeoutError()
+
+        with patch("cogs.admin.asyncio.wait_for", side_effect=fake_wait_for):
+            result = await self.cog._run_async_diagnostic_check("commands", task(), timeout=7)
+
+        assert result == [("commands", False, "timed out after 7s")]
+
+    async def test_run_sync_diagnostic_check_returns_timeout_result(self):
+        async def fake_wait_for(awaitable, timeout):
+            awaitable.close()
+            raise asyncio.TimeoutError()
+
+        with patch("cogs.admin.asyncio.wait_for", side_effect=fake_wait_for):
+            result = await self.cog._run_sync_diagnostic_check("url", lambda: [("url", True, None)], timeout=6)
+
+        assert result == [("url", False, "timed out after 6s")]
+
+    async def test_run_status_check_with_timeout_returns_timeout_message(self):
+        task = AsyncMock()
+        async def fake_wait_for(awaitable, timeout):
+            awaitable.close()
+            raise asyncio.TimeoutError()
+
+        with patch("cogs.admin.asyncio.wait_for", side_effect=fake_wait_for):
+            result = await self.cog._run_status_check_with_timeout("AWS cost", task(), timeout=5)
+
+        assert result == "AWS cost check timed out after 5s."
+
     async def test_run_pytest_suite_reports_success_summary(self):
         proc = MagicMock()
         proc.communicate = AsyncMock(return_value=(b"144 passed in 1.23s\n", b""))
@@ -1449,6 +1482,22 @@ class TestAdminAWSCost:
             result = await self.cog._run_pytest_suite()
 
         assert result == [("pytest", False, "FAILED tests/test_tinki_bot.py::test_nope")]
+
+    async def test_run_pytest_suite_times_out_and_kills_process(self):
+        proc = MagicMock()
+        proc.communicate = AsyncMock(return_value=(b"", b""))
+        proc.kill = MagicMock()
+        proc.returncode = None
+        async def fake_wait_for(awaitable, timeout):
+            awaitable.close()
+            raise asyncio.TimeoutError()
+
+        with patch("cogs.admin.asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)), \
+             patch("cogs.admin.asyncio.wait_for", side_effect=fake_wait_for):
+            result = await self.cog._run_pytest_suite()
+
+        proc.kill.assert_called_once_with()
+        assert result == [("pytest", False, "timed out after 20s")]
 
     async def test_fetch_json_with_retries_retries_then_succeeds(self):
         good_response = MagicMock()
@@ -1645,6 +1694,16 @@ class TestAdminAWSCost:
         assert ctx.send.await_args_list[0].args[0] == "Starting command self-tests..."
         assert ctx.send.await_args_list[-1].args[0] == "🚨 Command tests complete: 1/2 passed"
 
+    async def test_runtests_reports_busy_when_diagnostics_already_running(self):
+        ctx = make_ctx()
+        await self.cog._diagnostics_lock.acquire()
+        try:
+            await self.cog.runtests.callback(self.cog, ctx)
+        finally:
+            self.cog._diagnostics_lock.release()
+
+        ctx.send.assert_awaited_once_with("Diagnostics already running. Try again in a minute.")
+
     async def test_testurls_reports_each_result_and_summary(self):
         ctx = make_ctx()
 
@@ -1658,6 +1717,16 @@ class TestAdminAWSCost:
         assert ctx.send.await_args_list[1].args[0] == "✅ twitter: passed"
         assert ctx.send.await_args_list[2].args[0] == "🚨 twitch: retry failed"
         assert ctx.send.await_args_list[-1].args[0] == "🚨 URL tests complete: 1/2 passed"
+
+    async def test_run_startup_tests_skips_when_diagnostics_already_running(self):
+        await self.cog._diagnostics_lock.acquire()
+        try:
+            with patch.object(self.cog, "_run_startup_tests_inner", new=AsyncMock()) as inner_mock:
+                await self.cog.run_startup_tests()
+        finally:
+            self.cog._diagnostics_lock.release()
+
+        inner_mock.assert_not_awaited()
 
     def test_request_service_restart_terminates_current_process(self):
         with patch("cogs.admin.os.getpid", return_value=4321), \
