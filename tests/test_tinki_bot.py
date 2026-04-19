@@ -3555,3 +3555,18 @@ class TestDeployScripts:
         assert "chmod g+rws" in script
         assert "chmod g+rw" in script
         assert ".deploy-commit" in script
+
+
+class TestWarningConfig:
+    def test_requirements_include_fuzzywuzzy_speedup(self):
+        requirements = (Path(__file__).resolve().parent.parent / "requirements.txt").read_text(encoding="utf-8")
+
+        assert "python-Levenshtein" in requirements
+
+    def test_pytest_ini_filters_known_third_party_warning_noise(self):
+        pytest_ini = (Path(__file__).resolve().parent.parent / "pytest.ini").read_text(encoding="utf-8")
+
+        assert "filterwarnings" in pytest_ini
+        assert "matplotlib\\._fontconfig_pattern" in pytest_ini
+        assert "Using slow pure-python SequenceMatcher" in pytest_ini
+        assert "audioop" in pytest_ini
