@@ -31,7 +31,7 @@ Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered cute-
 - `INSTALL.md` - local setup and production install notes
 - `CLAUDE.md` - repo context for Claude-style agents
 - `AGENTS.md` - generic agent guidance for this repo
-- `scripts/` - helper scripts for remote checks, AWS cost, and repo maintenance
+- `scripts/` - helper scripts for remote checks, AWS cost, low-cost monitoring setup, and repo maintenance
 
 ## Setup
 
@@ -96,6 +96,8 @@ For recurring host checks, prefer the stable wrapper scripts over ad hoc `powers
 .\scripts\Run-RemotePytest.ps1
 .\scripts\Check-RemoteAwsCost.ps1
 .\scripts\Check-RemoteAwsCost.ps1 -RestartService
+.\scripts\Setup-RemoteLowCostMonitoring.ps1 --alert-email you@example.com
+.\scripts\Install-RemoteHostMetricsTimer.ps1
 ```
 
 On macOS/Linux, use the matching shell wrappers:
@@ -104,6 +106,8 @@ On macOS/Linux, use the matching shell wrappers:
 ./scripts/run-remote-pytest.sh
 ./scripts/check-remote-awscost.sh
 ./scripts/check-remote-awscost.sh --restart-service
+./scripts/setup-remote-low-cost-monitoring.sh --alert-email you@example.com
+./scripts/install-remote-host-metrics-timer.sh
 ```
 
 Create a local-only `deploy-ec2.local.ps1` from `deploy-ec2.local.ps1.example` and set the real host and SSH key path there, or use `TINKI_EC2_HOST` and `TINKI_EC2_KEY_PATH` in your local environment. Keep local deploy config out of git.
@@ -158,6 +162,33 @@ Host replacement reminder:
 sudo systemctl status tinki-bot --no-pager
 sudo journalctl -u tinki-bot -n 50 --no-pager
 ```
+
+### Low-Cost Monitoring
+
+The repo now includes a cheap default monitoring path intended to stay small on the monthly bill:
+
+- `scripts/setup_low_cost_monitoring.py` creates or updates one SNS topic, a monthly AWS budget, and four CloudWatch alarms for EC2 status checks, CPU credits, memory, and disk.
+- `scripts/publish_host_metrics.py` publishes only two custom metrics: `MemoryUsedPercent` and `DiskUsedPercent`.
+- `scripts/install_host_metrics_timer.sh` installs a 5-minute systemd timer on the host so those custom metrics keep flowing without adding a full observability agent.
+
+Preferred wrappers from this machine:
+
+```powershell
+.\scripts\Setup-RemoteLowCostMonitoring.ps1 --alert-email you@example.com
+.\scripts\Install-RemoteHostMetricsTimer.ps1
+```
+
+```bash
+./scripts/setup-remote-low-cost-monitoring.sh --alert-email you@example.com
+./scripts/install-remote-host-metrics-timer.sh
+```
+
+Notes:
+
+- confirm the SNS email subscription after the setup script runs, or the alarms will not reach your inbox
+- the setup script prints the current EC2 cost posture, including public IPv4, root volume type, and whether a future T4g check is worth doing
+- the setup script does not auto-modify the root volume or instance family; gp3 and T4g remain explicit follow-up decisions
+- expected AWS permissions are `cloudwatch:PutMetricAlarm`, `cloudwatch:PutMetricData`, `ec2:DescribeInstances`, `ec2:DescribeVolumes`, `sns:CreateTopic`, `sns:Subscribe`, `sns:ListSubscriptionsByTopic`, `budgets:CreateBudget`, `budgets:UpdateBudget`, `budgets:CreateNotification`, `budgets:DescribeBudget`, and `sts:GetCallerIdentity`
 
 ### Rollback
 
@@ -318,6 +349,8 @@ pytest
 121 tests covering pure functions, isolated command helpers, and key admin/emote formatting helpers. No live Discord calls needed.
 
 Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-test`, alongside the command, URL, calculator, letter-count, bot-insight self-tests, OpenAI balance, and AWS month-to-date/projected cost summary. Failing sections are marked with `🚨` and clean sections with `✅`. Pytest cache-provider warnings are disabled in this repo so the startup run stays clean on Windows.
+
+For infrastructure cost control outside the bot runtime, use the repo maintenance helpers in `scripts/` to set up free AWS Budgets alerts plus a small CloudWatch alarm set, rather than adding a paid third-party monitoring stack by default.
 
 ## Commands
 

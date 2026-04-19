@@ -4,11 +4,11 @@ Use this file as the shared resume point between Codex and Claude Code.
 
 ## Current State
 
-- Status: new AL2023 host is live, hardened, and running Python 3.11; local macOS repo now has a working `.venv` pytest setup and the deploy helper is adjusted for the hardened host ownership model
+- Status: new AL2023 host is live, hardened, and running Python 3.11; local macOS repo now has a working `.venv` pytest setup, the deploy helper is adjusted for the hardened host ownership model, and the repo now includes low-cost monitoring setup helpers for AWS Budgets, CloudWatch alarms, and host memory/disk metrics
 - Active branch: `main`
 - Default integration preference: verify changes, then merge locally into `main`; only keep branch or PR flow when explicitly requested
-- Last known good verification: `. .venv/bin/activate && pytest -q` locally (`236 passed`) and `./deploy-ec2.sh` against the new EC2 host with clean restart output
-- Next concrete task: if doing future host migration or rebuild work, copy `/opt/apps/tinki-bot/data` and `/etc/tinki-bot.env` before cutover
+- Last known good verification: `python -m pytest -q` locally (`248 passed`) and `python scripts/publish_host_metrics.py --help` plus `python scripts/setup_low_cost_monitoring.py --help`
+- Next concrete task: deploy the new `scripts/` helpers, run remote low-cost monitoring setup with a real alert email, then install the host metrics timer on the EC2 box
 
 ## Resume Checklist
 
@@ -67,3 +67,9 @@ Use this as the default workflow unless the user says otherwise:
 - Local macOS testing uses repo-local `.venv`; run `. .venv/bin/activate && pytest -q`.
 - `scripts/remote-common.sh` now streams recursive uploads with tar instead of `scp -r`, excluding cache junk and macOS metadata files.
 - `deploy-ec2.sh` treats remote cache cleanup as best-effort so deploys stay quiet on the hardened `tinki-bot` ownership model.
+- New low-cost monitoring helpers:
+  - `scripts/setup_low_cost_monitoring.py` creates or updates the SNS topic, CloudWatch alarms, and monthly AWS budget
+  - `scripts/publish_host_metrics.py` publishes memory/disk metrics
+  - `scripts/install_host_metrics_timer.sh` installs a 5-minute systemd timer on the host
+  - remote wrappers exist for both shell and PowerShell flows
+- The monitoring setup prints public IPv4, root volume, and T4g follow-up notes, but does not auto-modify the instance family or root volume type.

@@ -42,6 +42,14 @@ from utils.bot_insight import maybe_bot_insight_reply
 from utils.letter_counter import maybe_count_letter_reply
 import config
 from utils.aws_costs import AWSCostSummary, _format_client_error, _month_bounds, _to_money, fetch_aws_cost_summary
+from utils.infra_monitoring import (
+    build_budget_notification_requests,
+    build_host_metric_data,
+    build_low_cost_alarm_definitions,
+    monthly_public_ipv4_cost,
+    parse_meminfo_used_percent,
+    summarize_cost_posture,
+)
 
 try:
     from botocore.exceptions import ClientError
@@ -1353,6 +1361,68 @@ class TestAWSCostSummary:
             message = await fetch_aws_cost_summary()
 
         assert message == "AWS cost unavailable: boto3 is not installed."
+
+
+class TestInfraMonitoring:
+    def test_parse_meminfo_used_percent_prefers_memavailable(self):
+        sample = (
+            "MemTotal:        1024000 kB\n"
+            "MemFree:           64000 kB\n"
+            "MemAvailable:     256000 kB\n"
+            "Buffers:           32000 kB\n"
+        )
+
+        assert parse_meminfo_used_percent(sample) == pytest.approx(75.0)
+
+    def test_build_host_metric_data_uses_instance_dimension(self):
+        metric_data = build_host_metric_data("i-1234567890", 81.25, 67.5)
+
+        assert [entry["MetricName"] for entry in metric_data] == [
+            "MemoryUsedPercent",
+            "DiskUsedPercent",
+        ]
+        assert all(entry["Dimensions"] == [{"Name": "InstanceId", "Value": "i-1234567890"}] for entry in metric_data)
+        assert metric_data[0]["Value"] == pytest.approx(81.25)
+        assert metric_data[1]["Value"] == pytest.approx(67.5)
+
+    def test_build_low_cost_alarm_definitions_cover_core_failure_modes(self):
+        alarms = build_low_cost_alarm_definitions("i-1234567890", "arn:aws:sns:us-east-1:123456789012:tinki-bot-alerts")
+
+        assert len(alarms) == 4
+        assert alarms[0]["MetricName"] == "StatusCheckFailed_System"
+        assert alarms[0]["Namespace"] == "AWS/EC2"
+        assert alarms[1]["MetricName"] == "CPUCreditBalance"
+        assert alarms[2]["MetricName"] == "MemoryUsedPercent"
+        assert alarms[2]["Namespace"] == "TinkiBot/Host"
+        assert alarms[3]["MetricName"] == "DiskUsedPercent"
+        assert all(alarm["AlarmActions"] == ["arn:aws:sns:us-east-1:123456789012:tinki-bot-alerts"] for alarm in alarms)
+
+    def test_build_budget_notification_requests_cover_actual_and_forecast(self):
+        requests = build_budget_notification_requests(
+            "arn:aws:sns:us-east-1:123456789012:tinki-bot-alerts",
+            actual_threshold=80.0,
+            forecast_threshold=100.0,
+        )
+
+        assert [item["Notification"]["NotificationType"] for item in requests] == ["ACTUAL", "FORECASTED"]
+        assert [item["Notification"]["Threshold"] for item in requests] == [80.0, 100.0]
+        assert all(item["Subscribers"][0]["Address"] == "arn:aws:sns:us-east-1:123456789012:tinki-bot-alerts" for item in requests)
+
+    def test_summarize_cost_posture_flags_ipv4_gp2_and_t4g_follow_up(self):
+        notes = summarize_cost_posture(
+            instance_type="t3a.nano",
+            root_volume_type="gp2",
+            root_volume_size_gib=30,
+            has_public_ipv4=True,
+        )
+
+        combined = " ".join(notes)
+        assert "public IPv4" in combined
+        assert "gp3" in combined
+        assert "T4g" in combined
+
+    def test_monthly_public_ipv4_cost_matches_hourly_pricing(self):
+        assert monthly_public_ipv4_cost() == "3.65"
 
 
 class TestAdminAWSCost:

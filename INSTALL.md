@@ -112,6 +112,8 @@ For repeated remote maintenance from Windows, prefer the wrapper scripts in `scr
 ```powershell
 .\scripts\Run-RemotePytest.ps1
 .\scripts\Check-RemoteAwsCost.ps1
+.\scripts\Setup-RemoteLowCostMonitoring.ps1 --alert-email you@example.com
+.\scripts\Install-RemoteHostMetricsTimer.ps1
 ```
 
 On macOS/Linux, use the shell wrappers:
@@ -119,7 +121,60 @@ On macOS/Linux, use the shell wrappers:
 ```bash
 ./scripts/run-remote-pytest.sh
 ./scripts/check-remote-awscost.sh
+./scripts/setup-remote-low-cost-monitoring.sh --alert-email you@example.com
+./scripts/install-remote-host-metrics-timer.sh
 ```
+
+## Low-Cost Monitoring Setup
+
+To keep recurring monitoring cheap, the repo includes a small AWS-native setup:
+
+1. Create the budget, SNS topic, and CloudWatch alarms:
+
+```powershell
+.\scripts\Setup-RemoteLowCostMonitoring.ps1 --alert-email you@example.com
+```
+
+Or on macOS/Linux:
+
+```bash
+./scripts/setup-remote-low-cost-monitoring.sh --alert-email you@example.com
+```
+
+2. Install the host-side timer that publishes only memory and disk metrics every five minutes:
+
+```powershell
+.\scripts\Install-RemoteHostMetricsTimer.ps1
+```
+
+Or on macOS/Linux:
+
+```bash
+./scripts/install-remote-host-metrics-timer.sh
+```
+
+3. Confirm the SNS subscription email before relying on alerts.
+
+The setup script also reports whether the host still has the obvious cost flags:
+
+- public IPv4 monthly charge still attached
+- gp2 root volume that should likely move to gp3
+- T3/T3a instance family that may be worth a future T4g validation pass
+
+Expected AWS permissions:
+
+- `cloudwatch:PutMetricAlarm`
+- `cloudwatch:PutMetricData`
+- `ec2:DescribeInstances`
+- `ec2:DescribeVolumes`
+- `sns:CreateTopic`
+- `sns:Subscribe`
+- `sns:ListSubscriptionsByTopic`
+- `budgets:CreateBudget`
+- `budgets:UpdateBudget`
+- `budgets:CreateNotification`
+- `budgets:DescribeBudget`
+- `sts:GetCallerIdentity`
 
 ## Secret Scanning
 
