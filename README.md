@@ -338,6 +338,7 @@ Commands: `!pb`, `!avg`, `!median`, `!all`, `!bowlinggraph`, `!bowlingdistgraph`
 - `!remindme` - set a reminder
 - `!changelog [count]` - show recent commit summaries from local git or GitHub fallback
 - `!awscost` - admin-only AWS month-to-date and projected monthly cost
+- `!statusreport` - admin-only EC2/runtime status summary with an attached detail report
 - `!restart` / `!deploy` - admin-only service control and self-update from GitHub
 
 ### Tests
@@ -417,6 +418,7 @@ For infrastructure cost control outside the bot runtime, use the repo maintenanc
 ### Admin
 
 - `!awscost` - show AWS month-to-date and projected monthly cost from Cost Explorer, whiptail/admin only
+- `!statusreport` - show EC2/runtime status, including deploy commit, host pressure, uptime, and AWS cost, plus a text attachment with extra details, whiptail/admin only
 - `!restart` - restart the bot service, admin only
 - `!deploy` - compare current deployed commit to GitHub `main`, report AWS month-to-date and projected cost, sync the modular repo snapshot if newer, install dependencies, and restart, admin only
 - `!runtests` - run command smoke tests with `✅`/`🚨` status output, admin only

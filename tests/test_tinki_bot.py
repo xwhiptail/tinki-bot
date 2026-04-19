@@ -288,6 +288,12 @@ def _build_command_smoke_cases(tmp_path, monkeypatch):
     async def smoke_admin(command_name):
         cog = make_admin_cog()
         ctx = make_smoke_ctx(author_name="whiptail")
+
+        async def fake_status_check(_label, awaitable, timeout=10):
+            if hasattr(awaitable, "close"):
+                awaitable.close()
+            return "AWS cost summary"
+
         with ExitStack() as stack:
             if command_name == "restart":
                 stack.enter_context(patch("cogs.admin.asyncio.sleep", new=AsyncMock()))
@@ -305,6 +311,32 @@ def _build_command_smoke_cases(tmp_path, monkeypatch):
             elif command_name == "awscost":
                 stack.enter_context(patch("cogs.admin.fetch_aws_cost_summary", new=AsyncMock(return_value="AWS cost summary")))
                 await cog.aws_cost.callback(cog, ctx)
+            elif command_name == "statusreport":
+                stack.enter_context(patch.object(cog, "_collect_status_snapshot", new=AsyncMock(return_value={
+                    "hostname": "host",
+                    "deploy_commit": "abc1234",
+                    "python_version": "3.11.14",
+                    "python_executable": "/opt/apps/tinki-bot/myenv/bin/python",
+                    "diagnostics_busy": False,
+                    "pytest_timeout_seconds": 35,
+                    "load_average": (0.1, 0.2, 0.3),
+                    "memory_used_percent": 50.0,
+                    "swap_used_percent": 0.0,
+                    "swap_used_mib": 0.0,
+                    "swap_total_mib": 1024.0,
+                    "disk_used_percent": 40.0,
+                    "disk_path": "/opt/apps/tinki-bot",
+                    "app_uptime": "1m",
+                    "host_uptime": "1h",
+                    "instance_id": "i-123",
+                    "instance_type": "t3a.nano",
+                    "availability_zone": "us-east-1a",
+                    "local_ipv4": "172.31.0.1",
+                    "public_ipv4": "98.92.242.38",
+                })))
+                stack.enter_context(patch.object(cog, "_run_status_check_with_timeout", new=AsyncMock(side_effect=fake_status_check)))
+                stack.enter_context(patch("cogs.admin.discord.File", return_value="status-file"))
+                await cog.statusreport.callback(cog, ctx)
             elif command_name == "runtests":
                 stack.enter_context(patch.object(cog, "_run_command_selftests", new=AsyncMock(return_value=[("pb", True, None)])))
                 await cog.runtests.callback(cog, ctx)
@@ -512,6 +544,7 @@ def _build_command_smoke_cases(tmp_path, monkeypatch):
         "restart": lambda: smoke_admin("restart"),
         "deploy": lambda: smoke_admin("deploy"),
         "awscost": lambda: smoke_admin("awscost"),
+        "statusreport": lambda: smoke_admin("statusreport"),
         "runtests": lambda: smoke_admin("runtests"),
         "testurls": lambda: smoke_admin("testurls"),
         "pb": lambda: smoke_bowling("pb"),
@@ -1691,6 +1724,74 @@ class TestAdminAWSCost:
         await self.cog.aws_cost.callback(self.cog, ctx)
 
         ctx.send.assert_awaited_once_with("You do not have permission to use this command.")
+
+    async def test_statusreport_command_denies_non_whiptail(self):
+        ctx = make_ctx()
+        ctx.author = MagicMock()
+        ctx.author.id = 999
+        ctx.author.name = "otherperson"
+
+        await self.cog.statusreport.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once_with("You do not have permission to use this command.")
+
+    async def test_statusreport_command_sends_summary_and_attachment(self):
+        ctx = make_ctx()
+        ctx.author = MagicMock()
+        ctx.author.id = 0
+        ctx.author.name = "whiptail"
+        snapshot = {
+            "hostname": "ip-172-31-65-168",
+            "deploy_commit": "abc1234",
+            "python_version": "3.11.14",
+            "python_executable": "/opt/apps/tinki-bot/myenv/bin/python",
+            "diagnostics_busy": False,
+            "pytest_timeout_seconds": 35,
+            "load_average": (0.42, 0.51, 0.63),
+            "memory_used_percent": 61.25,
+            "swap_used_percent": 12.5,
+            "swap_used_mib": 128.0,
+            "swap_total_mib": 1024.0,
+            "disk_used_percent": 58.5,
+            "disk_path": "/opt/apps/tinki-bot",
+            "app_uptime": "14m",
+            "host_uptime": "2d 3h",
+            "instance_id": "i-1234567890",
+            "instance_type": "t3a.nano",
+            "availability_zone": "us-east-1a",
+            "local_ipv4": "172.31.65.168",
+            "public_ipv4": "98.92.242.38",
+        }
+        aws_cost_summary = "AWS cost (Apr 2026): USD9.00 month-to-date, projected USD11.00 by Apr 30."
+
+        def fake_discord_file(buf, filename):
+            return SimpleNamespace(buf=buf, filename=filename)
+
+        async def fake_status_check(_label, awaitable, timeout=10):
+            if hasattr(awaitable, "close"):
+                awaitable.close()
+            return aws_cost_summary
+
+        with patch.object(self.cog, "_collect_status_snapshot", new=AsyncMock(return_value=snapshot)), \
+             patch.object(self.cog, "_run_status_check_with_timeout", new=AsyncMock(side_effect=fake_status_check)), \
+             patch("cogs.admin.discord.File", side_effect=fake_discord_file):
+            await self.cog.statusreport.callback(self.cog, ctx)
+
+        ctx.send.assert_awaited_once()
+        sent_text = ctx.send.await_args.kwargs["content"]
+        sent_file = ctx.send.await_args.kwargs["file"]
+        attachment_text = sent_file.buf.getvalue().decode("utf-8")
+
+        assert "Status report for `ip-172-31-65-168`" in sent_text
+        assert "EC2: `i-1234567890` (`t3a.nano`, `us-east-1a`)" in sent_text
+        assert "Deploy: `abc1234`, Python `3.11.14`, diagnostics `idle`, pytest timeout `35s`" in sent_text
+        assert "Load: `0.42 0.51 0.63`" in sent_text
+        assert "Memory: `61.2%` used, swap `12.5%` (`128/1024 MiB`)" in sent_text
+        assert "Disk: `58.5%` used on `/opt/apps/tinki-bot`" in sent_text
+        assert aws_cost_summary in sent_text
+        assert sent_file.filename == "status_report.txt"
+        assert "Public IPv4: 98.92.242.38" in attachment_text
+        assert "Python executable: /opt/apps/tinki-bot/myenv/bin/python" in attachment_text
 
     async def test_runtests_reports_start_and_summary(self):
         ctx = make_ctx()

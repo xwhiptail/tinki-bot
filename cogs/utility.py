@@ -274,6 +274,7 @@ class Utility(commands.Cog):
 `!github` - Links to the bot source repository.
 `!changelog [count]` - Shows recent commit summaries.
 `!awscost` - Shows AWS month-to-date and projected monthly cost (admin only).
+`!statusreport` - Shows EC2/runtime status with a summary plus attachment (admin only).
         """
         part2 = """
 **Bot Commands List - Part 2**
@@ -311,6 +312,7 @@ class Utility(commands.Cog):
 `!restart` - restarts the bot (admin only)
 `!deploy` - pulls latest from GitHub and restarts (admin only)
 `!awscost` - shows AWS month-to-date and projected monthly cost (admin only)
+`!statusreport` - shows EC2/runtime status with a summary plus attachment (admin only)
 
 **Uma Musume**
 `!gacha [1|10]` - simulate pulls (3% SSR, pity at 200)

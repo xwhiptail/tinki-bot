@@ -2,6 +2,7 @@ import asyncio
 import io
 import logging
 import os
+import platform
 import signal
 import shutil
 import sys
@@ -17,6 +18,7 @@ from discord.ext import commands
 
 from config import CHANNEL_BOT_TEST, GITHUB_REPO_URL, USER_WHIPTAIL_ID, user_matches
 from utils.aws_costs import fetch_aws_cost_summary
+from utils.infra_monitoring import parse_meminfo_used_percent
 from utils.openai_helpers import fetch_openai_balance
 from utils.selftests import (
     run_bot_insight_selftests,
@@ -47,6 +49,7 @@ class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self._diagnostics_lock = asyncio.Lock()
+        self._started_at = datetime.now()
 
     def _request_service_restart(self) -> None:
         # Let systemd restart the bot without requiring sudo from the service user.
@@ -90,6 +93,243 @@ class Admin(commands.Cog):
         if reason:
             return f"{emoji} {name} - {reason}"
         return f"{emoji} {name}"
+
+    def _format_duration(self, total_seconds) -> str:
+        if total_seconds is None:
+            return "unavailable"
+        remaining = max(int(total_seconds), 0)
+        days, remaining = divmod(remaining, 86400)
+        hours, remaining = divmod(remaining, 3600)
+        minutes, seconds = divmod(remaining, 60)
+        parts = []
+        if days:
+            parts.append(f"{days}d")
+        if hours:
+            parts.append(f"{hours}h")
+        if minutes and len(parts) < 2:
+            parts.append(f"{minutes}m")
+        if not parts:
+            parts.append(f"{seconds}s")
+        return " ".join(parts[:2])
+
+    def _read_meminfo_snapshot(self):
+        meminfo_path = Path("/proc/meminfo")
+        if not meminfo_path.exists():
+            return {
+                "memory_used_percent": None,
+                "swap_used_percent": None,
+                "swap_used_mib": None,
+                "swap_total_mib": None,
+            }
+
+        values = {}
+        meminfo_text = meminfo_path.read_text(encoding="utf-8")
+        for line in meminfo_text.splitlines():
+            if ":" not in line:
+                continue
+            key, raw_value = line.split(":", 1)
+            parts = raw_value.strip().split()
+            if not parts:
+                continue
+            try:
+                values[key] = int(parts[0])
+            except ValueError:
+                continue
+
+        swap_total = values.get("SwapTotal")
+        swap_free = values.get("SwapFree")
+        if swap_total is None or swap_free is None or swap_total <= 0:
+            swap_used_percent = 0.0 if swap_total == 0 else None
+            swap_used_mib = 0.0 if swap_total == 0 else None
+            swap_total_mib = round(swap_total / 1024, 1) if swap_total is not None else None
+        else:
+            swap_used_kib = max(swap_total - swap_free, 0)
+            swap_used_percent = round((swap_used_kib / swap_total) * 100, 1)
+            swap_used_mib = round(swap_used_kib / 1024, 1)
+            swap_total_mib = round(swap_total / 1024, 1)
+
+        try:
+            memory_used_percent = round(parse_meminfo_used_percent(meminfo_text), 1)
+        except Exception:
+            memory_used_percent = None
+
+        return {
+            "memory_used_percent": memory_used_percent,
+            "swap_used_percent": swap_used_percent,
+            "swap_used_mib": swap_used_mib,
+            "swap_total_mib": swap_total_mib,
+        }
+
+    def _read_host_uptime_seconds(self):
+        uptime_path = Path("/proc/uptime")
+        if not uptime_path.exists():
+            return None
+        try:
+            first_field = uptime_path.read_text(encoding="utf-8").split()[0]
+            return float(first_field)
+        except (IndexError, ValueError, OSError):
+            return None
+
+    async def _fetch_imds_token(self, session):
+        async with session.put(
+            "http://169.254.169.254/latest/api/token",
+            headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"},
+            timeout=aiohttp.ClientTimeout(total=1),
+        ) as resp:
+            resp.raise_for_status()
+            return await resp.text()
+
+    async def _fetch_imds_value(self, session, token: str, path: str):
+        async with session.get(
+            f"http://169.254.169.254/latest/meta-data/{path}",
+            headers={"X-aws-ec2-metadata-token": token},
+            timeout=aiohttp.ClientTimeout(total=1),
+        ) as resp:
+            resp.raise_for_status()
+            return await resp.text()
+
+    async def _fetch_ec2_metadata(self):
+        try:
+            async with aiohttp.ClientSession() as session:
+                token = await self._fetch_imds_token(session)
+                instance_id, instance_type, availability_zone, local_ipv4, public_ipv4 = await asyncio.gather(
+                    self._fetch_imds_value(session, token, "instance-id"),
+                    self._fetch_imds_value(session, token, "instance-type"),
+                    self._fetch_imds_value(session, token, "placement/availability-zone"),
+                    self._fetch_imds_value(session, token, "local-ipv4"),
+                    self._fetch_imds_value(session, token, "public-ipv4"),
+                    return_exceptions=True,
+                )
+        except Exception:
+            return {}
+
+        def _value_or_none(value):
+            return None if isinstance(value, Exception) else value
+
+        return {
+            "instance_id": _value_or_none(instance_id),
+            "instance_type": _value_or_none(instance_type),
+            "availability_zone": _value_or_none(availability_zone),
+            "local_ipv4": _value_or_none(local_ipv4),
+            "public_ipv4": _value_or_none(public_ipv4),
+        }
+
+    async def _collect_status_snapshot(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        app_root = repo_root.parent
+        snapshot = {
+            "hostname": platform.node() or os.uname().nodename,
+            "deploy_commit": self._read_deployed_commit(repo_root),
+            "python_version": platform.python_version(),
+            "python_executable": sys.executable,
+            "diagnostics_busy": self._diagnostics_lock.locked(),
+            "pytest_timeout_seconds": PYTEST_TIMEOUT_SECONDS,
+            "disk_path": str(app_root),
+            "app_uptime": self._format_duration((datetime.now() - self._started_at).total_seconds()),
+            "host_uptime": self._format_duration(self._read_host_uptime_seconds()),
+        }
+
+        try:
+            load_average = os.getloadavg()
+        except (AttributeError, OSError):
+            load_average = None
+        snapshot["load_average"] = load_average
+
+        try:
+            total, used, _ = shutil.disk_usage(app_root)
+            snapshot["disk_used_percent"] = round((used / total) * 100, 1) if total else None
+        except OSError:
+            snapshot["disk_used_percent"] = None
+
+        snapshot.update(self._read_meminfo_snapshot())
+        snapshot.update(await self._fetch_ec2_metadata())
+        return snapshot
+
+    def _build_status_report(self, snapshot, aws_cost_summary: str):
+        diagnostics_state = "busy" if snapshot.get("diagnostics_busy") else "idle"
+        deploy_commit = self._short_commit(snapshot.get("deploy_commit", ""))
+        load_average = snapshot.get("load_average")
+        if load_average:
+            load_text = f"`{load_average[0]:.2f} {load_average[1]:.2f} {load_average[2]:.2f}`"
+        else:
+            load_text = "`unavailable`"
+
+        memory_used_percent = snapshot.get("memory_used_percent")
+        if memory_used_percent is None:
+            memory_text = "Memory: `unavailable`"
+        else:
+            memory_text = f"Memory: `{memory_used_percent:.1f}%` used"
+            swap_used_percent = snapshot.get("swap_used_percent")
+            swap_used_mib = snapshot.get("swap_used_mib")
+            swap_total_mib = snapshot.get("swap_total_mib")
+            if swap_used_percent is not None and swap_used_mib is not None and swap_total_mib is not None:
+                memory_text += (
+                    f", swap `{swap_used_percent:.1f}%` "
+                    f"(`{swap_used_mib:.0f}/{swap_total_mib:.0f} MiB`)"
+                )
+
+        disk_used_percent = snapshot.get("disk_used_percent")
+        if disk_used_percent is None:
+            disk_text = "Disk: `unavailable`"
+        else:
+            disk_text = f"Disk: `{disk_used_percent:.1f}%` used on `{snapshot.get('disk_path', 'unknown')}`"
+
+        if snapshot.get("instance_id") and snapshot.get("instance_type") and snapshot.get("availability_zone"):
+            ec2_text = (
+                f"EC2: `{snapshot['instance_id']}` "
+                f"(`{snapshot['instance_type']}`, `{snapshot['availability_zone']}`)"
+            )
+        else:
+            ec2_text = "EC2: metadata unavailable"
+
+        summary_lines = [
+            f"Status report for `{snapshot.get('hostname', 'unknown')}`",
+            ec2_text,
+            (
+                f"Deploy: `{deploy_commit}`, Python `{snapshot.get('python_version', 'unknown')}`, "
+                f"diagnostics `{diagnostics_state}`, "
+                f"pytest timeout `{snapshot.get('pytest_timeout_seconds', PYTEST_TIMEOUT_SECONDS)}s`"
+            ),
+            f"Load: {load_text}",
+            memory_text,
+            disk_text,
+            f"Uptime: app `{snapshot.get('app_uptime', 'unavailable')}`, host `{snapshot.get('host_uptime', 'unavailable')}`",
+            aws_cost_summary,
+        ]
+
+        detail_lines = [
+            f"Status Report - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "=" * 60,
+            f"Hostname: {snapshot.get('hostname', 'unknown')}",
+            f"Deploy commit: {snapshot.get('deploy_commit') or 'unknown'}",
+            f"Python version: {snapshot.get('python_version', 'unknown')}",
+            f"Python executable: {snapshot.get('python_executable', 'unknown')}",
+            f"Diagnostics lock: {diagnostics_state}",
+            f"Pytest timeout: {snapshot.get('pytest_timeout_seconds', PYTEST_TIMEOUT_SECONDS)}s",
+            f"Load average: {load_average[0]:.2f} {load_average[1]:.2f} {load_average[2]:.2f}" if load_average else "Load average: unavailable",
+            f"Memory used: {memory_used_percent:.1f}%" if memory_used_percent is not None else "Memory used: unavailable",
+            (
+                f"Swap used: {snapshot['swap_used_percent']:.1f}% "
+                f"({snapshot['swap_used_mib']:.0f}/{snapshot['swap_total_mib']:.0f} MiB)"
+            )
+            if snapshot.get("swap_used_percent") is not None and snapshot.get("swap_used_mib") is not None and snapshot.get("swap_total_mib") is not None
+            else "Swap used: unavailable",
+            (
+                f"Disk used: {disk_used_percent:.1f}% on {snapshot.get('disk_path', 'unknown')}"
+                if disk_used_percent is not None
+                else "Disk used: unavailable"
+            ),
+            f"App uptime: {snapshot.get('app_uptime', 'unavailable')}",
+            f"Host uptime: {snapshot.get('host_uptime', 'unavailable')}",
+            f"Instance ID: {snapshot.get('instance_id') or 'unavailable'}",
+            f"Instance type: {snapshot.get('instance_type') or 'unavailable'}",
+            f"Availability zone: {snapshot.get('availability_zone') or 'unavailable'}",
+            f"Local IPv4: {snapshot.get('local_ipv4') or 'unavailable'}",
+            f"Public IPv4: {snapshot.get('public_ipv4') or 'unavailable'}",
+            f"AWS cost: {aws_cost_summary}",
+        ]
+
+        return "\n".join(summary_lines), "\n".join(detail_lines) + "\n"
 
     def _status_emoji(self, passed: int, total: int) -> str:
         return TEST_PASS_EMOJI if total and passed == total else TEST_FAIL_EMOJI
@@ -469,6 +709,19 @@ class Admin(commands.Cog):
             await ctx.send("You do not have permission to use this command.")
             return
         await ctx.send(await fetch_aws_cost_summary())
+
+    @commands.command(name="statusreport")
+    @commands.has_permissions(administrator=True)
+    async def statusreport(self, ctx):
+        if not self._host_admin_allowed(ctx.author):
+            await ctx.send("You do not have permission to use this command.")
+            return
+
+        snapshot = await self._collect_status_snapshot()
+        aws_cost_summary = await self._run_status_check_with_timeout("AWS cost", fetch_aws_cost_summary())
+        summary, details = self._build_status_report(snapshot, aws_cost_summary)
+        report_file = discord.File(io.BytesIO(details.encode("utf-8")), filename="status_report.txt")
+        await ctx.send(content=summary, file=report_file)
 
     @commands.command(name="runtests")
     @commands.has_permissions(administrator=True)
