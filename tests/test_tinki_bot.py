@@ -641,9 +641,9 @@ class TestRewriteSocialUrls:
         assert "fixvx.com" in out
         assert "//x.com" not in out
 
-    def test_instagram_rewritten_to_eeinstagram(self):
+    def test_instagram_rewritten_to_vxinstagram(self):
         out = rewrite_social_urls("https://www.instagram.com/p/abc123/")
-        assert "eeinstagram.com" in out
+        assert "vxinstagram.com" in out
         assert "//www.instagram.com" not in out
 
     def test_tiktok_rewritten_to_tnktok(self):
@@ -673,7 +673,7 @@ class TestRewriteSocialUrls:
         msg = "https://twitter.com/a/status/1 and https://instagram.com/p/2/"
         out = rewrite_social_urls(msg)
         assert "vxtwitter.com" in out
-        assert "eeinstagram.com" in out
+        assert "vxinstagram.com" in out
         assert "//twitter.com" not in out
         assert "//www.instagram.com" not in out
 

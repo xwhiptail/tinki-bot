@@ -9,7 +9,7 @@ def run_url_selftests():
         ("twitter basic", "check this https://twitter.com/foo/bar", "check this https://vxtwitter.com/foo/bar"),
         ("twitter www", "link: https://www.twitter.com/foo/bar", "link: https://vxtwitter.com/foo/bar"),
         ("x.com", "post: https://x.com/foo/status/12345", "post: https://fixvx.com/foo/status/12345"),
-        ("instagram", "pic: https://www.instagram.com/p/ABC123", "pic: https://eeinstagram.com/p/ABC123"),
+        ("instagram", "pic: https://www.instagram.com/p/ABC123", "pic: https://vxinstagram.com/p/ABC123"),
         ("tiktok", "vid: https://www.tiktok.com/@user/video/987654321", "vid: https://tnktok.com/@user/video/987654321"),
         ("reddit", "thread: https://www.reddit.com/r/test/comments/abc123/slug", "thread: https://rxddit.com/r/test/comments/abc123/slug"),
         ("no-change", "hello there", "hello there"),
