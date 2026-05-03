@@ -7,7 +7,7 @@ Use this file as the shared resume point between Codex and Claude Code.
 - Status: Instagram URL rewrites now target `vxinstagram.com` after `eeinstagram.com` stopped serving usable embed metadata for reels; the shell deploy helper now overwrites existing repo files during recursive uploads on AL2023; new AL2023 host is live, hardened, and running Python 3.11; local macOS repo now has a working `.venv` pytest setup, and the repo includes low-cost monitoring setup helpers for AWS Budgets, CloudWatch alarms, and host memory/disk metrics
 - Active branch: `main`
 - Default integration preference: verify changes, then merge locally into `main`; only keep branch or PR flow when explicitly requested
-- Last known good verification: `python -m pytest -q` locally (`274 passed`) after the Instagram rewrite change, plus a temp `remote_copy` overwrite test after the deploy helper fix and a remote post-deploy rewrite sanity check
+- Last known good verification: `python -m pytest -q` locally (`274 passed`) after updating the recursive deploy upload test expectation, plus a temp `remote_copy` overwrite test after the deploy helper fix and a remote post-deploy rewrite sanity check
 - Next concrete task: resume the low-cost monitoring setup helpers when appropriate
 
 ## Resume Checklist
@@ -59,6 +59,7 @@ Use this as the default workflow unless the user says otherwise:
 - 2026-05-03: Instagram rewrite root cause was `eeinstagram.com` returning a redirect page back to Instagram for the repro reel, while `vxinstagram.com` returned video/player Open Graph metadata for the same URL. Updated `utils/url_rewriter.py`, `utils/selftests.py`, and `tests/test_tinki_bot.py`; full local pytest passed (`274 passed`).
 - 2026-05-03: First `./deploy-ec2.sh` attempt failed during recursive `utils/` upload because remote GNU tar refused existing files with the helper's previous extraction flags. Updated `scripts/remote-common.sh` to pass `--overwrite`; verified by uploading a temp directory twice with `remote_copy` and reading back the replaced content.
 - 2026-05-03: Deployed the Instagram rewrite fix to the live host; remote check rewrote the repro reel to `https://vxinstagram.com/reel/DXj7CbAjlCQ/?igsh=MTdtNTdwZnFajY5NA==` and `tinki-bot.service` reported active.
+- 2026-05-03: Local pytest initially failed because `tests/test_tinki_bot.py::TestRemoteCommonScript::test_remote_copy_recursive_streams_tar_instead_of_scp` still asserted the old `--no-overwrite-dir` extraction flag. Updated it to assert `--overwrite`; full pytest passed (`274 passed`).
 - Live bot host is now `t3a.nano` AL2023 at `98.92.242.38`.
 - Old host `52.91.60.81` has `tinki-bot.service` stopped and disabled.
 - `deploy-ec2.local.sh` points at the new host.
