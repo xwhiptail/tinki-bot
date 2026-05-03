@@ -4,10 +4,10 @@ Use this file as the shared resume point between Codex and Claude Code.
 
 ## Current State
 
-- Status: Instagram URL rewrites now target `vxinstagram.com` after `eeinstagram.com` stopped serving usable embed metadata for reels; new AL2023 host is live, hardened, and running Python 3.11; local macOS repo now has a working `.venv` pytest setup, the deploy helper is adjusted for the hardened host ownership model, and the repo includes low-cost monitoring setup helpers for AWS Budgets, CloudWatch alarms, and host memory/disk metrics
+- Status: Instagram URL rewrites now target `vxinstagram.com` after `eeinstagram.com` stopped serving usable embed metadata for reels; the shell deploy helper now overwrites existing repo files during recursive uploads on AL2023; new AL2023 host is live, hardened, and running Python 3.11; local macOS repo now has a working `.venv` pytest setup, and the repo includes low-cost monitoring setup helpers for AWS Budgets, CloudWatch alarms, and host memory/disk metrics
 - Active branch: `main`
 - Default integration preference: verify changes, then merge locally into `main`; only keep branch or PR flow when explicitly requested
-- Last known good verification: `python -m pytest -q` locally (`274 passed`) after the Instagram rewrite change
+- Last known good verification: `python -m pytest -q` locally (`274 passed`) after the Instagram rewrite change, plus a temp `remote_copy` overwrite test after the deploy helper fix
 - Next concrete task: deploy the Instagram rewrite fix with `./deploy-ec2.sh` if the user wants it live; then resume the low-cost monitoring setup helpers when appropriate
 
 ## Resume Checklist
@@ -57,6 +57,7 @@ Use this as the default workflow unless the user says otherwise:
 ## Notes For Next Agent
 
 - 2026-05-03: Instagram rewrite root cause was `eeinstagram.com` returning a redirect page back to Instagram for the repro reel, while `vxinstagram.com` returned video/player Open Graph metadata for the same URL. Updated `utils/url_rewriter.py`, `utils/selftests.py`, and `tests/test_tinki_bot.py`; full local pytest passed (`274 passed`).
+- 2026-05-03: First `./deploy-ec2.sh` attempt failed during recursive `utils/` upload because remote GNU tar refused existing files with the helper's previous extraction flags. Updated `scripts/remote-common.sh` to pass `--overwrite`; verified by uploading a temp directory twice with `remote_copy` and reading back the replaced content.
 - Live bot host is now `t3a.nano` AL2023 at `98.92.242.38`.
 - Old host `52.91.60.81` has `tinki-bot.service` stopped and disabled.
 - `deploy-ec2.local.sh` points at the new host.
