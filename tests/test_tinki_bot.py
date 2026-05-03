@@ -3588,8 +3588,8 @@ remote_copy "{source_dir}" "/remote/repo/" true
         ssh_log = (logs_dir / "ssh.log").read_text(encoding="utf-8")
         assert "deploy-user@example-host" in ssh_log
         assert "tar -xmf -" in ssh_log
+        assert "--overwrite" in ssh_log
         assert "--no-same-permissions" in ssh_log
-        assert "--no-overwrite-dir" in ssh_log
         assert "-C /remote/repo/cogs" in ssh_log
 
     def test_remote_copy_file_replaces_destination_before_using_scp(self, tmp_path):
