@@ -1,7 +1,9 @@
 import asyncio
+import inspect
 import json
 import logging
 import random
+import re
 from collections import deque
 from pathlib import Path
 from typing import List, Set
@@ -45,6 +47,10 @@ HARD_STOP_VIOLENCE_PHRASES = (
     "hurt her",
     "stab someone",
     "murder someone",
+)
+DISCORD_MESSAGE_LINK_PATTERN = re.compile(
+    r"https?://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/channels/"
+    r"(?P<guild_id>@me|\d+)/(?P<channel_id>\d+)/(?P<message_id>\d+)"
 )
 
 
@@ -267,6 +273,40 @@ class AI(commands.Cog):
         )
         return response.choices[0].message.content.strip()
 
+    async def _generate_reply_to_linked_message(self, target_message, requester, instruction: str) -> str:
+        client = get_openai_client()
+        source_text = (getattr(target_message, "content", None) or "(no text)").strip()
+        source_text = source_text[:1200]
+        source_author = getattr(getattr(target_message, "author", None), "display_name", "someone")
+        requester_name = getattr(requester, "display_name", "someone")
+        response = await create_chat_completion(
+            client,
+            model=OPENAI_FAST_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        GREMLIN_SYSTEM_STYLE + " "
+                        "You are replying directly to a linked Discord message. "
+                        "Write only the message to post. Keep it to 1-3 short sentences."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f'Requester: "{requester_name}"\n'
+                        f'Instruction: "{instruction}"\n'
+                        f'Linked message author: "{source_author}"\n'
+                        f'Linked message text:\n"{source_text}"\n\n'
+                        "Write the exact reply to post as a direct Discord reply."
+                    ),
+                },
+            ],
+            max_tokens=90,
+            temperature=1.0,
+        )
+        return response.choices[0].message.content.strip() if response.choices else ""
+
     async def _generate_grounded_reply(
         self,
         text: str,
@@ -368,6 +408,82 @@ class AI(commands.Cog):
 
         return None
 
+    def _parse_discord_message_link(self, text: str):
+        match = DISCORD_MESSAGE_LINK_PATTERN.search(text)
+        if not match:
+            return None
+        instruction = f"{text[:match.start()]} {text[match.end():]}".strip()
+        return {
+            "guild_id": match.group("guild_id"),
+            "channel_id": int(match.group("channel_id")),
+            "message_id": int(match.group("message_id")),
+            "instruction": instruction or "Reply to the linked message.",
+        }
+
+    async def _fetch_linked_message(self, channel_id: int, message_id: int):
+        channel = self.bot.get_channel(channel_id)
+        if channel is None:
+            fetch_channel = getattr(self.bot, "fetch_channel", None)
+            if fetch_channel:
+                maybe_channel = fetch_channel(channel_id)
+                if inspect.isawaitable(maybe_channel):
+                    channel = await maybe_channel
+        if channel is None or not hasattr(channel, "fetch_message"):
+            return None
+        maybe_message = channel.fetch_message(message_id)
+        if inspect.isawaitable(maybe_message):
+            return await maybe_message
+        return None
+
+    async def _handle_discord_message_link(self, message, text: str) -> bool:
+        link = self._parse_discord_message_link(text)
+        if not link:
+            return False
+
+        current_guild_id = str(message.guild.id) if message.guild else None
+        if link["guild_id"] == "@me" or link["guild_id"] != current_guild_id:
+            await self._send_reply_chunks(
+                message.channel,
+                f'{message.author.mention} ',
+                "I can only answer message links from this server.",
+            )
+            return True
+
+        try:
+            target_message = await self._fetch_linked_message(link["channel_id"], link["message_id"])
+        except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+            target_message = None
+        if target_message is None:
+            await self._send_reply_chunks(
+                message.channel,
+                f'{message.author.mention} ',
+                "I couldn't fetch that message. Make sure I can see the channel.",
+            )
+            return True
+
+        reply = await self._generate_reply_to_linked_message(
+            target_message,
+            message.author,
+            link["instruction"],
+        )
+        if not reply:
+            await self._send_reply_chunks(
+                message.channel,
+                f'{message.author.mention} ',
+                "I couldn't think of a useful reply for that one.",
+            )
+            return True
+
+        try:
+            await target_message.reply(reply[:1900], mention_author=False)
+        except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+            await self._send_reply_chunks(
+                message.channel,
+                f'{message.author.mention} ',
+                "I found it, but Discord wouldn't let me reply there.",
+            )
+        return True
+
     async def _handle_mention(self, message, text: str):
         personas_cog, persona_key, persona_description = self._persona_state()
         user_id = str(message.author.id)
@@ -381,6 +497,18 @@ class AI(commands.Cog):
             self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
             self._save_ai_memory()
             return
+        if await self._handle_discord_message_link(message, text):
+            self._update_conversation_history(
+                personas_cog,
+                user_id,
+                persona_key,
+                text,
+                "[linked message response handled]",
+            )
+            self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
+            self._save_ai_memory()
+            return
+
         command_spec = parse_natural_command(text)
         if command_spec:
             executed = await self._execute_natural_command(message, command_spec)

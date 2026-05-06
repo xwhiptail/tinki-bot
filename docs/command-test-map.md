@@ -13,6 +13,13 @@ This map is intentionally strict: it lists tests that directly call command meth
 
 Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke_cleanly` runs every registered text command through a safe mocked invocation path and fails if a new command is added without a smoke case.
 
+## AI Listeners
+
+| Behavior | Direct tests |
+| --- | --- |
+| `@Tinki-bot <message>` | `test_on_message_strips_mention_and_truncates_text`, `test_on_message_short_circuits_hard_stop_refusal_before_ai_generation`, `test_on_message_reports_handle_mention_errors` |
+| `@Tinki-bot <Discord message link> [instruction]` | `test_on_message_replies_directly_to_linked_discord_message`, `test_on_message_rejects_linked_discord_message_from_other_guild`, `test_on_message_refuses_hard_stop_instruction_even_with_discord_link` |
+
 ## Admin
 
 | Command | Direct tests |

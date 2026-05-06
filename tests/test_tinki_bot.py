@@ -1087,6 +1087,68 @@ class TestAIListeners:
             "<@123> Sorry, something went wrong on my side."
         )
 
+    async def test_on_message_replies_directly_to_linked_discord_message(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message(
+            "<@99> https://discord.com/channels/111/222/333 tell them nice try"
+        )
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+        target_message = SimpleNamespace(
+            id=333,
+            content="source take",
+            author=SimpleNamespace(display_name="SourceUser"),
+            reply=AsyncMock(),
+        )
+        target_channel = SimpleNamespace(fetch_message=AsyncMock(return_value=target_message))
+        cog.bot.get_channel = MagicMock(return_value=target_channel)
+
+        with patch.object(
+            cog,
+            "_generate_reply_to_linked_message",
+            new=AsyncMock(return_value="nice try"),
+        ) as reply_mock:
+            await cog.on_message(message)
+
+        cog.bot.get_channel.assert_called_once_with(222)
+        target_channel.fetch_message.assert_awaited_once_with(333)
+        reply_mock.assert_awaited_once_with(target_message, message.author, "tell them nice try")
+        target_message.reply.assert_awaited_once_with("nice try", mention_author=False)
+        message.channel.send.assert_not_awaited()
+
+    async def test_on_message_rejects_linked_discord_message_from_other_guild(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> https://discord.com/channels/999/222/333")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+        cog.bot.get_channel = MagicMock()
+
+        await cog.on_message(message)
+
+        cog.bot.get_channel.assert_not_called()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> I can only answer message links from this server."
+        )
+
+    async def test_on_message_refuses_hard_stop_instruction_even_with_discord_link(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> https://discord.com/channels/111/222/333 die")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+        cog.bot.get_channel = MagicMock()
+
+        with patch.object(cog, "_generate_reply_to_linked_message", new=AsyncMock()) as reply_mock:
+            await cog.on_message(message)
+
+        cog.bot.get_channel.assert_not_called()
+        reply_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> Absolutely not. Go break a toaster instead."
+        )
+
     async def test_on_message_replies_to_tracked_random_ai_reply(self):
         cog = make_ai_cog()
         cog.random_ai_message_ids.add(55)
@@ -2051,6 +2113,7 @@ class TestUtilityChangelog:
         assert "!skyfactorystatus" in sent_text
         assert "!uptime" in sent_text
         assert "`!emote [name] [1x-4x]` - search 7TV, preview results in the picker, choose a size, and send" in sent_text
+        assert "`@Tinki-bot <Discord message link> [instruction]`" in sent_text
 
 
 class TestUtilityCommands:

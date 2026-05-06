@@ -371,6 +371,7 @@ For infrastructure cost control outside the bot runtime, use the repo maintenanc
 ### Personas And AI
 
 - `@Tinki-bot <message>` - get a reply from Tinki
+- `@Tinki-bot <Discord message link> [instruction]` - have Tinki reply directly to a linked message she can access in the current server
 - Tinki keeps lightweight memory of explicit user facts and preferences.
 - For memory-style questions, Tinki can search recent accessible channel history instead of guessing.
 

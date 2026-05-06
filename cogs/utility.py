@@ -314,6 +314,10 @@ class Utility(commands.Cog):
 `!awscost` - shows AWS month-to-date and projected monthly cost (admin only)
 `!statusreport` - shows EC2/runtime status with a summary plus attachment (admin only)
 
+**AI**
+`@Tinki-bot <message>` - get a reply from Tinki
+`@Tinki-bot <Discord message link> [instruction]` - have Tinki reply directly to a linked message in this server
+
 **Uma Musume**
 `!gacha [1|10]` - simulate pulls (3% SSR, pity at 200)
 `!pity [@user]` - show pity counter and progress bar
