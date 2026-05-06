@@ -435,30 +435,50 @@ class AI(commands.Cog):
             return await maybe_message
         return None
 
-    async def _handle_discord_message_link(self, message, text: str) -> bool:
+    async def _handle_discord_message_link(
+        self,
+        message,
+        text: str,
+        notify_errors: bool = True,
+        require_target_author_id=None,
+    ) -> bool:
         link = self._parse_discord_message_link(text)
         if not link:
             return False
 
         current_guild_id = str(message.guild.id) if message.guild else None
         if link["guild_id"] == "@me" or link["guild_id"] != current_guild_id:
-            await self._send_reply_chunks(
-                message.channel,
-                f'{message.author.mention} ',
-                "I can only answer message links from this server.",
-            )
-            return True
+            if notify_errors:
+                await self._send_reply_chunks(
+                    message.channel,
+                    f'{message.author.mention} ',
+                    "I can only answer message links from this server.",
+                )
+                return True
+            return False
 
         try:
             target_message = await self._fetch_linked_message(link["channel_id"], link["message_id"])
         except (discord.Forbidden, discord.HTTPException, discord.NotFound):
             target_message = None
         if target_message is None:
-            await self._send_reply_chunks(
-                message.channel,
-                f'{message.author.mention} ',
-                "I couldn't fetch that message. Make sure I can see the channel.",
-            )
+            if notify_errors:
+                await self._send_reply_chunks(
+                    message.channel,
+                    f'{message.author.mention} ',
+                    "I couldn't fetch that message. Make sure I can see the channel.",
+                )
+                return True
+            return False
+
+        if require_target_author_id is not None:
+            target_author_id = getattr(getattr(target_message, "author", None), "id", None)
+            if str(target_author_id) != str(require_target_author_id):
+                return False
+
+        refusal = self._match_hard_stop_refusal(link["instruction"])
+        if refusal:
+            await self._send_reply_chunks(message.channel, f'{message.author.mention} ', refusal)
             return True
 
         reply = await self._generate_reply_to_linked_message(
@@ -613,6 +633,20 @@ class AI(commands.Cog):
                 )
                 bot_reply = await message.channel.send(f"{message.author.mention} {reply}")
                 self._track_random_ai_message_id(bot_reply.id)
+                return
+
+        if (
+            message.reference is None
+            and self.bot.user not in message.mentions
+            and not message.content.startswith(('!', '$'))
+        ):
+            handled = await self._handle_discord_message_link(
+                message,
+                message.content,
+                notify_errors=False,
+                require_target_author_id=getattr(self.bot.user, "id", None),
+            )
+            if handled:
                 return
 
         if message.reference is None and self.bot.user in message.mentions:

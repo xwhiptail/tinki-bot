@@ -320,7 +320,7 @@ Live runtime data on EC2 is stored in:
 
 ### AI replies
 
-Tinki responds when mentioned (`@Tinki-bot`). She has a cute but snarky gnome personality powered by OpenAI. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
+Tinki responds when mentioned (`@Tinki-bot`). She also responds directly to linked Discord messages: mention her with any accessible message link in the current server, or paste a link to one of Tinki's own messages with extra text. She has a cute but snarky gnome personality powered by OpenAI. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
 
 ### Bowling score tracking
 
@@ -349,7 +349,7 @@ Run locally with:
 pytest
 ```
 
-121 tests covering pure functions, isolated command helpers, and key admin/emote formatting helpers. No live Discord calls needed.
+Local tests cover pure functions, isolated command helpers, and key admin/emote formatting helpers. No live Discord calls needed.
 
 Startup diagnostics also run `pytest -q` on boot and report the result in `#bot-test`, alongside the command, URL, calculator, letter-count, bot-insight self-tests, OpenAI balance, and AWS month-to-date/projected cost summary. Failing sections are marked with `🚨` and clean sections with `✅`. The bot now allows only one in-process diagnostics run at a time and applies timeouts to heavy diagnostic steps so deploy-time startup checks do not pile up on the host; the startup pytest subprocess currently gets a `35s` wall-clock timeout to leave headroom for the `t3a.nano` EC2 host. Pytest cache-provider warnings are disabled in this repo so the startup run stays clean on Windows.
 
@@ -372,6 +372,7 @@ For infrastructure cost control outside the bot runtime, use the repo maintenanc
 
 - `@Tinki-bot <message>` - get a reply from Tinki
 - `@Tinki-bot <Discord message link> [instruction]` - have Tinki reply directly to a linked message she can access in the current server
+- `<instruction> <Tinki Discord message link>` - have Tinki reply directly to one of her own linked messages without mentioning her again
 - Tinki keeps lightweight memory of explicit user facts and preferences.
 - For memory-style questions, Tinki can search recent accessible channel history instead of guessing.
 
