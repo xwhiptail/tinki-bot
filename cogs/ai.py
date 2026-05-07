@@ -56,6 +56,33 @@ HARD_STOP_VIOLENCE_PHRASES = (
     "stab someone",
     "murder someone",
 )
+SPICY_REQUEST_ROAST_REPLY = (
+    "Absolutely. Chapter one: you asked a gnome bot for smut in public, "
+    "and the whole server's secondhand embarrassment leveled up."
+)
+SPICY_REQUEST_DIRECT_TERMS = (
+    "erotic",
+    "erotica",
+    "smut",
+    "horny",
+    "lewd",
+    "nsfw",
+    "sexy",
+    "sexual",
+    "sex scene",
+    "dirty story",
+    "steamy",
+)
+SPICY_REQUEST_CONTEXT_TERMS = (
+    "write",
+    "story",
+    "fanfic",
+    "fic",
+    "roleplay",
+    "rp",
+    "something",
+    "content",
+)
 DISCORD_MESSAGE_LINK_PATTERN = re.compile(
     r"https?://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/channels/"
     r"(?P<guild_id>@me|\d+)/(?P<channel_id>\d+)/(?P<message_id>\d+)"
@@ -472,6 +499,17 @@ class AI(commands.Cog):
 
         return None
 
+    def _match_spicy_request_roast(self, text: str):
+        lowered = f" {text.lower().strip()} "
+
+        if any(term in lowered for term in SPICY_REQUEST_DIRECT_TERMS):
+            return SPICY_REQUEST_ROAST_REPLY
+
+        if "spicy" in lowered and any(term in lowered for term in SPICY_REQUEST_CONTEXT_TERMS):
+            return SPICY_REQUEST_ROAST_REPLY
+
+        return None
+
     def _parse_discord_message_link(self, text: str):
         match = DISCORD_MESSAGE_LINK_PATTERN.search(text)
         if not match:
@@ -578,6 +616,13 @@ class AI(commands.Cog):
         if refusal:
             await self._send_reply_chunks(message.channel, f'{message.author.mention} ', refusal)
             self._update_conversation_history(personas_cog, user_id, persona_key, text, refusal)
+            self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
+            self._save_ai_memory()
+            return
+        spicy_roast = self._match_spicy_request_roast(text)
+        if spicy_roast:
+            await self._send_reply_chunks(message.channel, f'{message.author.mention} ', spicy_roast)
+            self._update_conversation_history(personas_cog, user_id, persona_key, text, spicy_roast)
             self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
             self._save_ai_memory()
             return

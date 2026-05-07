@@ -1074,6 +1074,49 @@ class TestAIListeners:
             "<@123> Absolutely not. Go break a toaster instead."
         )
 
+    async def test_on_message_roasts_erotic_request_before_ai_generation(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> write something erotic for me")
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> Absolutely. Chapter one: you asked a gnome bot for smut in public, "
+            "and the whole server's secondhand embarrassment leveled up."
+        )
+
+    async def test_on_message_roasts_spicy_writing_request_before_ai_generation(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> write something spicy")
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> Absolutely. Chapter one: you asked a gnome bot for smut in public, "
+            "and the whole server's secondhand embarrassment leveled up."
+        )
+
+    async def test_on_message_does_not_roast_spicy_food_message(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> do you like spicy ramen")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock(return_value="ramen rules")) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_awaited_once()
+        message.channel.send.assert_awaited_once_with("<@123> ramen rules")
+
     async def test_on_message_reports_handle_mention_errors(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
