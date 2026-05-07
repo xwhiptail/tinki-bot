@@ -10,6 +10,22 @@ def get_openai_client() -> OpenAI:
     return OpenAI()
 
 
+def _model_prefers_max_completion_tokens(model: str) -> bool:
+    model_name = str(model or "").lower()
+    return model_name.startswith(("gpt-5", "o1", "o3", "o4"))
+
+
+def _normalize_chat_completion_kwargs(kwargs):
+    normalized = dict(kwargs)
+    if (
+        "max_tokens" in normalized
+        and "max_completion_tokens" not in normalized
+        and _model_prefers_max_completion_tokens(normalized.get("model"))
+    ):
+        normalized["max_completion_tokens"] = normalized.pop("max_tokens")
+    return normalized
+
+
 async def run_blocking(func, *args, **kwargs):
     to_thread = getattr(asyncio, "to_thread", None)
     if to_thread is not None:
@@ -20,7 +36,10 @@ async def run_blocking(func, *args, **kwargs):
 
 
 async def create_chat_completion(client: OpenAI, **kwargs):
-    return await run_blocking(client.chat.completions.create, **kwargs)
+    return await run_blocking(
+        client.chat.completions.create,
+        **_normalize_chat_completion_kwargs(kwargs),
+    )
 
 
 async def fetch_openai_balance() -> str:

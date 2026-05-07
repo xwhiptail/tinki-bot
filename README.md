@@ -320,7 +320,7 @@ Live runtime data on EC2 is stored in:
 
 ### AI replies
 
-Tinki responds when mentioned (`@Tinki-bot`). She also responds directly to linked Discord messages when the message text includes an actual Tinki mention plus an accessible message link in the current server. Link previews that mention Tinki do not count as speaking to her. She has a cute but snarky gnome personality powered by OpenAI. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
+Tinki responds when mentioned (`@Tinki-bot`). She also responds directly to linked Discord messages when the message text includes an actual Tinki mention before an accessible message link in the current server. Link previews that mention Tinki do not count as speaking to her. She has a cute but snarky gnome personality powered by OpenAI. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
 
 ### Bowling score tracking
 

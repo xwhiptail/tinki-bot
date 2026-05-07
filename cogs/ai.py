@@ -180,7 +180,17 @@ class AI(commands.Cog):
 
     def _message_mentions_bot_in_text(self, message) -> bool:
         content = str(getattr(message, "content", "") or "")
-        return any(token in content for token in self._bot_mention_tokens())
+        link_match = DISCORD_MESSAGE_LINK_PATTERN.search(content)
+        link_start = link_match.start() if link_match else None
+        for token in self._bot_mention_tokens():
+            token_index = content.find(token)
+            if token_index == -1:
+                continue
+            # Linked-message previews can surface Tinki after the URL; only a
+            # mention typed before the first message link counts as speaking to her.
+            if link_start is None or token_index < link_start:
+                return True
+        return False
 
     def _strip_bot_mention(self, text: str) -> str:
         stripped = text

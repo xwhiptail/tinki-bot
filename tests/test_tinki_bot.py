@@ -1179,6 +1179,30 @@ class TestAIListeners:
         target_message.reply.assert_not_awaited()
         message.channel.send.assert_not_awaited()
 
+    async def test_on_message_ignores_preview_mention_after_discord_link(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("hi https://discord.com/channels/111/222/333 <@99>")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+        target_message = SimpleNamespace(
+            id=333,
+            content="tinki source",
+            author=SimpleNamespace(id=99, display_name="Tinki-bot"),
+            reply=AsyncMock(),
+        )
+        target_channel = SimpleNamespace(fetch_message=AsyncMock(return_value=target_message))
+        cog.bot.get_channel = MagicMock(return_value=target_channel)
+
+        with patch.object(cog, "_generate_reply_to_linked_message", new=AsyncMock()) as reply_mock:
+            await cog.on_message(message)
+
+        cog.bot.get_channel.assert_not_called()
+        target_channel.fetch_message.assert_not_awaited()
+        reply_mock.assert_not_awaited()
+        target_message.reply.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
+
     async def test_on_message_ignores_unmentioned_link_to_non_tinki_message(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
@@ -1370,6 +1394,29 @@ class TestOpenAIHelpers:
 
         assert wrapped.startswith("4")
         run_blocking_mock.assert_awaited_once()
+
+    async def test_create_chat_completion_uses_completion_token_limit_for_gpt5_models(self):
+        completion = SimpleNamespace(choices=[])
+        fake_client = MagicMock()
+        fake_client.chat.completions.create = MagicMock(return_value=completion)
+
+        async def fake_run_blocking(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        with patch("utils.openai_helpers.run_blocking", new=AsyncMock(side_effect=fake_run_blocking)):
+            from utils.openai_helpers import create_chat_completion
+
+            result = await create_chat_completion(
+                fake_client,
+                model="gpt-5.4",
+                messages=[],
+                max_tokens=42,
+            )
+
+        assert result is completion
+        sent_kwargs = fake_client.chat.completions.create.call_args.kwargs
+        assert sent_kwargs["max_completion_tokens"] == 42
+        assert "max_tokens" not in sent_kwargs
 
 
 # ── score commands ────────────────────────────────────────────────────────────
