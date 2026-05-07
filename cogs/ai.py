@@ -36,6 +36,10 @@ OPENAI_UNAVAILABLE_REPLY = (
     "My OpenAI brain is rate-limited right now. "
     "Non-AI commands still work; try me again after the quota gets fed."
 )
+OPENAI_OUT_OF_MONEY_REPLY = (
+    "My OpenAI coin purse is empty right now. "
+    "Non-AI commands still work; refill the API billing and try me again."
+)
 HARD_STOP_REFUSAL_REPLY = "Absolutely not. Go break a toaster instead."
 HARD_STOP_SELF_HARM_PHRASES = (
     "die",
@@ -183,13 +187,33 @@ class AI(commands.Cog):
             return OPENAI_MODEL
         return OPENAI_FAST_MODEL
 
+    def _openai_failure_reply(self, exc: Exception) -> str:
+        parts = [str(exc)]
+        for attr in ("code", "type", "status_code"):
+            value = getattr(exc, attr, None)
+            if value is not None:
+                parts.append(str(value))
+        body = getattr(exc, "body", None)
+        if isinstance(body, dict):
+            error_body = body.get("error", body)
+            if isinstance(error_body, dict):
+                parts.extend(str(value) for value in error_body.values() if value is not None)
+        details = " ".join(parts).lower()
+        if (
+            "insufficient_quota" in details
+            or "current quota" in details
+            or "billing details" in details
+        ):
+            return OPENAI_OUT_OF_MONEY_REPLY
+        return OPENAI_UNAVAILABLE_REPLY
+
     async def _create_openai_chat_completion(self, **kwargs):
         try:
             client = get_openai_client()
-            return await create_chat_completion(client, **kwargs)
+            return await create_chat_completion(client, **kwargs), None
         except Exception as exc:
             logger.warning("OpenAI chat completion failed: %s: %s", type(exc).__name__, exc)
-            return None
+            return None, self._openai_failure_reply(exc)
 
     async def _execute_natural_command(self, message, command_spec) -> bool:
         command_name = command_spec["command"]
@@ -207,7 +231,7 @@ class AI(commands.Cog):
             message.content = original_content
 
     async def _generate_random_thought(self) -> str:
-        response = await self._create_openai_chat_completion(
+        response, _ = await self._create_openai_chat_completion(
             model=OPENAI_FAST_MODEL,
             messages=[
                 {
@@ -230,7 +254,7 @@ class AI(commands.Cog):
         return response.choices[0].message.content.strip()
 
     async def _generate_reaction_reply(self, original_text: str, username: str, emoji: str) -> str:
-        response = await self._create_openai_chat_completion(
+        response, failure_reply = await self._create_openai_chat_completion(
             model=OPENAI_FAST_MODEL,
             messages=[
                 {
@@ -254,11 +278,11 @@ class AI(commands.Cog):
             temperature=1.1,
         )
         if not response:
-            return OPENAI_UNAVAILABLE_REPLY
+            return failure_reply or OPENAI_UNAVAILABLE_REPLY
         return response.choices[0].message.content.strip()
 
     async def _generate_reply_to_reply(self, original_text: str, user: discord.User, user_text: str) -> str:
-        response = await self._create_openai_chat_completion(
+        response, failure_reply = await self._create_openai_chat_completion(
             model=OPENAI_FAST_MODEL,
             messages=[
                 {
@@ -282,7 +306,7 @@ class AI(commands.Cog):
             temperature=1.1,
         )
         if not response:
-            return OPENAI_UNAVAILABLE_REPLY
+            return failure_reply or OPENAI_UNAVAILABLE_REPLY
         return response.choices[0].message.content.strip()
 
     async def _generate_reply_to_linked_message(self, target_message, requester, instruction: str) -> str:
@@ -290,7 +314,7 @@ class AI(commands.Cog):
         source_text = source_text[:1200]
         source_author = getattr(getattr(target_message, "author", None), "display_name", "someone")
         requester_name = getattr(requester, "display_name", "someone")
-        response = await self._create_openai_chat_completion(
+        response, failure_reply = await self._create_openai_chat_completion(
             model=OPENAI_FAST_MODEL,
             messages=[
                 {
@@ -316,7 +340,7 @@ class AI(commands.Cog):
             temperature=1.0,
         )
         if not response:
-            return OPENAI_UNAVAILABLE_REPLY
+            return failure_reply or OPENAI_UNAVAILABLE_REPLY
         return response.choices[0].message.content.strip() if response.choices else ""
 
     async def _generate_grounded_reply(
@@ -344,7 +368,7 @@ class AI(commands.Cog):
             "- If repo or command context is provided, only use that factual context.\n"
             "- If the context is insufficient, say so briefly instead of guessing.\n"
         )
-        completion = await self._create_openai_chat_completion(
+        completion, failure_reply = await self._create_openai_chat_completion(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -352,7 +376,7 @@ class AI(commands.Cog):
             ],
         )
         if not completion:
-            return OPENAI_UNAVAILABLE_REPLY
+            return failure_reply or OPENAI_UNAVAILABLE_REPLY
         reply = completion.choices[0].message.content.strip() if completion.choices else ""
         valid, reason = validate_grounded_reply(
             reply,
@@ -364,7 +388,7 @@ class AI(commands.Cog):
             return reply
 
         if repo_context:
-            correction = await self._create_openai_chat_completion(
+            correction, failure_reply = await self._create_openai_chat_completion(
                 model=OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -379,7 +403,7 @@ class AI(commands.Cog):
                 ],
             )
             if not correction:
-                return OPENAI_UNAVAILABLE_REPLY
+                return failure_reply or OPENAI_UNAVAILABLE_REPLY
             corrected = correction.choices[0].message.content.strip() if correction.choices else ""
             valid, _ = validate_grounded_reply(
                 corrected,

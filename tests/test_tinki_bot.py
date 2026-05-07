@@ -1102,6 +1102,25 @@ class TestAIListeners:
             "Non-AI commands still work; try me again after the quota gets fed."
         )
 
+    async def test_on_message_reports_openai_out_of_money_for_insufficient_quota(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> hi")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+
+        with patch("cogs.ai.get_openai_client", return_value=MagicMock()):
+            with patch(
+                "cogs.ai.create_chat_completion",
+                new=AsyncMock(side_effect=RuntimeError("429 insufficient_quota: check billing details")),
+            ):
+                await cog.on_message(message)
+
+        message.channel.send.assert_awaited_once_with(
+            "<@123> My OpenAI coin purse is empty right now. "
+            "Non-AI commands still work; refill the API billing and try me again."
+        )
+
     async def test_on_message_replies_directly_to_linked_discord_message(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
