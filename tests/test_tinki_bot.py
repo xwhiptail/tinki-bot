@@ -1087,6 +1087,21 @@ class TestAIListeners:
             "<@123> Sorry, something went wrong on my side."
         )
 
+    async def test_on_message_reports_openai_unavailable_when_generation_fails(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> hi")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+
+        with patch("cogs.ai.create_chat_completion", new=AsyncMock(side_effect=RuntimeError("quota"))):
+            await cog.on_message(message)
+
+        message.channel.send.assert_awaited_once_with(
+            "<@123> My OpenAI brain is rate-limited right now. "
+            "Non-AI commands still work; try me again after the quota gets fed."
+        )
+
     async def test_on_message_replies_directly_to_linked_discord_message(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
@@ -1275,6 +1290,20 @@ class TestAIListeners:
 
 
 class TestAIRandomMessageTracking:
+    async def test_random_ai_task_skips_empty_generation_result(self):
+        cog = make_ai_cog()
+        cog.random_ai_enabled = True
+        channel = SimpleNamespace(name=config.CHANNEL_RANDOM_AI, send=AsyncMock())
+        cog.bot.wait_until_ready = AsyncMock()
+        cog.bot.get_all_channels = MagicMock(return_value=[channel])
+        cog.bot.is_closed = MagicMock(side_effect=[False, True])
+
+        with patch("cogs.ai.asyncio.sleep", new=AsyncMock()):
+            with patch.object(cog, "_generate_random_thought", new=AsyncMock(return_value="")):
+                await cog._random_ai_post_task()
+
+        channel.send.assert_not_awaited()
+
     def test_track_random_ai_message_ids_prunes_oldest_entries(self):
         cog = make_ai_cog()
         cog._track_random_ai_message_id(1, max_ids=3)

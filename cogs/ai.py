@@ -32,6 +32,10 @@ from utils.openai_helpers import create_chat_completion, get_openai_client, gpt_
 
 logger = logging.getLogger(__name__)
 
+OPENAI_UNAVAILABLE_REPLY = (
+    "My OpenAI brain is rate-limited right now. "
+    "Non-AI commands still work; try me again after the quota gets fed."
+)
 HARD_STOP_REFUSAL_REPLY = "Absolutely not. Go break a toaster instead."
 HARD_STOP_SELF_HARM_PHRASES = (
     "die",
@@ -179,6 +183,14 @@ class AI(commands.Cog):
             return OPENAI_MODEL
         return OPENAI_FAST_MODEL
 
+    async def _create_openai_chat_completion(self, **kwargs):
+        try:
+            client = get_openai_client()
+            return await create_chat_completion(client, **kwargs)
+        except Exception as exc:
+            logger.warning("OpenAI chat completion failed: %s: %s", type(exc).__name__, exc)
+            return None
+
     async def _execute_natural_command(self, message, command_spec) -> bool:
         command_name = command_spec["command"]
         args = command_spec.get("args")
@@ -195,9 +207,7 @@ class AI(commands.Cog):
             message.content = original_content
 
     async def _generate_random_thought(self) -> str:
-        client = get_openai_client()
-        response = await create_chat_completion(
-            client,
+        response = await self._create_openai_chat_completion(
             model=OPENAI_FAST_MODEL,
             messages=[
                 {
@@ -215,12 +225,12 @@ class AI(commands.Cog):
             max_tokens=50,
             temperature=1.2,
         )
+        if not response:
+            return ""
         return response.choices[0].message.content.strip()
 
     async def _generate_reaction_reply(self, original_text: str, username: str, emoji: str) -> str:
-        client = get_openai_client()
-        response = await create_chat_completion(
-            client,
+        response = await self._create_openai_chat_completion(
             model=OPENAI_FAST_MODEL,
             messages=[
                 {
@@ -243,12 +253,12 @@ class AI(commands.Cog):
             max_tokens=60,
             temperature=1.1,
         )
+        if not response:
+            return OPENAI_UNAVAILABLE_REPLY
         return response.choices[0].message.content.strip()
 
     async def _generate_reply_to_reply(self, original_text: str, user: discord.User, user_text: str) -> str:
-        client = get_openai_client()
-        response = await create_chat_completion(
-            client,
+        response = await self._create_openai_chat_completion(
             model=OPENAI_FAST_MODEL,
             messages=[
                 {
@@ -271,16 +281,16 @@ class AI(commands.Cog):
             max_tokens=60,
             temperature=1.1,
         )
+        if not response:
+            return OPENAI_UNAVAILABLE_REPLY
         return response.choices[0].message.content.strip()
 
     async def _generate_reply_to_linked_message(self, target_message, requester, instruction: str) -> str:
-        client = get_openai_client()
         source_text = (getattr(target_message, "content", None) or "(no text)").strip()
         source_text = source_text[:1200]
         source_author = getattr(getattr(target_message, "author", None), "display_name", "someone")
         requester_name = getattr(requester, "display_name", "someone")
-        response = await create_chat_completion(
-            client,
+        response = await self._create_openai_chat_completion(
             model=OPENAI_FAST_MODEL,
             messages=[
                 {
@@ -305,6 +315,8 @@ class AI(commands.Cog):
             max_tokens=90,
             temperature=1.0,
         )
+        if not response:
+            return OPENAI_UNAVAILABLE_REPLY
         return response.choices[0].message.content.strip() if response.choices else ""
 
     async def _generate_grounded_reply(
@@ -316,7 +328,6 @@ class AI(commands.Cog):
         history_context: List[str],
         repo_context: List[str],
     ) -> str:
-        client = get_openai_client()
         model = self._select_reply_model(intent, text, repo_context, history_context)
         system_prompt = build_system_prompt(
             GREMLIN_SYSTEM_STYLE,
@@ -333,14 +344,15 @@ class AI(commands.Cog):
             "- If repo or command context is provided, only use that factual context.\n"
             "- If the context is insufficient, say so briefly instead of guessing.\n"
         )
-        completion = await create_chat_completion(
-            client,
+        completion = await self._create_openai_chat_completion(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
         )
+        if not completion:
+            return OPENAI_UNAVAILABLE_REPLY
         reply = completion.choices[0].message.content.strip() if completion.choices else ""
         valid, reason = validate_grounded_reply(
             reply,
@@ -352,8 +364,7 @@ class AI(commands.Cog):
             return reply
 
         if repo_context:
-            correction = await create_chat_completion(
-                client,
+            correction = await self._create_openai_chat_completion(
                 model=OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -367,6 +378,8 @@ class AI(commands.Cog):
                     },
                 ],
             )
+            if not correction:
+                return OPENAI_UNAVAILABLE_REPLY
             corrected = correction.choices[0].message.content.strip() if correction.choices else ""
             valid, _ = validate_grounded_reply(
                 corrected,
@@ -612,6 +625,8 @@ class AI(commands.Cog):
             await asyncio.sleep(wait_minutes * 60)
             if self.random_ai_enabled and channel:
                 thought = await self._generate_random_thought()
+                if not thought:
+                    continue
                 msg = await channel.send(thought)
                 self._track_random_ai_message_id(msg.id)
 
