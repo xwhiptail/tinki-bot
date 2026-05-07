@@ -317,7 +317,6 @@ class Utility(commands.Cog):
 **AI**
 `@Tinki-bot <message>` - get a reply from Tinki
 `@Tinki-bot <Discord message link> [instruction]` - have Tinki reply directly to a linked message in this server
-`<instruction> <Tinki Discord message link>` - have Tinki reply directly to one of her own linked messages
 
 **Uma Musume**
 `!gacha [1|10]` - simulate pulls (3% SSR, pity at 200)

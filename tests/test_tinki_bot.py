@@ -1151,7 +1151,7 @@ class TestAIListeners:
         target_message.reply.assert_awaited_once_with("nice try", mention_author=False)
         message.channel.send.assert_not_awaited()
 
-    async def test_on_message_handles_link_to_tinki_message_without_explicit_mention(self):
+    async def test_on_message_ignores_link_to_tinki_message_without_text_mention(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
         message = make_message("hello https://discord.com/channels/111/222/333")
@@ -1173,10 +1173,10 @@ class TestAIListeners:
         ) as reply_mock:
             await cog.on_message(message)
 
-        cog.bot.get_channel.assert_called_once_with(222)
-        target_channel.fetch_message.assert_awaited_once_with(333)
-        reply_mock.assert_awaited_once_with(target_message, message.author, "hello")
-        target_message.reply.assert_awaited_once_with("hello back", mention_author=False)
+        cog.bot.get_channel.assert_not_called()
+        target_channel.fetch_message.assert_not_awaited()
+        reply_mock.assert_not_awaited()
+        target_message.reply.assert_not_awaited()
         message.channel.send.assert_not_awaited()
 
     async def test_on_message_ignores_unmentioned_link_to_non_tinki_message(self):
@@ -1201,7 +1201,7 @@ class TestAIListeners:
         target_message.reply.assert_not_awaited()
         message.channel.send.assert_not_awaited()
 
-    async def test_on_message_refuses_hard_stop_unmentioned_tinki_link(self):
+    async def test_on_message_ignores_hard_stop_unmentioned_tinki_link(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
         message = make_message("die https://discord.com/channels/111/222/333")
@@ -1221,9 +1221,7 @@ class TestAIListeners:
 
         reply_mock.assert_not_awaited()
         target_message.reply.assert_not_awaited()
-        message.channel.send.assert_awaited_once_with(
-            "<@123> Absolutely not. Go break a toaster instead."
-        )
+        message.channel.send.assert_not_awaited()
 
     async def test_on_message_rejects_linked_discord_message_from_other_guild(self):
         cog = make_ai_cog()
@@ -1257,14 +1255,34 @@ class TestAIListeners:
             "<@123> Absolutely not. Go break a toaster instead."
         )
 
+    async def test_on_message_ignores_reply_ping_to_tracked_random_ai_message_without_text_mention(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        cog.random_ai_message_ids.add(55)
+        author = SimpleNamespace(display_name="Tester", mention="<@123>", bot=False)
+        replied_to = SimpleNamespace(id=55, content="feral thought")
+        message = make_message("you are so wrong")
+        message.author = author
+        message.mentions = [cog.bot.user]
+        message.reference = SimpleNamespace(message_id=55)
+        message.channel.fetch_message = AsyncMock(return_value=replied_to)
+
+        with patch.object(cog, "_generate_reply_to_reply", new=AsyncMock()) as reply_mock:
+            await cog.on_message(message)
+
+        reply_mock.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
+
     async def test_on_message_replies_to_tracked_random_ai_reply(self):
         cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
         cog.random_ai_message_ids.add(55)
         author = SimpleNamespace(display_name="Tester", mention="<@123>", bot=False)
         replied_to = SimpleNamespace(id=55, content="feral thought")
         sent_reply = SimpleNamespace(id=77)
-        message = make_message("you are so wrong")
+        message = make_message("<@99> you are so wrong")
         message.author = author
+        message.mentions = [cog.bot.user]
         message.reference = SimpleNamespace(message_id=55)
         message.channel.fetch_message = AsyncMock(return_value=replied_to)
         message.channel.send = AsyncMock(return_value=sent_reply)
@@ -2236,7 +2254,6 @@ class TestUtilityChangelog:
         assert "!uptime" in sent_text
         assert "`!emote [name] [1x-4x]` - search 7TV, preview results in the picker, choose a size, and send" in sent_text
         assert "`@Tinki-bot <Discord message link> [instruction]`" in sent_text
-        assert "`<instruction> <Tinki Discord message link>`" in sent_text
 
 
 class TestUtilityCommands:

@@ -171,6 +171,23 @@ class AI(commands.Cog):
             return ["Commands that match the question: " + ", ".join(matches[:12])]
         return []
 
+    def _bot_mention_tokens(self):
+        bot = getattr(self, "bot", None)
+        bot_id = getattr(getattr(bot, "user", None), "id", None)
+        if bot_id is None:
+            return ()
+        return (f"<@!{bot_id}>", f"<@{bot_id}>")
+
+    def _message_mentions_bot_in_text(self, message) -> bool:
+        content = str(getattr(message, "content", "") or "")
+        return any(token in content for token in self._bot_mention_tokens())
+
+    def _strip_bot_mention(self, text: str) -> str:
+        stripped = text
+        for token in self._bot_mention_tokens():
+            stripped = stripped.replace(token, "")
+        return stripped.strip()
+
     def _fallback_grounded_reply(self, intent: str, repo_context: List[str]) -> str:
         if repo_context:
             first_block = repo_context[0].splitlines()
@@ -659,42 +676,26 @@ class AI(commands.Cog):
         if message.author.bot:
             return
 
-        if message.reference is not None and not message.content.startswith('!'):
+        mentions_bot_in_text = self._message_mentions_bot_in_text(message)
+
+        if message.reference is not None and mentions_bot_in_text and not message.content.startswith('!'):
             try:
                 replied_to = await message.channel.fetch_message(message.reference.message_id)
             except discord.NotFound:
                 replied_to = None
             if replied_to and replied_to.id in self.random_ai_message_ids:
+                user_text = self._strip_bot_mention(message.content) or "Reply to your message."
                 reply = await self._generate_reply_to_reply(
                     original_text=replied_to.content or "(no text)",
                     user=message.author,
-                    user_text=message.content,
+                    user_text=user_text,
                 )
                 bot_reply = await message.channel.send(f"{message.author.mention} {reply}")
                 self._track_random_ai_message_id(bot_reply.id)
                 return
 
-        if (
-            message.reference is None
-            and self.bot.user not in message.mentions
-            and not message.content.startswith(('!', '$'))
-        ):
-            handled = await self._handle_discord_message_link(
-                message,
-                message.content,
-                notify_errors=False,
-                require_target_author_id=getattr(self.bot.user, "id", None),
-            )
-            if handled:
-                return
-
-        if message.reference is None and self.bot.user in message.mentions:
-            text = (
-                message.content
-                .replace(f'<@!{self.bot.user.id}>', '')
-                .replace(f'<@{self.bot.user.id}>', '')
-                .strip()
-            )
+        if message.reference is None and mentions_bot_in_text:
+            text = self._strip_bot_mention(message.content)
             if not text:
                 return
             text = text[:1000]  # hard cap — prevents novel-pasting from blowing up token budget

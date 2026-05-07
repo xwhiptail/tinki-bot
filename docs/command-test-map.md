@@ -19,7 +19,8 @@ Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke
 | --- | --- |
 | `@Tinki-bot <message>` | `test_on_message_strips_mention_and_truncates_text`, `test_on_message_short_circuits_hard_stop_refusal_before_ai_generation`, `test_on_message_reports_handle_mention_errors`, `test_on_message_reports_openai_unavailable_when_generation_fails`, `test_on_message_reports_openai_out_of_money_for_insufficient_quota` |
 | `@Tinki-bot <Discord message link> [instruction]` | `test_on_message_replies_directly_to_linked_discord_message`, `test_on_message_rejects_linked_discord_message_from_other_guild`, `test_on_message_refuses_hard_stop_instruction_even_with_discord_link` |
-| `<instruction> <Tinki Discord message link>` | `test_on_message_handles_link_to_tinki_message_without_explicit_mention`, `test_on_message_ignores_unmentioned_link_to_non_tinki_message`, `test_on_message_refuses_hard_stop_unmentioned_tinki_link` |
+| Unmentioned Discord message links | `test_on_message_ignores_link_to_tinki_message_without_text_mention`, `test_on_message_ignores_unmentioned_link_to_non_tinki_message`, `test_on_message_ignores_hard_stop_unmentioned_tinki_link` |
+| Replying to tracked random AI messages | `test_on_message_ignores_reply_ping_to_tracked_random_ai_message_without_text_mention`, `test_on_message_replies_to_tracked_random_ai_reply` |
 
 ## Admin
 
