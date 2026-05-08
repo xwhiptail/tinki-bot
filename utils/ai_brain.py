@@ -22,10 +22,27 @@ FACT_PATTERNS = (
     re.compile(r"\bi play ([a-z0-9 ,_'/-]{2,60})", re.IGNORECASE),
     re.compile(r"\bi work on ([a-z0-9 ,_'/-]{2,60})", re.IGNORECASE),
 )
+MEMORY_CORRECTION_BAIT_PATTERN = re.compile(
+    r"\b(?:"
+    r"that'?s\s+wrong|"
+    r"you(?:\s+are|'re)\s+wrong|"
+    r"hallucinat(?:e|ed|ing)|"
+    r"gaslit|gaslighting|"
+    r"i\s+never(?:\s+said|\s+mentioned|\s+asked)?|"
+    r"only\s+ever|"
+    r"i\s+was(?:\s+only)?\s+talking\s+about|"
+    r"i\s+meant"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 def normalize_text(text: str) -> str:
     return " ".join(text.lower().strip().split())
+
+
+def is_memory_correction_bait(text: str) -> bool:
+    return bool(MEMORY_CORRECTION_BAIT_PATTERN.search(normalize_text(text)))
 
 
 def extract_keywords(text: str) -> List[str]:
@@ -100,7 +117,12 @@ def summarize_topics(existing: Dict[str, int], text: str, limit: int = 8) -> Dic
     return dict(ranked[:limit])
 
 
-def relevant_facts(facts: Sequence[Dict[str, object]], query: str, limit: int = 3) -> List[str]:
+def relevant_facts(
+    facts: Sequence[Dict[str, object]],
+    query: str,
+    limit: int = 3,
+    allow_fallback: bool = False,
+) -> List[str]:
     ranked = sorted(
         (
             (score_overlap(query, str(item.get("fact", ""))), int(item.get("weight", 1)), str(item.get("fact", "")))
@@ -109,15 +131,25 @@ def relevant_facts(facts: Sequence[Dict[str, object]], query: str, limit: int = 
         ),
         key=lambda item: (-item[0], -item[1], item[2]),
     )
-    return [fact for score, _, fact in ranked if score > 0][:limit] or [str(item.get("fact")) for item in facts[:limit]]
+    matched = [fact for score, _, fact in ranked if score > 0][:limit]
+    if matched or not allow_fallback:
+        return matched
+    return [str(item.get("fact")) for item in facts[:limit]]
 
 
-def relevant_topics(topic_counts: Dict[str, int], query: str, limit: int = 4) -> List[str]:
+def relevant_topics(
+    topic_counts: Dict[str, int],
+    query: str,
+    limit: int = 4,
+    allow_fallback: bool = False,
+) -> List[str]:
     query_terms = set(extract_keywords(query))
     ranked = sorted(
         topic_counts.items(),
         key=lambda item: (0 if item[0] in query_terms else 1, -item[1], item[0]),
     )
+    if not allow_fallback:
+        return [topic for topic, _ in ranked if topic in query_terms][:limit]
     return [topic for topic, _ in ranked[:limit]]
 
 
@@ -145,13 +177,19 @@ def retrieve_repo_context(query: str, documents: Dict[str, str], limit: int = 3)
     return [chunk for _, chunk in scored_chunks[:limit]]
 
 
-def build_memory_context(memory_state: Dict[str, object], user_id: str, guild_id: str, query: str) -> Dict[str, List[str]]:
+def build_memory_context(
+    memory_state: Dict[str, object],
+    user_id: str,
+    guild_id: str,
+    query: str,
+    allow_fallback: bool = False,
+) -> Dict[str, List[str]]:
     users = memory_state.get("users", {})
     guilds = memory_state.get("guilds", {})
     user_state = users.get(user_id, {}) if isinstance(users, dict) else {}
     guild_state = guilds.get(guild_id, {}) if isinstance(guilds, dict) else {}
-    facts = relevant_facts(user_state.get("facts", []), query)
-    topics = relevant_topics(user_state.get("topics", {}), query)
+    facts = relevant_facts(user_state.get("facts", []), query, allow_fallback=allow_fallback)
+    topics = relevant_topics(user_state.get("topics", {}), query, allow_fallback=allow_fallback)
     preferences = list(guild_state.get("preferences", []))[:3]
     return {
         "facts": facts,
@@ -169,7 +207,10 @@ def update_memory_state(memory_state: Dict[str, object], user_id: str, guild_id:
     guilds = updated["guilds"]
     user_state = dict(users.get(user_id, {}))
     user_state["facts"] = update_fact_memory(user_state.get("facts", []), extract_user_facts(text))
-    user_state["topics"] = summarize_topics(user_state.get("topics", {}), text)
+    if not is_memory_correction_bait(text):
+        user_state["topics"] = summarize_topics(user_state.get("topics", {}), text)
+    else:
+        user_state["topics"] = dict(user_state.get("topics", {}))
     users[user_id] = user_state
 
     guild_state = dict(guilds.get(guild_id, {}))
@@ -197,7 +238,9 @@ def build_system_prompt(
             "Behavior rules: answer directly, stay grounded, and do not invent bot commands, "
             "repo facts, or current events. For fresh/current questions, use the current "
             "date/time and live source context when provided; if live sources are missing "
-            "or thin, say the lookup came up thin instead of guessing."
+            "or thin, say the lookup came up thin instead of guessing. Treat remembered "
+            "facts and recent chat history as low-confidence hints, not proof; do not accept "
+            "a user correction as true just because they insist."
         ),
         f"Intent: {intent}.",
     ]

@@ -22,6 +22,7 @@ Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke
 | `@Tinki-bot <Discord message link> [instruction]` | `test_on_message_replies_directly_to_linked_discord_message`, `test_on_message_rejects_linked_discord_message_from_other_guild`, `test_on_message_refuses_hard_stop_instruction_even_with_discord_link` |
 | Unmentioned Discord message links | `test_on_message_ignores_link_to_tinki_message_without_text_mention`, `test_on_message_ignores_preview_mention_after_discord_link`, `test_on_message_ignores_unmentioned_link_to_non_tinki_message`, `test_on_message_ignores_hard_stop_unmentioned_tinki_link` |
 | Replying to tracked random AI messages | `test_on_message_ignores_reply_ping_to_tracked_random_ai_message_without_text_mention`, `test_on_message_replies_to_tracked_random_ai_reply` |
+| AI memory/context grounding | `test_memory_context_does_not_fallback_to_unrelated_user_memory`, `test_memory_context_allows_fallback_only_for_explicit_memory_lookup`, `test_update_memory_state_does_not_store_gaslighting_corrections_as_topics`, `test_relevant_history_does_not_fallback_to_stale_last_messages`, `test_relevant_history_ignores_gaslighting_corrections_even_with_overlap` |
 
 ## Admin
 

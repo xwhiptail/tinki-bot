@@ -847,9 +847,53 @@ class TestAIBrain:
 
     def test_update_memory_state_stores_user_facts_and_topics(self):
         state = update_memory_state({"users": {}, "guilds": {}}, "123", "456", "my name is Matt and I like raiding")
-        memory = build_memory_context(state, "123", "456", "what do I like")
+        memory = build_memory_context(state, "123", "456", "raiding")
         assert any("Matt" in fact for fact in memory["facts"])
         assert "raiding" in memory["topics"]
+
+    def test_memory_context_does_not_fallback_to_unrelated_user_memory(self):
+        state = {
+            "users": {
+                "123": {
+                    "facts": [{"fact": "main hunter", "weight": 4}],
+                    "topics": {"calculator": 5, "dragoon": 3},
+                }
+            },
+            "guilds": {},
+        }
+
+        memory = build_memory_context(state, "123", "456", "what is the next ror2 dlc")
+
+        assert memory["facts"] == []
+        assert memory["topics"] == []
+
+    def test_memory_context_allows_fallback_only_for_explicit_memory_lookup(self):
+        state = {
+            "users": {
+                "123": {
+                    "facts": [{"fact": "main hunter", "weight": 4}],
+                    "topics": {"raiding": 5},
+                }
+            },
+            "guilds": {},
+        }
+
+        memory = build_memory_context(state, "123", "456", "what did i tell you", allow_fallback=True)
+
+        assert memory["facts"] == ["main hunter"]
+        assert memory["topics"] == ["raiding"]
+
+    def test_update_memory_state_does_not_store_gaslighting_corrections_as_topics(self):
+        state = update_memory_state(
+            {"users": {}, "guilds": {}},
+            "123",
+            "456",
+            "no that's wrong, i never mentioned a calculator, i was only talking about final fantasy",
+        )
+
+        memory = build_memory_context(state, "123", "456", "calculator", allow_fallback=True)
+
+        assert memory["topics"] == []
 
     def test_retrieve_repo_context_finds_matching_doc_chunks(self):
         docs = {"README.md": "Deploy with deploy-ec2.ps1\nUse !commands for help"}
@@ -1514,6 +1558,24 @@ class TestAISendReplyChunks:
 
 
 class TestAIMemoryLookupContext:
+    def test_relevant_history_does_not_fallback_to_stale_last_messages(self):
+        cog = make_ai_cog()
+        history = [
+            {"role": "user", "content": "what does DRG stand for on a calculator?"},
+            {"role": "assistant", "content": "DRG means Degrees, Radians, and Gradians."},
+            {"role": "user", "content": "no that's wrong, i was only talking about final fantasy"},
+        ]
+
+        assert cog._relevant_history(history, "what is the next ror2 dlc") == []
+
+    def test_relevant_history_ignores_gaslighting_corrections_even_with_overlap(self):
+        cog = make_ai_cog()
+        history = [
+            {"role": "user", "content": "you are hallucinating, i never said calculator, only final fantasy"},
+        ]
+
+        assert cog._relevant_history(history, "final fantasy") == []
+
     async def test_ai_prefers_history_context_for_memory_lookup_prompts(self):
         cog = make_ai_cog()
         with patch.object(cog, "_search_channel_history", new=AsyncMock(return_value=["my main is hunter"])):

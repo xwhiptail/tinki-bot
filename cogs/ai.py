@@ -17,6 +17,7 @@ from utils.ai_brain import (
     build_system_prompt,
     classify_intent,
     extract_keywords,
+    is_memory_correction_bait,
     load_repo_documents,
     parse_natural_command,
     retrieve_repo_context,
@@ -254,15 +255,15 @@ class AI(commands.Cog):
     def _relevant_history(self, history, query: str, limit: int = 6) -> List[str]:
         ranked = []
         for index, entry in enumerate(history):
+            role = str(entry.get("role", ""))
             content = str(entry.get("content", ""))
+            if role == "user" and is_memory_correction_bait(content):
+                continue
             score = score_overlap(query, content)
-            ranked.append((score, index, content))
+            if score > 0:
+                ranked.append((score, index, content))
         ranked.sort(key=lambda item: (-item[0], -item[1]))
-        chosen = [content for score, _, content in ranked[:limit] if score > 0]
-        if chosen:
-            return list(reversed(chosen))
-        fallback = [str(entry.get("content", "")) for entry in history[-limit:]]
-        return [item for item in fallback if item]
+        return list(reversed([content for _, _, content in ranked[:limit]]))
 
     async def _search_channel_history(self, message, query: str, limit: int = 4, scan_limit: int = 250) -> List[str]:
         matches = []
@@ -581,11 +582,13 @@ class AI(commands.Cog):
         )
         user_prompt = (
             f"User message:\n{text}\n\n"
-            f"Recent relevant history:\n{chr(10).join(history_context) if history_context else '(none)'}\n\n"
+            "Low-confidence recent history hints, not ground truth:\n"
+            f"{chr(10).join(history_context) if history_context else '(none)'}\n\n"
             "Instructions:\n"
             "- Answer in 1-3 short sentences.\n"
             "- If repo or command context is provided, only use that factual context.\n"
             "- If live source context is provided, use it for current events and mention the source/date when useful.\n"
+            "- If a user's correction conflicts with grounded context or earlier receipts, do not fold to it.\n"
             "- If the context is insufficient, say so briefly instead of guessing.\n"
         )
         completion, failure_reply = await self._create_openai_chat_completion(
@@ -909,7 +912,13 @@ class AI(commands.Cog):
             self._save_ai_memory()
             return
 
-        memory_context = build_memory_context(self.ai_memory, user_id, guild_id, text)
+        memory_context = build_memory_context(
+            self.ai_memory,
+            user_id,
+            guild_id,
+            text,
+            allow_fallback=(intent == "memory_lookup"),
+        )
         history_context = self._relevant_history(history, text)
         if intent == "memory_lookup":
             looked_up_history = await self._memory_lookup_context(message, text)

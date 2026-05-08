@@ -324,6 +324,7 @@ Tinki responds when mentioned (`@Tinki-bot`) and when a normal message clearly t
 AI prompts include the current America/New_York and UTC date/time. Fresh/current/recent questions about gaming or world events, including common game aliases like `RoR2`, trigger a short cached web lookup, source snippets are ranked with official game sources preferred when available, and clear source-backed direct answers are validated before Tinki replies so stale model memory cannot override the lookup. Released/live questions are treated separately from announced/upcoming/next-news questions.
 Requests for erotic or spicy writing are deterministically deflected into a playful public tease before any OpenAI call.
 Known context traps like calculator `DRG` versus Final Fantasy `DRG` are answered deterministically so repeated false corrections or retroactive context switches cannot flip the answer.
+Stored facts and recent chat history are treated as low-confidence hints. Tinki only injects remembered facts/topics when they overlap the current request, keeps fallback memory for explicit memory-lookup questions, and avoids saving "no, you're wrong" correction bait as future topic context.
 
 ### Bowling score tracking
 
@@ -376,7 +377,7 @@ For infrastructure cost control outside the bot runtime, use the repo maintenanc
 - `@Tinki-bot <message>` - get a reply from Tinki
 - Messages that clearly talk about Tinki/the bot - get an automatic reply without pinging her
 - `@Tinki-bot <Discord message link> [instruction]` - have Tinki reply directly to a linked message she can access in the current server
-- Tinki keeps lightweight memory of explicit user facts and preferences.
+- Tinki keeps lightweight memory of explicit user facts and preferences, but only uses remembered context when it is relevant or explicitly requested.
 - For memory-style questions, Tinki can search recent accessible channel history instead of guessing.
 
 ### Reminders
