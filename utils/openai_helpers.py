@@ -4,6 +4,7 @@ import aiohttp
 from openai import OpenAI
 
 from config import GREMLIN_SYSTEM_STYLE, OPENAI_FAST_MODEL, OPENAI_MODEL
+from utils.current_awareness import build_current_time_context
 
 
 def get_openai_client() -> OpenAI:
@@ -65,7 +66,8 @@ async def gpt_wrap_fact(fact: str, user_text: str, system_prompt, model: str = O
     """Deliver a pre-computed factual answer wrapped in Tinki's personality via assistant prefill."""
     client = get_openai_client()
     system = (
-        GREMLIN_SYSTEM_STYLE + " "
+        GREMLIN_SYSTEM_STYLE + "\n\n"
+        + build_current_time_context() + "\n\n"
         f"Your name is @Tinki-bot. "
         f"Use this persona description as extra flavor: {system_prompt}"
     )

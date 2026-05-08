@@ -189,14 +189,22 @@ def build_system_prompt(
     intent: str,
     memory_context: Dict[str, List[str]],
     repo_context: Sequence[str],
+    current_context: str = "",
 ) -> str:
     sections = [
         base_personality.strip(),
-        "Behavior rules: answer directly, stay grounded, and do not invent bot commands or repo facts.",
+        (
+            "Behavior rules: answer directly, stay grounded, and do not invent bot commands, "
+            "repo facts, or current events. For fresh/current questions, use the current "
+            "date/time and live source context when provided; if live sources are missing "
+            "or thin, say the lookup came up thin instead of guessing."
+        ),
         f"Intent: {intent}.",
     ]
     if persona_description:
         sections.append(f"Persona flavor: {persona_description}")
+    if current_context:
+        sections.append("Current awareness:\n" + current_context.strip())
     if memory_context.get("facts"):
         sections.append("Relevant user facts: " + "; ".join(memory_context["facts"]))
     if memory_context.get("topics"):

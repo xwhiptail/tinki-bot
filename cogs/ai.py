@@ -26,6 +26,7 @@ from utils.ai_brain import (
 )
 from utils.bot_insight import maybe_bot_insight_reply
 from utils.calculator import maybe_calculate_reply
+from utils.current_awareness import build_current_awareness_context, build_current_time_context
 from utils.letter_counter import maybe_count_letter_reply
 from utils.openai_helpers import create_chat_completion, get_openai_client, gpt_wrap_fact
 
@@ -304,6 +305,15 @@ class AI(commands.Cog):
             return OPENAI_OUT_OF_MONEY_REPLY
         return OPENAI_UNAVAILABLE_REPLY
 
+    def _system_style(self, instructions: str = "") -> str:
+        sections = [GREMLIN_SYSTEM_STYLE, build_current_time_context()]
+        if instructions:
+            sections.append(instructions)
+        return "\n\n".join(section.strip() for section in sections if section.strip())
+
+    async def _current_awareness_context(self, text: str) -> str:
+        return await build_current_awareness_context(text)
+
     async def _create_openai_chat_completion(self, **kwargs):
         try:
             client = get_openai_client()
@@ -333,8 +343,7 @@ class AI(commands.Cog):
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        GREMLIN_SYSTEM_STYLE + " "
+                    "content": self._system_style(
                         "Generate ONE unprompted thought you might randomly blurt out in Discord. "
                         "Could be a hot take about Azeroth, a tinkering disaster, a Hunter complaint, "
                         "a roast of gamers, or pure tiny-engineer chaos. "
@@ -356,8 +365,7 @@ class AI(commands.Cog):
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        GREMLIN_SYSTEM_STYLE + " "
+                    "content": self._system_style(
                         "You are reacting to someone reacting to your message. "
                         "Make a short roast or snarky remark about their reaction or vibe. 1-2 sentences max."
                     ),
@@ -384,8 +392,7 @@ class AI(commands.Cog):
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        GREMLIN_SYSTEM_STYLE + " "
+                    "content": self._system_style(
                         "You are replying to someone who replied to your earlier message. "
                         "Make it sound like a sharp-tongued gnome roasting their take. 1-2 sentences. No serious advice."
                     ),
@@ -416,8 +423,7 @@ class AI(commands.Cog):
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        GREMLIN_SYSTEM_STYLE + " "
+                    "content": self._system_style(
                         "You are replying directly to a linked Discord message. "
                         "Write only the message to post. Keep it to 1-3 short sentences."
                     ),
@@ -448,6 +454,7 @@ class AI(commands.Cog):
         memory_context,
         history_context: List[str],
         repo_context: List[str],
+        current_context: str,
     ) -> str:
         model = self._select_reply_model(intent, text, repo_context, history_context)
         system_prompt = build_system_prompt(
@@ -456,6 +463,7 @@ class AI(commands.Cog):
             intent,
             memory_context,
             repo_context,
+            current_context=current_context,
         )
         user_prompt = (
             f"User message:\n{text}\n\n"
@@ -463,6 +471,7 @@ class AI(commands.Cog):
             "Instructions:\n"
             "- Answer in 1-3 short sentences.\n"
             "- If repo or command context is provided, only use that factual context.\n"
+            "- If live source context is provided, use it for current events and mention the source/date when useful.\n"
             "- If the context is insufficient, say so briefly instead of guessing.\n"
         )
         completion, failure_reply = await self._create_openai_chat_completion(
@@ -776,6 +785,7 @@ class AI(commands.Cog):
         repo_context = []
         if intent in {"command_help", "bot_repo", "question_answer"}:
             repo_context = self._command_context(text) + retrieve_repo_context(text, self.repo_documents)
+        current_context = await self._current_awareness_context(text)
 
         reply = await self._generate_grounded_reply(
             text,
@@ -784,6 +794,7 @@ class AI(commands.Cog):
             memory_context,
             history_context,
             repo_context,
+            current_context,
         )
         await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
 

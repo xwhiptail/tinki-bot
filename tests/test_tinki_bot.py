@@ -41,6 +41,15 @@ from utils.ai_brain import (
     update_memory_state,
     validate_grounded_reply,
 )
+from utils.current_awareness import (
+    CurrentAwarenessSource,
+    build_current_awareness_context,
+    build_search_query,
+    build_current_time_context,
+    needs_current_awareness,
+    parse_duckduckgo_results,
+    parse_feed_sources,
+)
 from utils.calculator import maybe_calculate_reply
 from utils.bot_insight import maybe_bot_insight_reply
 from utils.letter_counter import maybe_count_letter_reply
@@ -864,10 +873,13 @@ class TestAIBrain:
             "command_help",
             {"facts": ["likes WoW"], "topics": ["deploy"], "preferences": ["keep replies short"]},
             ["[README]\nUse !commands"],
+            current_context="Current date/time:\n- America/New_York: Thursday, May 7, 2026",
         )
         assert "cute but mean" in prompt
         assert "likes WoW" in prompt
         assert "Use !commands" in prompt
+        assert "Current awareness:" in prompt
+        assert "Thursday, May 7, 2026" in prompt
 
     def test_gremlin_system_style_keeps_gnome_identity_without_gremlin_words(self):
         assert "cute but snarky gnome" in config.GREMLIN_SYSTEM_STYLE
@@ -892,6 +904,123 @@ class TestAIBrain:
     def test_parse_natural_command_for_simple_media(self):
         parsed = parse_natural_command("show me a cat")
         assert parsed == {"command": "cat", "args": None}
+
+
+class TestCurrentAwareness:
+    def test_build_current_time_context_includes_local_today_and_utc(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        now = datetime(2026, 5, 7, 20, 32, tzinfo=ZoneInfo("America/New_York"))
+
+        context = build_current_time_context(now)
+
+        assert "America/New_York: Thursday, May 7, 2026, 8:32 PM EDT" in context
+        assert "UTC: Friday, May 8, 2026, 12:32 AM UTC" in context
+        assert "Use the America/New_York date when users say today" in context
+
+    def test_needs_current_awareness_detects_recent_world_and_patch_sensitive_gaming_questions(self):
+        assert needs_current_awareness("today is may 7th. what civ was added to aoe4 today?")
+        assert needs_current_awareness("what's the latest world news about nasa?")
+        assert needs_current_awareness("what's the best opening rotation for DRG")
+        assert not needs_current_awareness("what are the bosses of molten core")
+
+    def test_build_search_query_expands_game_aliases(self):
+        query = build_search_query("what civ was added to aoe4 today?")
+
+        assert "Age of Empires IV" in query
+        assert "gaming news" in query
+
+    def test_parse_feed_sources_extracts_rss_items(self):
+        xml = """
+        <rss version="2.0">
+          <channel>
+            <title>Age of Empires News</title>
+            <item>
+              <title>Age of Empires IV: Yue Fei's Legacy - Available Now!</title>
+              <link>https://www.ageofempires.com/news/yue-fei</link>
+              <pubDate>Thu, 07 May 2026 17:13:01 +0000</pubDate>
+              <description><![CDATA[The new campaign and civilization are live today.]]></description>
+            </item>
+          </channel>
+        </rss>
+        """
+
+        results = parse_feed_sources(xml, limit=1)
+
+        assert results == [
+            CurrentAwarenessSource(
+                title="Age of Empires IV: Yue Fei's Legacy - Available Now!",
+                url="https://www.ageofempires.com/news/yue-fei",
+                snippet="The new campaign and civilization are live today.",
+                published="Thu, 07 May 2026 17:13:01 +0000",
+                source="Age of Empires News",
+            )
+        ]
+
+    def test_parse_duckduckgo_results_extracts_titles_urls_and_snippets(self):
+        html = """
+        <div class="result">
+          <a class="result__a" href="/l/?uddg=https%3A%2F%2Fwww.ageofempires.com%2Fnews%2Fnew-civ">
+            Age of Empires IV adds the Knights of Cross and Rose
+          </a>
+          <div class="result__snippet">The latest update adds a new civilization on May 7.</div>
+        </div>
+        """
+
+        results = parse_duckduckgo_results(html, limit=1)
+
+        assert results == [
+            CurrentAwarenessSource(
+                title="Age of Empires IV adds the Knights of Cross and Rose",
+                url="https://www.ageofempires.com/news/new-civ",
+                snippet="The latest update adds a new civilization on May 7.",
+                source="DuckDuckGo",
+            )
+        ]
+
+    async def test_build_current_awareness_context_includes_live_sources_for_fresh_questions(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        async def fake_fetcher(query, limit=4):
+            assert "aoe4" in query.lower()
+            return [
+                CurrentAwarenessSource(
+                    title="Age of Empires IV adds a new civilization",
+                    url="https://example.com/aoe4",
+                    snippet="A May 7 update added a new civilization.",
+                    published="May 7, 2026",
+                    source="Example News",
+                )
+            ]
+
+        context = await build_current_awareness_context(
+            "today is may 7th. what civ was added to aoe4 today?",
+            now=datetime(2026, 5, 7, 20, 32, tzinfo=ZoneInfo("America/New_York")),
+            fetcher=fake_fetcher,
+        )
+
+        assert "Live source context" in context
+        assert "Age of Empires IV adds a new civilization" in context
+        assert "May 7, 2026" in context
+        assert "https://example.com/aoe4" in context
+
+    async def test_build_current_awareness_context_notes_lookup_failure_for_fresh_questions(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        async def empty_fetcher(query, limit=4):
+            return []
+
+        context = await build_current_awareness_context(
+            "what was just announced in gaming today?",
+            now=datetime(2026, 5, 7, 20, 32, tzinfo=ZoneInfo("America/New_York")),
+            fetcher=empty_fetcher,
+        )
+
+        assert "Live lookup returned no usable source snippets" in context
+        assert "do not ask for a date if the user already gave one" in context
 
 
 class TestAINaturalCommands:
@@ -1123,6 +1252,28 @@ class TestAIListeners:
 
         grounded_mock.assert_awaited_once()
         message.channel.send.assert_awaited_once_with("<@123> ramen rules")
+
+    async def test_on_message_passes_current_awareness_context_to_grounded_reply(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> today is may 7th. what civ was added to aoe4 today?")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+        current_context = (
+            "Current date/time:\n"
+            "- America/New_York: Thursday, May 7, 2026, 8:32 PM EDT\n"
+            "Live source context:\n"
+            "- Example: AoE4 added a civ."
+        )
+
+        with patch.object(cog, "_current_awareness_context", new=AsyncMock(return_value=current_context)) as current_mock:
+            with patch.object(cog, "_generate_grounded_reply", new=AsyncMock(return_value="source says new civ")) as grounded_mock:
+                await cog.on_message(message)
+
+        current_mock.assert_awaited_once_with("today is may 7th. what civ was added to aoe4 today?")
+        grounded_mock.assert_awaited_once()
+        assert grounded_mock.await_args.args[6] == current_context
+        message.channel.send.assert_awaited_once_with("<@123> source says new civ")
 
     async def test_on_message_answers_drg_calculator_question_before_ai_generation(self):
         cog = make_ai_cog()
