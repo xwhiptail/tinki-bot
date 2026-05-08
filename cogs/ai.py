@@ -29,6 +29,7 @@ from utils.bot_insight import maybe_bot_insight_reply
 from utils.calculator import maybe_calculate_reply
 from utils.current_awareness import build_current_awareness_context, build_current_time_context
 from utils.letter_counter import maybe_count_letter_reply
+from utils.link_context import build_link_context
 from utils.openai_helpers import create_chat_completion, get_openai_client, gpt_wrap_fact
 
 
@@ -199,6 +200,7 @@ OLD_CREATURE_FACT_CONTEXT_PATTERN = re.compile(
     r"\b(?:world of warcraft|warcraft|horde|bilgewater|kezan|cartel|playable race|npc|race)\b",
     re.IGNORECASE,
 )
+IMAGE_ATTACHMENT_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 
 
 class AI(commands.Cog):
@@ -332,16 +334,8 @@ class AI(commands.Cog):
         return False
 
     def _first_tinki_text_reference_index(self, content: str):
-        matches = []
-        for pattern in (
-            TINKI_NAME_REFERENCE_PATTERN,
-            TINKI_GENERIC_BOT_REFERENCE_PATTERN,
-            TINKI_PRONOUN_STATUS_PATTERN,
-        ):
-            match = pattern.search(content)
-            if match:
-                matches.append(match.start())
-        return min(matches) if matches else None
+        match = TINKI_NAME_REFERENCE_PATTERN.search(content)
+        return match.start() if match else None
 
     def _message_talks_about_tinki_in_text(self, message) -> bool:
         content = str(getattr(message, "content", "") or "")
@@ -426,6 +420,28 @@ class AI(commands.Cog):
 
     async def _current_awareness_context(self, text: str) -> str:
         return await build_current_awareness_context(text)
+
+    async def _web_link_context(self, text: str) -> str:
+        return await build_link_context(text)
+
+    def _image_urls_from_message(self, message, limit: int = 4) -> List[str]:
+        image_urls = []
+        for attachment in getattr(message, "attachments", []) or []:
+            url = str(getattr(attachment, "url", "") or "")
+            content_type = str(getattr(attachment, "content_type", "") or "").lower()
+            filename = str(getattr(attachment, "filename", "") or "").lower()
+            if not url:
+                continue
+            if content_type.startswith("image/") or filename.endswith(IMAGE_ATTACHMENT_EXTENSIONS):
+                image_urls.append(url)
+            if len(image_urls) >= limit:
+                break
+        return image_urls
+
+    def _message_has_context_payload(self, message, text: str) -> bool:
+        if text.strip():
+            return True
+        return bool(self._image_urls_from_message(message))
 
     async def _create_openai_chat_completion(self, **kwargs):
         try:
@@ -570,8 +586,10 @@ class AI(commands.Cog):
         history_context: List[str],
         repo_context: List[str],
         current_context: str,
+        image_urls: List[str] = None,
     ) -> str:
-        model = self._select_reply_model(intent, text, repo_context, history_context)
+        image_urls = image_urls or []
+        model = OPENAI_MODEL if image_urls else self._select_reply_model(intent, text, repo_context, history_context)
         system_prompt = build_system_prompt(
             GREMLIN_SYSTEM_STYLE,
             persona_description,
@@ -588,14 +606,23 @@ class AI(commands.Cog):
             "- Answer in 1-3 short sentences.\n"
             "- If repo or command context is provided, only use that factual context.\n"
             "- If live source context is provided, use it for current events and mention the source/date when useful.\n"
+            "- If linked page context is provided, use it for the linked page instead of guessing from the URL.\n"
+            "- If images are provided, inspect them directly and describe only what is visible.\n"
             "- If a user's correction conflicts with grounded context or earlier receipts, do not fold to it.\n"
             "- If the context is insufficient, say so briefly instead of guessing.\n"
         )
+        user_content = user_prompt
+        if image_urls:
+            user_content = [{"type": "text", "text": user_prompt}]
+            user_content.extend(
+                {"type": "image_url", "image_url": {"url": image_url}}
+                for image_url in image_urls
+            )
         completion, failure_reply = await self._create_openai_chat_completion(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
+                {"role": "user", "content": user_content},
             ],
         )
         if not completion:
@@ -930,7 +957,20 @@ class AI(commands.Cog):
         repo_context = []
         if intent in {"command_help", "bot_repo", "question_answer"}:
             repo_context = self._command_context(text) + retrieve_repo_context(text, self.repo_documents)
-        current_context = await self._current_awareness_context(text)
+        context_parts = [
+            part for part in (
+                await self._current_awareness_context(text),
+                await self._web_link_context(text),
+            )
+            if part
+        ]
+        image_urls = self._image_urls_from_message(message)
+        if image_urls:
+            context_parts.append(
+                "Attached image context:\n"
+                f"- {len(image_urls)} image attachment(s) are available to the vision model."
+            )
+        current_context = "\n\n".join(context_parts)
 
         reply = await self._generate_grounded_reply(
             text,
@@ -940,6 +980,7 @@ class AI(commands.Cog):
             history_context,
             repo_context,
             current_context,
+            image_urls=image_urls,
         )
         await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
 
@@ -973,8 +1014,9 @@ class AI(commands.Cog):
 
         mentions_bot_in_text = self._message_mentions_bot_in_text(message)
         talks_about_tinki_in_text = self._message_talks_about_tinki_in_text(message)
+        addressed_in_text = mentions_bot_in_text or talks_about_tinki_in_text
 
-        if message.reference is not None and mentions_bot_in_text and not message.content.startswith('!'):
+        if message.reference is not None and addressed_in_text and not message.content.startswith('!'):
             try:
                 replied_to = await message.channel.fetch_message(message.reference.message_id)
             except discord.NotFound:
@@ -990,10 +1032,12 @@ class AI(commands.Cog):
                 self._track_random_ai_message_id(bot_reply.id)
                 return
 
-        if message.reference is None and (mentions_bot_in_text or talks_about_tinki_in_text):
+        if message.reference is None and addressed_in_text:
             text = self._strip_bot_mention(message.content)
-            if not text:
+            if not self._message_has_context_payload(message, text):
                 return
+            if not text:
+                text = "Please respond to the attached image."
             text = text[:1000]  # hard cap — prevents novel-pasting from blowing up token budget
             try:
                 await self._handle_mention(message, text)

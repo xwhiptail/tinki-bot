@@ -51,6 +51,7 @@ from utils.current_awareness import (
     parse_duckduckgo_results,
     parse_feed_sources,
 )
+from utils.link_context import extract_public_links, format_link_context, parse_link_context
 from utils.calculator import maybe_calculate_reply
 from utils.bot_insight import maybe_bot_insight_reply
 from utils.letter_counter import maybe_count_letter_reply
@@ -125,6 +126,7 @@ def make_message(content):
     message.channel.fetch_message = AsyncMock()
     message.delete = AsyncMock()
     message.embeds = []
+    message.attachments = []
     message.mentions = []
     message.reference = None
     return message
@@ -1450,6 +1452,47 @@ class TestCurrentAwareness:
         assert "Resident Evil 4 Remake" not in reply
 
 
+class TestLinkContext:
+    def test_extract_public_links_ignores_discord_and_private_urls(self):
+        links = extract_public_links(
+            "Tinki check https://discord.com/channels/1/2/3 "
+            "and http://169.254.169.254/latest/meta-data "
+            "then https://example.com/post."
+        )
+
+        assert links == ["https://example.com/post"]
+
+    def test_parse_link_context_prefers_open_graph_summary(self):
+        html = """
+        <html>
+          <head>
+            <title>Plain title</title>
+            <meta property="og:site_name" content="Example News">
+            <meta property="og:title" content="Patch Notes Are Live">
+            <meta property="og:description" content="The patch adds a small balance pass.">
+          </head>
+        </html>
+        """
+
+        context = parse_link_context(html, "https://example.com/patch")
+
+        assert context.title == "Patch Notes Are Live"
+        assert context.description == "The patch adds a small balance pass."
+        assert context.site_name == "Example News"
+
+    def test_format_link_context_includes_source_and_url(self):
+        context = parse_link_context(
+            "<title>Patch Notes</title><meta name='description' content='Tiny update.'>",
+            "https://example.com/patch",
+        )
+
+        formatted = format_link_context([context])
+
+        assert "Linked page context" in formatted
+        assert "[example.com] Patch Notes - Tiny update." in formatted
+        assert "https://example.com/patch" in formatted
+
+
 class TestAINaturalCommands:
     async def test_execute_natural_command_rewrites_message_to_command(self):
         cog = make_ai_cog()
@@ -1652,7 +1695,7 @@ class TestAIListeners:
 
         handle_mock.assert_awaited_once_with(message, "Tinki is being suspiciously quiet")
 
-    async def test_on_message_responds_to_the_bot_reference_without_ping(self):
+    async def test_on_message_ignores_the_bot_reference_without_tinki_name_or_ping(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
         message = make_message("the bot is broken again")
@@ -1661,9 +1704,10 @@ class TestAIListeners:
         with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle_mock:
             await cog.on_message(message)
 
-        handle_mock.assert_awaited_once_with(message, "the bot is broken again")
+        handle_mock.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
 
-    async def test_on_message_responds_to_bot_pronoun_status_without_ping(self):
+    async def test_on_message_ignores_bot_pronoun_status_without_tinki_name_or_ping(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
         message = make_message("she ain't working")
@@ -1672,12 +1716,13 @@ class TestAIListeners:
         with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle_mock:
             await cog.on_message(message)
 
-        handle_mock.assert_awaited_once_with(message, "she ain't working")
+        handle_mock.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
 
     async def test_on_message_answers_dead_bot_status_without_openai_or_old_creature_terms(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
-        message = make_message("the bot is dead")
+        message = make_message("Tinki is dead")
         message.guild = SimpleNamespace(id=111)
         message.mentions = []
 
@@ -1698,7 +1743,7 @@ class TestAIListeners:
     async def test_on_message_answers_not_working_bot_status_as_broken_status(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
-        message = make_message("the bot is not working")
+        message = make_message("Tinki is not working")
         message.guild = SimpleNamespace(id=111)
         message.mentions = []
 
@@ -1735,7 +1780,7 @@ class TestAIListeners:
     async def test_on_message_answers_alive_bot_status_without_ping(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
-        message = make_message("she's alive")
+        message = make_message("Tinki is alive")
         message.guild = SimpleNamespace(id=111)
         message.mentions = []
 
@@ -1877,6 +1922,94 @@ class TestAIListeners:
         grounded_mock.assert_awaited_once()
         assert grounded_mock.await_args.args[6] == current_context
         message.channel.send.assert_awaited_once_with("<@123> source says new civ")
+
+    async def test_on_message_passes_link_context_to_grounded_reply_when_addressed(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> what is this https://example.com/patch-notes")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_current_awareness_context", new=AsyncMock(return_value="Current date/time: now")):
+            with patch.object(
+                cog,
+                "_web_link_context",
+                new=AsyncMock(return_value="Linked page context:\n- Example Patch Notes - balance changes"),
+            ) as link_context_mock:
+                with patch.object(cog, "_generate_grounded_reply", new=AsyncMock(return_value="patch notes say bonk")) as grounded_mock:
+                    await cog.on_message(message)
+
+        link_context_mock.assert_awaited_once_with("what is this https://example.com/patch-notes")
+        grounded_mock.assert_awaited_once()
+        assert "Current date/time: now" in grounded_mock.await_args.args[6]
+        assert "Linked page context" in grounded_mock.await_args.args[6]
+        message.channel.send.assert_awaited_once_with("<@123> patch notes say bonk")
+
+    async def test_on_message_ignores_link_without_tinki_name_or_ping(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("what is this https://example.com/patch-notes")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = []
+
+        with patch.object(cog, "_web_link_context", new=AsyncMock()) as link_context_mock:
+            with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+                await cog.on_message(message)
+
+        link_context_mock.assert_not_awaited()
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
+
+    async def test_on_message_sends_addressed_image_to_openai_vision(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99>")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+        message.attachments = [
+            SimpleNamespace(
+                url="https://cdn.discordapp.com/attachments/1/2/image.png",
+                content_type="image/png",
+                filename="image.png",
+            )
+        ]
+        completion = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="that image has tiny wrench energy"))]
+        )
+
+        with patch.object(cog, "_current_awareness_context", new=AsyncMock(return_value="")):
+            with patch.object(cog, "_create_openai_chat_completion", new=AsyncMock(return_value=(completion, None))) as openai_mock:
+                await cog.on_message(message)
+
+        openai_mock.assert_awaited_once()
+        user_message = openai_mock.await_args.kwargs["messages"][1]
+        assert isinstance(user_message["content"], list)
+        assert user_message["content"][0]["type"] == "text"
+        assert user_message["content"][1] == {
+            "type": "image_url",
+            "image_url": {"url": "https://cdn.discordapp.com/attachments/1/2/image.png"},
+        }
+        message.channel.send.assert_awaited_once_with("<@123> that image has tiny wrench energy")
+
+    async def test_on_message_ignores_image_without_tinki_name_or_ping(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = []
+        message.attachments = [
+            SimpleNamespace(
+                url="https://cdn.discordapp.com/attachments/1/2/image.png",
+                content_type="image/png",
+                filename="image.png",
+            )
+        ]
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
 
     async def test_on_message_answers_drg_calculator_question_before_ai_generation(self):
         cog = make_ai_cog()
@@ -3256,7 +3389,8 @@ class TestUtilityChangelog:
         assert "!uptime" in sent_text
         assert "`!emote [name] [1x-4x]` - search 7TV, preview results in the picker, choose a size, and send" in sent_text
         assert "`@Tinki-bot <Discord message link> [instruction]`" in sent_text
-        assert "Messages that clearly talk about Tinki/the bot" in sent_text
+        assert "Messages that say `Tinki` or `Tinki-bot`" in sent_text
+        assert "Addressed messages with public web links or image attachments" in sent_text
 
 
 class TestUtilityCommands:
