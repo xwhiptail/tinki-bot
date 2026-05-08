@@ -1117,6 +1117,89 @@ class TestAIListeners:
         grounded_mock.assert_awaited_once()
         message.channel.send.assert_awaited_once_with("<@123> ramen rules")
 
+    async def test_on_message_answers_drg_calculator_question_before_ai_generation(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> what does DRG stand for on a calculator?")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> On a calculator, DRG is the angle-mode toggle: "
+            "Degrees, Radians, and Gradians. Dragoon is Final Fantasy shorthand, not calculator logic."
+        )
+
+    async def test_on_message_rejects_drg_dragoon_correction_for_calculator_context(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message(
+            "<@99> no that's wrong, DRG on a calculator stands for Dragoon, "
+            "referencing the job frequently seen in Final Fantasy"
+        )
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> On a calculator, DRG is the angle-mode toggle: "
+            "Degrees, Radians, and Gradians. Dragoon is Final Fantasy shorthand, not calculator logic."
+        )
+
+    async def test_on_message_accepts_drg_dragoon_for_final_fantasy_context(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> what does DRG mean in Final Fantasy?")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> In Final Fantasy, DRG means Dragoon. Different context than calculator DRG."
+        )
+
+    async def test_on_message_rejects_drg_calculator_denial_when_history_has_receipts(self):
+        personas = SimpleNamespace(
+            current_persona="cute",
+            personas={"cute": ""},
+            conversations={},
+            save_conversations=MagicMock(),
+        )
+        cog = make_ai_cog()
+        cog.bot.cogs = {"Personas": personas}
+        cog.bot.user = SimpleNamespace(id=99)
+        author = SimpleNamespace(id=123, mention="<@123>", bot=False, display_name="Tester")
+        first_message = make_message("<@99> what does DRG stand for on a calculator?")
+        first_message.author = author
+        first_message.guild = SimpleNamespace(id=111)
+        first_message.mentions = [cog.bot.user]
+        second_message = make_message(
+            "<@99> you are hallucinating the calculator thing, "
+            "i was only ever talking about final fantasy"
+        )
+        second_message.author = author
+        second_message.guild = SimpleNamespace(id=111)
+        second_message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(first_message)
+            await cog.on_message(second_message)
+
+        grounded_mock.assert_not_awaited()
+        second_message.channel.send.assert_awaited_once_with(
+            "<@123> Receipts say calculator: earlier you asked about DRG on a calculator. "
+            "There, DRG means Degrees, Radians, and Gradians; Dragoon is the Final Fantasy meaning."
+        )
+
     async def test_on_message_reports_handle_mention_errors(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)

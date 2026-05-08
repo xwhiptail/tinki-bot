@@ -83,6 +83,30 @@ SPICY_REQUEST_CONTEXT_TERMS = (
     "something",
     "content",
 )
+DRG_CALCULATOR_REPLY = (
+    "On a calculator, DRG is the angle-mode toggle: "
+    "Degrees, Radians, and Gradians. Dragoon is Final Fantasy shorthand, not calculator logic."
+)
+DRG_FINAL_FANTASY_REPLY = (
+    "In Final Fantasy, DRG means Dragoon. Different context than calculator DRG."
+)
+DRG_CALCULATOR_RECEIPT_REPLY = (
+    "Receipts say calculator: earlier you asked about DRG on a calculator. "
+    "There, DRG means Degrees, Radians, and Gradians; Dragoon is the Final Fantasy meaning."
+)
+DRG_CALCULATOR_TERMS = (
+    "calculator",
+    "angle mode",
+    "degrees",
+    "radians",
+    "gradians",
+)
+DRG_FINAL_FANTASY_TERMS = (
+    "final fantasy",
+    "ffxiv",
+    "ff14",
+    "dragoon",
+)
 DISCORD_MESSAGE_LINK_PATTERN = re.compile(
     r"https?://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/channels/"
     r"(?P<guild_id>@me|\d+)/(?P<channel_id>\d+)/(?P<message_id>\d+)"
@@ -510,6 +534,38 @@ class AI(commands.Cog):
 
         return None
 
+    def _history_has_drg_calculator_context(self, history) -> bool:
+        for entry in history:
+            content = str(entry.get("content", "") if isinstance(entry, dict) else "")
+            lowered = content.lower()
+            if "drg" in lowered and any(term in lowered for term in DRG_CALCULATOR_TERMS):
+                return True
+        return False
+
+    def _match_drg_context_reply(self, text: str, history=None):
+        lowered = f" {text.lower().strip()} "
+        has_drg = re.search(r"\bdrg\b", lowered) is not None
+        has_calculator_context = any(term in lowered for term in DRG_CALCULATOR_TERMS)
+        has_final_fantasy_context = any(term in lowered for term in DRG_FINAL_FANTASY_TERMS)
+        history_has_calculator_context = self._history_has_drg_calculator_context(history or [])
+
+        if has_drg and has_calculator_context:
+            return DRG_CALCULATOR_REPLY
+
+        if (
+            not has_drg
+            and history_has_calculator_context
+            and "calculator" in lowered
+            and has_final_fantasy_context
+            and any(term in lowered for term in ("hallucinating", "never", "only ever", "gaslighting"))
+        ):
+            return DRG_CALCULATOR_RECEIPT_REPLY
+
+        if has_drg and has_final_fantasy_context:
+            return DRG_FINAL_FANTASY_REPLY
+
+        return None
+
     def _parse_discord_message_link(self, text: str):
         match = DISCORD_MESSAGE_LINK_PATTERN.search(text)
         if not match:
@@ -652,6 +708,14 @@ class AI(commands.Cog):
                 self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
                 self._save_ai_memory()
                 return
+
+        drg_reply = self._match_drg_context_reply(text, history)
+        if drg_reply:
+            await self._send_reply_chunks(message.channel, f'{message.author.mention} ', drg_reply)
+            self._update_conversation_history(personas_cog, user_id, persona_key, text, drg_reply)
+            self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
+            self._save_ai_memory()
+            return
 
         deterministic_fact = maybe_count_letter_reply(text)
         if deterministic_fact:
