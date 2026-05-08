@@ -874,6 +874,13 @@ class TestAIBrain:
         assert "gremlin" not in config.GREMLIN_SYSTEM_STYLE.lower()
         assert "goblin" not in config.GREMLIN_SYSTEM_STYLE.lower()
 
+    def test_gremlin_system_style_makes_tinki_wow_and_ffxiv_expert(self):
+        style = config.GREMLIN_SYSTEM_STYLE
+        assert "World of Warcraft" in style
+        assert "Final Fantasy XIV" in style
+        assert "FFXIV" in style
+        assert "separate game context" in style
+
     def test_parse_natural_command_for_reminder(self):
         parsed = parse_natural_command("remind me in 10 minutes")
         assert parsed == {"command": "remindme", "args": "in 10 minutes"}
@@ -1198,6 +1205,37 @@ class TestAIListeners:
         second_message.channel.send.assert_awaited_once_with(
             "<@123> Receipts say calculator: earlier you asked about DRG on a calculator. "
             "There, DRG means Degrees, Radians, and Gradians; Dragoon is the Final Fantasy meaning."
+        )
+
+    async def test_on_message_rejects_drg_final_fantasy_context_switch_when_history_has_calculator_receipts(self):
+        personas = SimpleNamespace(
+            current_persona="cute",
+            personas={"cute": ""},
+            conversations={},
+            save_conversations=MagicMock(),
+        )
+        cog = make_ai_cog()
+        cog.bot.cogs = {"Personas": personas}
+        cog.bot.user = SimpleNamespace(id=99)
+        author = SimpleNamespace(id=123, mention="<@123>", bot=False, display_name="Tester")
+        first_message = make_message("<@99> what does DRG stand for on a calculator?")
+        first_message.author = author
+        first_message.guild = SimpleNamespace(id=111)
+        first_message.mentions = [cog.bot.user]
+        second_message = make_message("<@99> i was talking about final fantasy")
+        second_message.author = author
+        second_message.guild = SimpleNamespace(id=111)
+        second_message.mentions = [cog.bot.user]
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(first_message)
+            await cog.on_message(second_message)
+
+        grounded_mock.assert_not_awaited()
+        second_message.channel.send.assert_awaited_once_with(
+            "<@123> Receipts say the original question was calculator context: "
+            "DRG means Degrees, Radians, and Gradians there. "
+            "If you're switching to Final Fantasy, DRG means Dragoon."
         )
 
     async def test_on_message_reports_handle_mention_errors(self):

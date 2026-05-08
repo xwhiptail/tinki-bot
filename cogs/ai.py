@@ -94,6 +94,11 @@ DRG_CALCULATOR_RECEIPT_REPLY = (
     "Receipts say calculator: earlier you asked about DRG on a calculator. "
     "There, DRG means Degrees, Radians, and Gradians; Dragoon is the Final Fantasy meaning."
 )
+DRG_CONTEXT_SWITCH_REPLY = (
+    "Receipts say the original question was calculator context: "
+    "DRG means Degrees, Radians, and Gradians there. "
+    "If you're switching to Final Fantasy, DRG means Dragoon."
+)
 DRG_CALCULATOR_TERMS = (
     "calculator",
     "angle mode",
@@ -106,6 +111,20 @@ DRG_FINAL_FANTASY_TERMS = (
     "ffxiv",
     "ff14",
     "dragoon",
+)
+DRG_CONTEXT_SWITCH_TERMS = (
+    "i was talking",
+    "talking about",
+    "i meant",
+    "meant",
+    "only ever",
+    "actually",
+)
+DRG_CALCULATOR_DENIAL_TERMS = (
+    "hallucinating",
+    "never",
+    "only ever",
+    "gaslighting",
 )
 DISCORD_MESSAGE_LINK_PATTERN = re.compile(
     r"https?://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/channels/"
@@ -555,11 +574,12 @@ class AI(commands.Cog):
         if (
             not has_drg
             and history_has_calculator_context
-            and "calculator" in lowered
             and has_final_fantasy_context
-            and any(term in lowered for term in ("hallucinating", "never", "only ever", "gaslighting"))
         ):
-            return DRG_CALCULATOR_RECEIPT_REPLY
+            if "calculator" in lowered and any(term in lowered for term in DRG_CALCULATOR_DENIAL_TERMS):
+                return DRG_CALCULATOR_RECEIPT_REPLY
+            if any(term in lowered for term in DRG_CONTEXT_SWITCH_TERMS):
+                return DRG_CONTEXT_SWITCH_REPLY
 
         if has_drg and has_final_fantasy_context:
             return DRG_FINAL_FANTASY_REPLY
