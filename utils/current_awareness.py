@@ -21,6 +21,8 @@ FRESHNESS_TERMS = (
     "tonight",
     "yesterday",
     "latest",
+    "recent",
+    "most recent",
     "current",
     "currently",
     "newest",
@@ -50,6 +52,8 @@ GAMING_TERMS = (
     "ffxiv",
     "ff14",
     "final fantasy",
+    "resident evil",
+    "capcom",
     "aoe4",
     "age of empires",
     "civ",
@@ -92,6 +96,7 @@ WORLD_FEEDS = (
     "https://feeds.npr.org/1001/rss.xml",
 )
 FFXIV_DAWNTRAIL_URL = "https://na.finalfantasyxiv.com/dawntrail/"
+RESIDENT_EVIL_REQUIEM_URL = "https://www.capcom.co.jp/ir/english/news/html/e250609.html"
 
 _LIVE_CONTEXT_CACHE: Dict[str, Tuple[float, List["CurrentAwarenessSource"]]] = {}
 
@@ -221,6 +226,8 @@ def parse_direct_page_source(
     for snippet in (
         description,
         _phrase_context(html, "The Latest Expansion for FINAL FANTASY XIV"),
+        _phrase_context(html, "Release Date"),
+        _phrase_context(html, "ninth main installment"),
     ):
         if snippet and snippet not in snippets:
             snippets.append(snippet)
@@ -411,6 +418,19 @@ def _score_source(query: str, source: CurrentAwarenessSource) -> int:
             and any(term in lowered_text for term in ("next expansion", "next announced expansion"))
         ):
             score -= 5
+    if "resident evil" in lowered_query:
+        score += len({"resident", "evil"} & text_tokens)
+        if "requiem" in lowered_text and any(
+            term in lowered_text
+            for term in ("latest title", "release date", "ninth main installment")
+        ):
+            score += 10
+        if (
+            any(term in lowered_query for term in ("most recent", "latest", "newest", "current"))
+            and "resident evil 4 remake" in lowered_text
+            and "requiem" not in lowered_text
+        ):
+            score -= 5
     if "wow" in lowered_query and "world of warcraft" in lowered_text:
         score += 4
     if any(term in lowered_query for term in ("today", "just added", "added", "released")):
@@ -463,6 +483,8 @@ def _direct_source_targets_for_query(query: str) -> List[Tuple[str, str]]:
         and "expansion" in lowered
     ):
         targets.append((FFXIV_DAWNTRAIL_URL, "Official FINAL FANTASY XIV"))
+    if "resident evil" in lowered:
+        targets.append((RESIDENT_EVIL_REQUIEM_URL, "CAPCOM Press Release"))
     return targets
 
 
@@ -558,6 +580,18 @@ def build_source_answer_hints(question_text: str, sources: List[CurrentAwareness
             hints.append(
                 "Source-grounded direct answer: The current live FFXIV expansion is Dawntrail."
             )
+
+    if (
+        "resident evil" in lowered_question
+        and any(term in lowered_question for term in ("most recent", "latest", "newest", "current"))
+        and "resident evil requiem" in combined_source_text
+        and any(term in combined_source_text for term in ("latest title", "ninth main installment"))
+        and any(term in combined_source_text for term in ("february 27, 2026", "feb 27, 2026"))
+    ):
+        hints.append(
+            "Source-grounded direct answer: The most recent released mainline Resident Evil game "
+            "is Resident Evil Requiem, released February 27, 2026."
+        )
 
     return hints
 

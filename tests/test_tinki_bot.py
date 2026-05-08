@@ -953,6 +953,52 @@ class TestAIBrain:
         assert valid is True
         assert reason == ""
 
+    def test_validate_grounded_reply_rejects_re4_when_requiem_is_source_backed(self):
+        current_context = (
+            "Current date/time:\n"
+            "- America/New_York: Thursday, May 7, 2026, 9:28 PM EDT\n"
+            "Live source context:\n"
+            "- [CAPCOM Press Release] Resident Evil Requiem, the Latest Title in the Series, "
+            "Set to Release on February 27, 2026! - Resident Evil Requiem is the latest title "
+            "and the ninth main installment in the series.\n"
+            "Source-grounded direct answer: The most recent released mainline Resident Evil game "
+            "is Resident Evil Requiem, released February 27, 2026."
+        )
+
+        valid, reason = validate_grounded_reply(
+            "If you mean released rather than announced, the newest fully out mainline entry is still Resident Evil 4 Remake (2023).",
+            set(),
+            "question_answer",
+            [],
+            current_context=current_context,
+        )
+
+        assert valid is False
+        assert "Resident Evil Requiem" in reason
+
+    def test_validate_grounded_reply_accepts_requiem_as_most_recent_released(self):
+        current_context = (
+            "Current date/time:\n"
+            "- America/New_York: Thursday, May 7, 2026, 9:28 PM EDT\n"
+            "Live source context:\n"
+            "- [CAPCOM Press Release] Resident Evil Requiem, the Latest Title in the Series, "
+            "Set to Release on February 27, 2026! - Resident Evil Requiem is the latest title "
+            "and the ninth main installment in the series.\n"
+            "Source-grounded direct answer: The most recent released mainline Resident Evil game "
+            "is Resident Evil Requiem, released February 27, 2026. Resident Evil 4 Remake (2023) is older."
+        )
+
+        valid, reason = validate_grounded_reply(
+            "The most recent released mainline Resident Evil game is Resident Evil Requiem, released February 27, 2026.",
+            set(),
+            "question_answer",
+            [],
+            current_context=current_context,
+        )
+
+        assert valid is True
+        assert reason == ""
+
     def test_build_system_prompt_includes_memory_and_grounding(self):
         prompt = build_system_prompt(
             "base style",
@@ -1010,6 +1056,7 @@ class TestCurrentAwareness:
         assert needs_current_awareness("today is may 7th. what civ was added to aoe4 today?")
         assert needs_current_awareness("what's the latest world news about nasa?")
         assert needs_current_awareness("what's the best opening rotation for DRG")
+        assert needs_current_awareness("what's the most recent resident evil game")
         assert not needs_current_awareness("what are the bosses of molten core")
 
     def test_build_search_query_expands_game_aliases(self):
@@ -1143,6 +1190,60 @@ class TestCurrentAwareness:
             in context
         )
 
+    async def test_build_current_awareness_context_adds_resident_evil_released_hint(self):
+        async def fake_fetcher(query, limit=4):
+            return [
+                CurrentAwarenessSource(
+                    title="Resident Evil Requiem, the Latest Title in the Series, Set to Release on February 27, 2026!",
+                    url="https://www.capcom.co.jp/ir/english/news/html/e250609.html",
+                    snippet=(
+                        "Resident Evil Requiem is the latest title in the Resident Evil series, "
+                        "scheduled for release on February 27, 2026, and serves as the ninth main installment."
+                    ),
+                    source="CAPCOM Press Release",
+                )
+            ]
+
+        context = await build_current_awareness_context(
+            "what's the most recent resident evil game",
+            fetcher=fake_fetcher,
+        )
+
+        assert (
+            "Source-grounded direct answer: The most recent released mainline Resident Evil game "
+            "is Resident Evil Requiem, released February 27, 2026."
+            in context
+        )
+
+    async def test_fetch_feed_sources_includes_direct_resident_evil_capcom_source(self):
+        capcom_page = """
+        <html>
+          <head>
+            <title>Resident Evil Requiem, the Latest Title in the Series, Set to Release on February 27, 2026!</title>
+            <meta name="description" content="Capcom today announced that Resident Evil Requiem, the latest title in the Resident Evil series, is scheduled for release on February 27, 2026.">
+          </head>
+          <body>
+            <p>Resident Evil Requiem is a survival horror game that serves as the ninth main installment in the series.</p>
+            <table><tr><th>Release Date</th><td>February 27, 2026</td></tr></table>
+          </body>
+        </html>
+        """
+
+        async def fake_fetch_text(session, url):
+            if "capcom.co.jp" in url:
+                return capcom_page
+            return "<rss><channel><title>Empty</title></channel></rss>"
+
+        with patch("utils.current_awareness._fetch_text", new=AsyncMock(side_effect=fake_fetch_text)):
+            sources = await fetch_feed_sources(
+                "what's the most recent resident evil game gaming news",
+                limit=4,
+            )
+
+        assert sources[0].source == "CAPCOM Press Release"
+        assert "Resident Evil Requiem" in sources[0].title
+        assert "Release Date February 27, 2026" in sources[0].snippet
+
     async def test_fetch_feed_sources_does_not_stop_before_official_game_feeds(self):
         google_items = "\n".join(
             f"""
@@ -1239,6 +1340,46 @@ class TestCurrentAwareness:
         assert "Jin Dynasty" in reply
         assert "Ottomans" not in reply
         assert completion_mock.await_count == 2
+
+    async def test_generate_grounded_reply_falls_back_to_resident_evil_source_hint(self):
+        cog = make_ai_cog()
+        stale_completion = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content="If you mean released rather than announced, the newest fully out mainline entry is still Resident Evil 4 Remake (2023)."
+                    )
+                )
+            ]
+        )
+        current_context = (
+            "Current date/time:\n"
+            "- America/New_York: Thursday, May 7, 2026, 9:28 PM EDT\n"
+            "Live source context:\n"
+            "- [CAPCOM Press Release] Resident Evil Requiem, the Latest Title in the Series, "
+            "Set to Release on February 27, 2026! - Resident Evil Requiem is the latest title "
+            "and the ninth main installment in the series.\n"
+            "Source-grounded direct answer: The most recent released mainline Resident Evil game "
+            "is Resident Evil Requiem, released February 27, 2026."
+        )
+
+        with patch.object(
+            cog,
+            "_create_openai_chat_completion",
+            new=AsyncMock(return_value=(stale_completion, None)),
+        ):
+            reply = await cog._generate_grounded_reply(
+                "what's the most recent resident evil game",
+                "question_answer",
+                "",
+                {"facts": [], "topics": [], "preferences": []},
+                [],
+                [],
+                current_context,
+            )
+
+        assert "Resident Evil Requiem" in reply
+        assert "Resident Evil 4 Remake" not in reply
 
 
 class TestAINaturalCommands:

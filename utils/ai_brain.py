@@ -243,6 +243,11 @@ def _current_context_validation_reason(reply: str, current_context: str) -> str:
                 normalized_reply,
             ):
                 return "treats next FFXIV expansion as current"
+        if "most recent released mainline resident evil game is resident evil requiem" in normalized_answer:
+            if "resident evil requiem" not in normalized_reply:
+                return "missing source-backed Resident Evil answer: Resident Evil Requiem"
+            if "resident evil 4 remake" in normalized_reply and "older" not in normalized_reply:
+                return "treats older Resident Evil 4 Remake as the newest released entry"
     return ""
 
 
