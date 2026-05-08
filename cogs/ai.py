@@ -269,7 +269,10 @@ class AI(commands.Cog):
             stripped = stripped.replace(token, "")
         return stripped.strip()
 
-    def _fallback_grounded_reply(self, intent: str, repo_context: List[str]) -> str:
+    def _fallback_grounded_reply(self, intent: str, repo_context: List[str], current_context: str = "") -> str:
+        for line in (current_context or "").splitlines():
+            if line.startswith("Source-grounded direct answer:"):
+                return line.split(":", 1)[1].strip()
         if repo_context:
             first_block = repo_context[0].splitlines()
             summary = " ".join(first_block[:3]).strip()
@@ -489,11 +492,12 @@ class AI(commands.Cog):
             [command.name for command in self.bot.commands],
             intent,
             repo_context,
+            current_context=current_context,
         )
         if valid:
             return reply
 
-        if repo_context:
+        if repo_context or current_context:
             correction, failure_reply = await self._create_openai_chat_completion(
                 model=OPENAI_MODEL,
                 messages=[
@@ -503,7 +507,8 @@ class AI(commands.Cog):
                         "content": (
                             user_prompt +
                             f"\nPrevious draft failed validation: {reason}.\n"
-                            "Rewrite it so it only uses grounded repo facts and known commands."
+                            "Rewrite it so it only uses grounded repo facts, known commands, "
+                            "and live source snippets/direct answers."
                         ),
                     },
                 ],
@@ -516,11 +521,12 @@ class AI(commands.Cog):
                 [command.name for command in self.bot.commands],
                 intent,
                 repo_context,
+                current_context=current_context,
             )
             if valid:
                 return corrected
 
-        return self._fallback_grounded_reply(intent, repo_context)
+        return self._fallback_grounded_reply(intent, repo_context, current_context=current_context)
 
     async def _send_reply_chunks(self, channel, mention: str, text: str):
         limit = 2000

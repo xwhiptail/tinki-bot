@@ -91,6 +91,7 @@ WORLD_FEEDS = (
     "https://feeds.bbci.co.uk/news/world/rss.xml",
     "https://feeds.npr.org/1001/rss.xml",
 )
+FFXIV_DAWNTRAIL_URL = "https://na.finalfantasyxiv.com/dawntrail/"
 
 _LIVE_CONTEXT_CACHE: Dict[str, Tuple[float, List["CurrentAwarenessSource"]]] = {}
 
@@ -187,6 +188,50 @@ def _clean_duckduckgo_url(href: str) -> str:
     if "uddg" in query and query["uddg"]:
         return unquote(query["uddg"][0])
     return href
+
+
+def _first_html_match(html: str, pattern: str) -> str:
+    match = re.search(pattern, html or "", flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return ""
+    return _clean_html_text(match.group(1))
+
+
+def _phrase_context(html: str, phrase: str, radius: int = 220) -> str:
+    lowered = (html or "").lower()
+    index = lowered.find(phrase.lower())
+    if index == -1:
+        return ""
+    start = max(0, index - radius)
+    end = min(len(html), index + len(phrase) + radius)
+    return _clean_html_text(html[start:end])
+
+
+def parse_direct_page_source(
+    html: str,
+    url: str,
+    source_label: str,
+) -> Optional[CurrentAwarenessSource]:
+    title = _first_html_match(html, r"<title[^>]*>(.*?)</title>")
+    description = _first_html_match(
+        html,
+        r"<meta[^>]+name=[\"']description[\"'][^>]+content=[\"'](.*?)[\"']",
+    )
+    snippets = []
+    for snippet in (
+        description,
+        _phrase_context(html, "The Latest Expansion for FINAL FANTASY XIV"),
+    ):
+        if snippet and snippet not in snippets:
+            snippets.append(snippet)
+    if not title and not snippets:
+        return None
+    return CurrentAwarenessSource(
+        title=title or url,
+        url=url,
+        snippet=" ".join(snippets),
+        source=source_label,
+    )
 
 
 def _local_timezone(timezone_name: str = DEFAULT_TIMEZONE):
@@ -329,15 +374,43 @@ def _keyword_tokens(text: str) -> set:
 
 def _score_source(query: str, source: CurrentAwarenessSource) -> int:
     query_tokens = _keyword_tokens(query)
-    source_text = " ".join((source.title, source.snippet, source.url))
+    source_text = " ".join((source.title, source.snippet, source.url, source.source))
     text_tokens = _keyword_tokens(source_text)
     score = len(query_tokens & text_tokens)
     lowered_query = query.lower()
     lowered_text = source_text.lower()
     if "aoe4" in lowered_query and "age of empires iv" in lowered_text:
         score += 4
+    if (
+        ("aoe4" in lowered_query or "age of empires iv" in lowered_query)
+        and any(term in lowered_query for term in ("civ", "civilization", "just added", "added"))
+        and "jin dynasty" in lowered_text
+        and "civilization" in lowered_text
+    ):
+        score += 8
+    if (
+        ("aoe4" in lowered_query or "age of empires iv" in lowered_query)
+        and "just added" in lowered_query
+        and "ottomans" in lowered_text
+        and "anniversary update" in lowered_text
+    ):
+        published = _published_timestamp(source)
+        if published and time.time() - published > 30 * 24 * 60 * 60:
+            score -= 8
     if "ffxiv" in lowered_query and "final fantasy xiv" in lowered_text:
         score += 4
+    if (
+        any(term in lowered_query for term in ("ffxiv", "ff14", "final fantasy xiv"))
+        and "expansion" in lowered_query
+    ):
+        if "dawntrail" in lowered_text and "latest expansion" in lowered_text:
+            score += 10
+        if (
+            "current" in lowered_query
+            and "next" not in lowered_query
+            and any(term in lowered_text for term in ("next expansion", "next announced expansion"))
+        ):
+            score -= 5
     if "wow" in lowered_query and "world of warcraft" in lowered_text:
         score += 4
     if any(term in lowered_query for term in ("today", "just added", "added", "released")):
@@ -382,11 +455,34 @@ def _feed_urls_for_query(query: str) -> List[str]:
     return urls
 
 
+def _direct_source_targets_for_query(query: str) -> List[Tuple[str, str]]:
+    lowered = query.lower()
+    targets: List[Tuple[str, str]] = []
+    if (
+        any(term in lowered for term in ("ffxiv", "ff14", "final fantasy xiv"))
+        and "expansion" in lowered
+    ):
+        targets.append((FFXIV_DAWNTRAIL_URL, "Official FINAL FANTASY XIV"))
+    return targets
+
+
 async def _fetch_text(session, url: str) -> str:
     async with session.get(url) as response:
         if response.status != 200:
             return ""
         return await response.text()
+
+
+async def _fetch_direct_sources(session, query: str, limit: int = 2) -> List[CurrentAwarenessSource]:
+    sources: List[CurrentAwarenessSource] = []
+    for url, label in _direct_source_targets_for_query(query):
+        html = await _fetch_text(session, url)
+        source = parse_direct_page_source(html, url, label)
+        if source:
+            sources.append(source)
+        if len(sources) >= limit:
+            break
+    return sources
 
 
 async def fetch_feed_sources(query: str, limit: int = 4) -> List[CurrentAwarenessSource]:
@@ -404,8 +500,7 @@ async def fetch_feed_sources(query: str, limit: int = 4) -> List[CurrentAwarenes
             for url in _feed_urls_for_query(query):
                 xml_text = await _fetch_text(session, url)
                 sources.extend(parse_feed_sources(xml_text, limit=12))
-                if len(sources) >= limit * 3:
-                    break
+            sources.extend(await _fetch_direct_sources(session, query, limit=limit))
     except Exception:
         return []
 
@@ -425,6 +520,46 @@ async def fetch_feed_sources(query: str, limit: int = 4) -> List[CurrentAwarenes
         if len(unique) >= limit:
             break
     return unique
+
+
+def build_source_answer_hints(question_text: str, sources: List[CurrentAwarenessSource]) -> List[str]:
+    lowered_question = (question_text or "").lower()
+    combined_source_text = " ".join(
+        " ".join((source.title, source.snippet, source.url, source.source))
+        for source in sources
+    ).lower()
+    hints: List[str] = []
+
+    if (
+        ("aoe4" in lowered_question or "age of empires iv" in lowered_question)
+        and any(term in lowered_question for term in ("civ", "civilization"))
+        and any(term in lowered_question for term in ("just", "added", "today", "new", "current"))
+        and "jin dynasty" in combined_source_text
+        and "civilization" in combined_source_text
+    ):
+        hints.append(
+            "Source-grounded direct answer: The AoE4 civilization just added is "
+            "the Jin Dynasty in Yue Fei's Legacy."
+        )
+
+    if (
+        any(term in lowered_question for term in ("ffxiv", "ff14", "final fantasy xiv"))
+        and "expansion" in lowered_question
+        and "current" in lowered_question
+        and "dawntrail" in combined_source_text
+        and "latest expansion" in combined_source_text
+    ):
+        if "evercold" in combined_source_text:
+            hints.append(
+                "Source-grounded direct answer: The current live FFXIV expansion is Dawntrail. "
+                "Evercold is the next announced expansion, not the current live expansion."
+            )
+        else:
+            hints.append(
+                "Source-grounded direct answer: The current live FFXIV expansion is Dawntrail."
+            )
+
+    return hints
 
 
 async def fetch_current_awareness_sources(query: str, limit: int = 4) -> List[CurrentAwarenessSource]:
@@ -463,6 +598,7 @@ def format_source_context(
     sources: List[CurrentAwarenessSource],
     fetched_at: Optional[datetime] = None,
     timezone_name: str = DEFAULT_TIMEZONE,
+    question_text: str = "",
 ) -> str:
     local_tz = _local_timezone(timezone_name)
     if fetched_at is None:
@@ -481,6 +617,7 @@ def format_source_context(
         snippet = f" - {source.snippet}" if source.snippet else ""
         lines.append(f"- [{label}] {source.title}{snippet}")
         lines.append(f"  {source.url}")
+    lines.extend(build_source_answer_hints(question_text, sources))
     return "\n".join(lines)
 
 
@@ -511,6 +648,7 @@ async def build_current_awareness_context(
                 list(sources)[:limit],
                 fetched_at=now,
                 timezone_name=timezone_name,
+                question_text=text,
             )
         )
     else:

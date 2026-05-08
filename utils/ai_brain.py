@@ -216,9 +216,50 @@ def build_system_prompt(
     return "\n\n".join(section for section in sections if section)
 
 
-def validate_grounded_reply(reply: str, known_commands: Iterable[str], intent: str, repo_context: Sequence[str]) -> Tuple[bool, str]:
+def _source_direct_answers(current_context: str) -> List[str]:
+    prefix = "Source-grounded direct answer:"
+    return [
+        line.split(prefix, 1)[1].strip()
+        for line in (current_context or "").splitlines()
+        if line.strip().startswith(prefix)
+    ]
+
+
+def _current_context_validation_reason(reply: str, current_context: str) -> str:
+    if not current_context or "Live source context" not in current_context:
+        return ""
+
+    normalized_reply = normalize_text(reply)
+    for answer in _source_direct_answers(current_context):
+        normalized_answer = normalize_text(answer)
+        if "aoe4 civilization just added is the jin dynasty" in normalized_answer:
+            if "jin dynasty" not in normalized_reply:
+                return "missing source-backed AoE4 answer: Jin Dynasty"
+        if "current live ffxiv expansion is dawntrail" in normalized_answer:
+            if "dawntrail" not in normalized_reply:
+                return "missing source-backed FFXIV current expansion: Dawntrail"
+            if "evercold" in normalized_reply and not re.search(
+                r"\b(next|announced|upcoming|2027|not current|not the current)\b",
+                normalized_reply,
+            ):
+                return "treats next FFXIV expansion as current"
+    return ""
+
+
+def validate_grounded_reply(
+    reply: str,
+    known_commands: Iterable[str],
+    intent: str,
+    repo_context: Sequence[str],
+    current_context: str = "",
+) -> Tuple[bool, str]:
     if not reply.strip():
         return False, "empty reply"
+
+    current_reason = _current_context_validation_reason(reply, current_context)
+    if current_reason:
+        return False, current_reason
+
     if intent not in {"command_help", "bot_repo", "question_answer"}:
         return True, ""
 

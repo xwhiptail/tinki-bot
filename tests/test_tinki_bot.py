@@ -46,6 +46,7 @@ from utils.current_awareness import (
     build_current_awareness_context,
     build_search_query,
     build_current_time_context,
+    fetch_feed_sources,
     needs_current_awareness,
     parse_duckduckgo_results,
     parse_feed_sources,
@@ -866,6 +867,92 @@ class TestAIBrain:
         assert valid is False
         assert "!fakecommand" in reason
 
+    def test_validate_grounded_reply_rejects_stale_aoe4_answer_against_source_hint(self):
+        current_context = (
+            "Current date/time:\n"
+            "- America/New_York: Thursday, May 7, 2026, 9:03 PM EDT\n"
+            "Live source context:\n"
+            "- [Age of Empires News] Age of Empires IV: Yue Fei's Legacy - Available Now! - "
+            "A new 8-mission campaign and the Jin Dynasty civilization have come to Age of Empires IV.\n"
+            "Source-grounded direct answer: The AoE4 civilization just added is the Jin Dynasty in Yue Fei's Legacy."
+        )
+
+        valid, reason = validate_grounded_reply(
+            "The civ just added to AoE4 was the Ottomans, in the Anniversary Update.",
+            set(),
+            "question_answer",
+            [],
+            current_context=current_context,
+        )
+
+        assert valid is False
+        assert "Jin Dynasty" in reason
+
+    def test_validate_grounded_reply_accepts_source_backed_aoe4_answer(self):
+        current_context = (
+            "Current date/time:\n"
+            "- America/New_York: Thursday, May 7, 2026, 9:03 PM EDT\n"
+            "Live source context:\n"
+            "- [Age of Empires News] Age of Empires IV: Yue Fei's Legacy - Available Now! - "
+            "A new 8-mission campaign and the Jin Dynasty civilization have come to Age of Empires IV.\n"
+            "Source-grounded direct answer: The AoE4 civilization just added is the Jin Dynasty in Yue Fei's Legacy."
+        )
+
+        valid, reason = validate_grounded_reply(
+            "The newly added AoE4 civ is the Jin Dynasty from Yue Fei's Legacy.",
+            set(),
+            "question_answer",
+            [],
+            current_context=current_context,
+        )
+
+        assert valid is True
+        assert reason == ""
+
+    def test_validate_grounded_reply_rejects_next_ffxiv_expansion_as_current(self):
+        current_context = (
+            "Current date/time:\n"
+            "- America/New_York: Thursday, May 7, 2026, 9:10 PM EDT\n"
+            "Live source context:\n"
+            "- [Official FINAL FANTASY XIV] FINAL FANTASY XIV: Dawntrail - The Latest Expansion for FINAL FANTASY XIV.\n"
+            "- [GameSpot] Final Fantasy 14 Reveals Next Expansion, Evercold.\n"
+            "Source-grounded direct answer: The current live FFXIV expansion is Dawntrail. "
+            "Evercold is the next announced expansion, not the current live expansion."
+        )
+
+        valid, reason = validate_grounded_reply(
+            "FFXIV's current expansion is Evercold.",
+            set(),
+            "question_answer",
+            [],
+            current_context=current_context,
+        )
+
+        assert valid is False
+        assert "Dawntrail" in reason
+
+    def test_validate_grounded_reply_accepts_ffxiv_current_with_next_context(self):
+        current_context = (
+            "Current date/time:\n"
+            "- America/New_York: Thursday, May 7, 2026, 9:10 PM EDT\n"
+            "Live source context:\n"
+            "- [Official FINAL FANTASY XIV] FINAL FANTASY XIV: Dawntrail - The Latest Expansion for FINAL FANTASY XIV.\n"
+            "- [GameSpot] Final Fantasy 14 Reveals Next Expansion, Evercold.\n"
+            "Source-grounded direct answer: The current live FFXIV expansion is Dawntrail. "
+            "Evercold is the next announced expansion, not the current live expansion."
+        )
+
+        valid, reason = validate_grounded_reply(
+            "Current live expansion is Dawntrail. Evercold is the next announced expansion for 2027.",
+            set(),
+            "question_answer",
+            [],
+            current_context=current_context,
+        )
+
+        assert valid is True
+        assert reason == ""
+
     def test_build_system_prompt_includes_memory_and_grounding(self):
         prompt = build_system_prompt(
             "base style",
@@ -1006,6 +1093,98 @@ class TestCurrentAwareness:
         assert "May 7, 2026" in context
         assert "https://example.com/aoe4" in context
 
+    async def test_build_current_awareness_context_adds_aoe4_direct_answer_hint(self):
+        async def fake_fetcher(query, limit=4):
+            return [
+                CurrentAwarenessSource(
+                    title="Age of Empires IV: Yue Fei's Legacy - Available Now!",
+                    url="https://www.ageofempires.com/news/yue-fei",
+                    snippet="A new 8-mission campaign and the Jin Dynasty civilization have come to Age of Empires IV.",
+                    published="Thu, 07 May 2026 17:13:01 +0000",
+                    source="Age of Empires News",
+                )
+            ]
+
+        context = await build_current_awareness_context(
+            "what civ was just added to aoe4?",
+            fetcher=fake_fetcher,
+        )
+
+        assert (
+            "Source-grounded direct answer: The AoE4 civilization just added is the Jin Dynasty"
+            in context
+        )
+
+    async def test_build_current_awareness_context_adds_ffxiv_current_expansion_hint(self):
+        async def fake_fetcher(query, limit=4):
+            return [
+                CurrentAwarenessSource(
+                    title="FINAL FANTASY XIV: Dawntrail",
+                    url="https://na.finalfantasyxiv.com/dawntrail/",
+                    snippet="The Latest Expansion for FINAL FANTASY XIV.",
+                    source="Official FINAL FANTASY XIV",
+                ),
+                CurrentAwarenessSource(
+                    title="Final Fantasy 14 Reveals Next Expansion, Evercold",
+                    url="https://example.com/evercold",
+                    snippet="Evercold is the next expansion and is coming in January 2027.",
+                    source="GameSpot",
+                ),
+            ]
+
+        context = await build_current_awareness_context(
+            "what's the current ffxiv expansion",
+            fetcher=fake_fetcher,
+        )
+
+        assert (
+            "Source-grounded direct answer: The current live FFXIV expansion is Dawntrail. "
+            "Evercold is the next announced expansion, not the current live expansion."
+            in context
+        )
+
+    async def test_fetch_feed_sources_does_not_stop_before_official_game_feeds(self):
+        google_items = "\n".join(
+            f"""
+            <item>
+              <title>Age of Empires IV old article {index}</title>
+              <link>https://example.com/old-{index}</link>
+              <pubDate>Thu, 25 Aug 2022 07:00:00 GMT</pubDate>
+              <description>Ottomans were announced in an old update.</description>
+            </item>
+            """
+            for index in range(12)
+        )
+        official_feed = """
+        <rss version="2.0">
+          <channel>
+            <title>Age of Empires News</title>
+            <item>
+              <title>Age of Empires IV: Yue Fei's Legacy - Available Now!</title>
+              <link>https://www.ageofempires.com/news/yue-fei</link>
+              <pubDate>Thu, 07 May 2026 17:13:01 +0000</pubDate>
+              <description>A new campaign and the Jin Dynasty civilization have come to Age of Empires IV.</description>
+            </item>
+          </channel>
+        </rss>
+        """
+
+        async def fake_fetch_text(session, url):
+            if "news.google.com" in url:
+                return f"<rss><channel><title>Google News</title>{google_items}</channel></rss>"
+            if "ageofempires.com" in url:
+                return official_feed
+            return "<rss><channel><title>Empty</title></channel></rss>"
+
+        with patch("utils.current_awareness._fetch_text", new=AsyncMock(side_effect=fake_fetch_text)):
+            with patch("utils.current_awareness._fetch_direct_sources", new=AsyncMock(return_value=[])):
+                sources = await fetch_feed_sources(
+                    "what civ was just added to aoe4? Age of Empires IV gaming news",
+                    limit=4,
+                )
+
+        assert sources[0].title == "Age of Empires IV: Yue Fei's Legacy - Available Now!"
+
     async def test_build_current_awareness_context_notes_lookup_failure_for_fresh_questions(self):
         from datetime import datetime
         from zoneinfo import ZoneInfo
@@ -1021,6 +1200,45 @@ class TestCurrentAwareness:
 
         assert "Live lookup returned no usable source snippets" in context
         assert "do not ask for a date if the user already gave one" in context
+
+    async def test_generate_grounded_reply_falls_back_to_source_hint_after_stale_current_draft(self):
+        cog = make_ai_cog()
+        stale_completion = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content="The civ just added to AoE4 was the Ottomans, in the Anniversary Update."
+                    )
+                )
+            ]
+        )
+        current_context = (
+            "Current date/time:\n"
+            "- America/New_York: Thursday, May 7, 2026, 9:03 PM EDT\n"
+            "Live source context:\n"
+            "- [Age of Empires News] Age of Empires IV: Yue Fei's Legacy - Available Now! - "
+            "A new 8-mission campaign and the Jin Dynasty civilization have come to Age of Empires IV.\n"
+            "Source-grounded direct answer: The AoE4 civilization just added is the Jin Dynasty in Yue Fei's Legacy."
+        )
+
+        with patch.object(
+            cog,
+            "_create_openai_chat_completion",
+            new=AsyncMock(return_value=(stale_completion, None)),
+        ) as completion_mock:
+            reply = await cog._generate_grounded_reply(
+                "what civ was just added to aoe4?",
+                "question_answer",
+                "",
+                {"facts": [], "topics": [], "preferences": []},
+                [],
+                [],
+                current_context,
+            )
+
+        assert "Jin Dynasty" in reply
+        assert "Ottomans" not in reply
+        assert completion_mock.await_count == 2
 
 
 class TestAINaturalCommands:
