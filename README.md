@@ -8,7 +8,7 @@
 
 # tinki-bot
 
-Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered cute-snarky gnome replies, and Uma Musume gacha.
+Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered cutesy grunge gnome replies, and Uma Musume gacha.
 
 ## Requirements
 
@@ -320,9 +320,9 @@ Live runtime data on EC2 is stored in:
 
 ### AI replies
 
-Tinki responds when mentioned (`@Tinki-bot`). She also responds directly to linked Discord messages when the message text includes an actual Tinki mention before an accessible message link in the current server. Link previews that mention Tinki do not count as speaking to her. She has a cute but snarky gnome personality powered by OpenAI, with explicit expertise in World of Warcraft and Final Fantasy XIV/FFXIV. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
+Tinki responds when mentioned (`@Tinki-bot`). She also responds directly to linked Discord messages when the message text includes an actual Tinki mention before an accessible message link in the current server. Link previews that mention Tinki do not count as speaking to her. She has a cutesy gnome personality with a soft grunge side, powered by OpenAI, with explicit expertise in World of Warcraft and Final Fantasy XIV/FFXIV. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
 AI prompts include the current America/New_York and UTC date/time. Fresh/current/recent questions about gaming or world events trigger a short cached web lookup, source snippets are ranked with official game sources preferred when available, and clear source-backed direct answers are validated before Tinki replies so stale model memory cannot override the lookup. Released/live questions are treated separately from announced/upcoming/next-news questions.
-Requests for erotic or spicy writing are deterministically deflected into a playful roast before any OpenAI call.
+Requests for erotic or spicy writing are deterministically deflected into a playful public tease before any OpenAI call.
 Known context traps like calculator `DRG` versus Final Fantasy `DRG` are answered deterministically so repeated false corrections or retroactive context switches cannot flip the answer.
 
 ### Bowling score tracking

@@ -1015,9 +1015,18 @@ class TestAIBrain:
         assert "Thursday, May 7, 2026" in prompt
 
     def test_gremlin_system_style_keeps_gnome_identity_without_gremlin_words(self):
-        assert "cute but snarky gnome" in config.GREMLIN_SYSTEM_STYLE
+        assert "cutesy gnome" in config.GREMLIN_SYSTEM_STYLE
         assert "gremlin" not in config.GREMLIN_SYSTEM_STYLE.lower()
         assert "goblin" not in config.GREMLIN_SYSTEM_STYLE.lower()
+
+    def test_gremlin_system_style_is_cutesy_with_grunge_side_not_roast_first(self):
+        style = config.GREMLIN_SYSTEM_STYLE
+
+        assert "soft grunge side" in style
+        assert "gentle teasing" in style
+        assert "roast people" not in style
+        assert "cringe-wholesome" not in style
+        assert "genuine harassment" not in style
 
     def test_gremlin_system_style_makes_tinki_wow_and_ffxiv_expert(self):
         style = config.GREMLIN_SYSTEM_STYLE
@@ -2025,6 +2034,43 @@ class TestAIListeners:
 
 
 class TestAIRandomMessageTracking:
+    async def test_reaction_reply_prompt_uses_teasing_not_roast_first_language(self):
+        cog = make_ai_cog()
+        completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="tiny sparks, big mood"))])
+
+        with patch.object(
+            cog,
+            "_create_openai_chat_completion",
+            new=AsyncMock(return_value=(completion, None)),
+        ) as completion_mock:
+            await cog._generate_reaction_reply("original", "Tester", "🔥")
+
+        messages = completion_mock.await_args.kwargs["messages"]
+        prompt_text = "\n".join(message["content"] for message in messages)
+        assert "playful tease" in prompt_text
+        assert "grunge-side" in prompt_text
+        assert "roast" not in prompt_text.lower()
+        assert "Do NOT be wholesome" not in prompt_text
+
+    async def test_reply_to_reply_prompt_uses_teasing_not_roast_first_language(self):
+        cog = make_ai_cog()
+        completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="noted in glittery black ink"))])
+        user = SimpleNamespace(display_name="Tester")
+
+        with patch.object(
+            cog,
+            "_create_openai_chat_completion",
+            new=AsyncMock(return_value=(completion, None)),
+        ) as completion_mock:
+            await cog._generate_reply_to_reply("original", user, "nah")
+
+        messages = completion_mock.await_args.kwargs["messages"]
+        prompt_text = "\n".join(message["content"] for message in messages)
+        assert "playful tease" in prompt_text
+        assert "grunge-side" in prompt_text
+        assert "roast" not in prompt_text.lower()
+        assert "sharp-tongued" not in prompt_text
+
     async def test_random_ai_task_skips_empty_generation_result(self):
         cog = make_ai_cog()
         cog.random_ai_enabled = True
