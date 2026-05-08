@@ -11,6 +11,7 @@ Primary files:
 - `deploy-ec2.ps1`
 - `README.md`
 - `INSTALL.md`
+- `codex.md`
 - `CLAUDE.md`
 - `HANDOFF.md`
 
@@ -71,7 +72,7 @@ For ordinary repo work, follow this order unless the user explicitly asks for so
 
 1. Pull or otherwise sync from the real remote branch first.
 2. Check `git status --short --branch`.
-3. Read `HANDOFF.md`, then the relevant repo instructions before changing code.
+3. Read `codex.md`, then `HANDOFF.md`, then the relevant repo instructions before changing code.
 4. Inspect the smallest relevant code path and the matching tests before editing.
 5. Make the smallest focused change that solves the task.
 6. Run the narrowest relevant test first; run `python -m pytest` when the change is broad or touches shared behavior.
