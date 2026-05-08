@@ -4323,6 +4323,37 @@ class TestRuntimeBootstrap:
 
         assert ensure_group_writable_venv(venv_root, site_packages) == 0
 
+    def test_prepare_fuzzywuzzy_runtime_normalizes_repo_permissions(self, tmp_path, monkeypatch):
+        repo_root = tmp_path / "repo"
+        utils_dir = repo_root / "utils"
+        requirements = repo_root / "requirements.txt"
+        venv_root = tmp_path / "myenv"
+        site_packages = venv_root / "lib" / "python3.11" / "site-packages"
+        utils_dir.mkdir(parents=True)
+        site_packages.mkdir(parents=True)
+        requirements.write_text("python-Levenshtein==0.26.1\n", encoding="utf-8")
+        os.chmod(repo_root, 0o755)
+        os.chmod(utils_dir, 0o755)
+        os.chmod(venv_root, 0o2775)
+        os.chmod(venv_root / "lib", 0o2775)
+        os.chmod(venv_root / "lib" / "python3.11", 0o2775)
+        os.chmod(site_packages, 0o2775)
+
+        monkeypatch.setattr("utils.runtime_bootstrap._BOOTSTRAP_COMPLETED", False)
+        monkeypatch.setattr("utils.runtime_bootstrap.optional_speedup_installed", lambda: True)
+
+        prepare_fuzzywuzzy_runtime(
+            requirements_path=requirements,
+            repo_root=repo_root,
+            venv_root=venv_root,
+            site_packages_dir=site_packages,
+        )
+
+        assert stat.S_IWGRP & repo_root.stat().st_mode
+        assert stat.S_ISGID & repo_root.stat().st_mode
+        assert stat.S_IWGRP & utils_dir.stat().st_mode
+        assert stat.S_ISGID & utils_dir.stat().st_mode
+
     def test_prepare_fuzzywuzzy_runtime_installs_missing_speedup(self, tmp_path, monkeypatch):
         requirements = tmp_path / "requirements.txt"
         requirements.write_text("python-Levenshtein==0.26.1\n", encoding="utf-8")

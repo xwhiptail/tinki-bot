@@ -49,17 +49,23 @@ def normalize_group_write_permissions(root: Path) -> int:
 
     def _normalize(path: Path, *, is_dir: bool) -> None:
         nonlocal changed
-        if path.is_symlink():
+        try:
+            if path.is_symlink():
+                return
+            current_mode = path.stat().st_mode
+        except OSError:
             return
-        current_mode = path.stat().st_mode
         new_mode = current_mode | stat.S_IRGRP | stat.S_IWGRP
         if is_dir:
             new_mode |= stat.S_IXGRP | stat.S_ISGID
         elif current_mode & stat.S_IXUSR:
             new_mode |= stat.S_IXGRP
         if new_mode != current_mode:
-            os.chmod(path, new_mode)
-            changed += 1
+            try:
+                os.chmod(path, new_mode)
+                changed += 1
+            except OSError:
+                return
 
     _normalize(root, is_dir=True)
     for current_root, dir_names, file_names in os.walk(root):
@@ -104,6 +110,7 @@ def install_optional_speedup(
 def prepare_fuzzywuzzy_runtime(
     *,
     requirements_path: Optional[Path] = None,
+    repo_root: Optional[Path] = None,
     venv_root: Optional[Path] = None,
     site_packages_dir: Optional[Path] = None,
     timeout: int = OPTIONAL_SPEEDUP_INSTALL_TIMEOUT_SECONDS,
@@ -114,7 +121,7 @@ def prepare_fuzzywuzzy_runtime(
     if _BOOTSTRAP_COMPLETED:
         return
 
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = repo_root or Path(__file__).resolve().parent.parent
     requirements_path = requirements_path or (repo_root / "requirements.txt")
     venv_root = venv_root or venv_root_from_executable()
     site_packages_dir = site_packages_dir or Path(sysconfig.get_path("purelib"))
@@ -125,6 +132,10 @@ def prepare_fuzzywuzzy_runtime(
         with open(lock_path, "a+", encoding="utf-8") as lock_file:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+            repo_changed = normalize_group_write_permissions(repo_root)
+            if repo_changed:
+                log.info("runtime bootstrap: normalized group-write permissions on %s paths under %s", repo_changed, repo_root)
 
             changed = ensure_group_writable_venv(venv_root, site_packages_dir)
             if changed:
