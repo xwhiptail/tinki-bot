@@ -193,6 +193,11 @@ TINKI_SELF_INSULT_PATTERN = re.compile(
     r"(?:dumb|stupid|useless|bad)\b",
     re.IGNORECASE,
 )
+OLD_CREATURE_LABEL_PATTERN = re.compile(r"\b(?P<label>goblin|gremlin)(?P<plural>s?)\b", re.IGNORECASE)
+OLD_CREATURE_FACT_CONTEXT_PATTERN = re.compile(
+    r"\b(?:world of warcraft|warcraft|horde|bilgewater|kezan|cartel|playable race|npc|race)\b",
+    re.IGNORECASE,
+)
 
 
 class AI(commands.Cog):
@@ -399,6 +404,25 @@ class AI(commands.Cog):
             sections.append(instructions)
         return "\n\n".join(section.strip() for section in sections if section.strip())
 
+    def _case_like(self, replacement: str, original: str) -> str:
+        if original.isupper():
+            return replacement.upper()
+        if original[:1].isupper():
+            return replacement.capitalize()
+        return replacement
+
+    def _sanitize_identity_drift(self, text: str) -> str:
+        if not text or not OLD_CREATURE_LABEL_PATTERN.search(text):
+            return text
+        if OLD_CREATURE_FACT_CONTEXT_PATTERN.search(text):
+            return text
+
+        def replace_label(match):
+            replacement = "gnomes" if match.group("plural") else "gnome"
+            return self._case_like(replacement, match.group(0))
+
+        return OLD_CREATURE_LABEL_PATTERN.sub(replace_label, text)
+
     async def _current_awareness_context(self, text: str) -> str:
         return await build_current_awareness_context(text)
 
@@ -445,7 +469,7 @@ class AI(commands.Cog):
         )
         if not response:
             return ""
-        return response.choices[0].message.content.strip()
+        return self._sanitize_identity_drift(response.choices[0].message.content.strip())
 
     async def _generate_reaction_reply(self, original_text: str, username: str, emoji: str) -> str:
         response, failure_reply = await self._create_openai_chat_completion(
@@ -473,7 +497,7 @@ class AI(commands.Cog):
         )
         if not response:
             return failure_reply or OPENAI_UNAVAILABLE_REPLY
-        return response.choices[0].message.content.strip()
+        return self._sanitize_identity_drift(response.choices[0].message.content.strip())
 
     async def _generate_reply_to_reply(self, original_text: str, user: discord.User, user_text: str) -> str:
         response, failure_reply = await self._create_openai_chat_completion(
@@ -501,7 +525,7 @@ class AI(commands.Cog):
         )
         if not response:
             return failure_reply or OPENAI_UNAVAILABLE_REPLY
-        return response.choices[0].message.content.strip()
+        return self._sanitize_identity_drift(response.choices[0].message.content.strip())
 
     async def _generate_reply_to_linked_message(self, target_message, requester, instruction: str) -> str:
         source_text = (getattr(target_message, "content", None) or "(no text)").strip()
@@ -534,7 +558,7 @@ class AI(commands.Cog):
         )
         if not response:
             return failure_reply or OPENAI_UNAVAILABLE_REPLY
-        return response.choices[0].message.content.strip() if response.choices else ""
+        return self._sanitize_identity_drift(response.choices[0].message.content.strip()) if response.choices else ""
 
     async def _generate_grounded_reply(
         self,
@@ -582,7 +606,7 @@ class AI(commands.Cog):
             current_context=current_context,
         )
         if valid:
-            return reply
+            return self._sanitize_identity_drift(reply)
 
         if repo_context or current_context:
             correction, failure_reply = await self._create_openai_chat_completion(
@@ -611,11 +635,14 @@ class AI(commands.Cog):
                 current_context=current_context,
             )
             if valid:
-                return corrected
+                return self._sanitize_identity_drift(corrected)
 
-        return self._fallback_grounded_reply(intent, repo_context, current_context=current_context)
+        return self._sanitize_identity_drift(
+            self._fallback_grounded_reply(intent, repo_context, current_context=current_context)
+        )
 
     async def _send_reply_chunks(self, channel, mention: str, text: str):
+        text = self._sanitize_identity_drift(text)
         limit = 2000
         max_chunk = limit - len(mention) - 30
         if len(f'{mention}{text}') <= limit:

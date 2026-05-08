@@ -1074,12 +1074,19 @@ class TestCurrentAwareness:
         assert needs_current_awareness("what's the latest world news about nasa?")
         assert needs_current_awareness("what's the best opening rotation for DRG")
         assert needs_current_awareness("what's the most recent resident evil game")
+        assert needs_current_awareness("Tinki when is the next ror2 dlc")
         assert not needs_current_awareness("what are the bosses of molten core")
 
     def test_build_search_query_expands_game_aliases(self):
         query = build_search_query("what civ was added to aoe4 today?")
 
         assert "Age of Empires IV" in query
+        assert "gaming news" in query
+
+    def test_build_search_query_expands_ror2_alias_for_dlc_questions(self):
+        query = build_search_query("when is the next ror2 dlc")
+
+        assert "Risk of Rain 2" in query
         assert "gaming news" in query
 
     def test_parse_feed_sources_extracts_rss_items(self):
@@ -1676,6 +1683,33 @@ class TestAIListeners:
         grounded_mock.assert_not_awaited()
         message.channel.send.assert_awaited_once_with(
             "<@123> Correct. Still alive - tiny boots on, service humming."
+        )
+
+    async def test_on_message_sanitizes_old_creature_labels_from_ai_reply(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> i could take you so simmer down")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = [cog.bot.user]
+        completion = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content="because you're bullying a scrappy little loot goblin"
+                    )
+                )
+            ]
+        )
+
+        with patch.object(
+            cog,
+            "_create_openai_chat_completion",
+            new=AsyncMock(return_value=(completion, None)),
+        ):
+            await cog.on_message(message)
+
+        message.channel.send.assert_awaited_once_with(
+            "<@123> because you're bullying a scrappy little loot gnome"
         )
 
     async def test_on_message_ignores_tinki_reference_after_discord_link_preview(self):
