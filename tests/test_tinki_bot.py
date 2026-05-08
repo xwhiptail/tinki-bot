@@ -1028,6 +1028,14 @@ class TestAIBrain:
         assert "cringe-wholesome" not in style
         assert "genuine harassment" not in style
 
+    def test_gremlin_system_style_keeps_tinki_gnome_coded(self):
+        style = config.GREMLIN_SYSTEM_STYLE
+
+        assert "Stay gnome-coded" in style
+        assert "Tinki is a gnome, full stop" in style
+        assert "gremlin" not in style.lower()
+        assert "goblin" not in style.lower()
+
     def test_gremlin_system_style_makes_tinki_wow_and_ffxiv_expert(self):
         style = config.GREMLIN_SYSTEM_STYLE
         assert "World of Warcraft" in style
@@ -1596,6 +1604,79 @@ class TestAIListeners:
             await cog.on_message(message)
 
         handle_mock.assert_awaited_once_with(message, "she ain't working")
+
+    async def test_on_message_answers_dead_bot_status_without_openai_or_old_creature_terms(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("the bot is dead")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = []
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once()
+        sent = message.channel.send.await_args.args[0]
+        assert sent == (
+            "<@123> I'm literally replying, so I'm alive - sparks on, boots scuffed. "
+            "If something is actually broken, an admin can run `!statusreport` "
+            "or tell me which command faceplanted."
+        )
+        assert "goblin" not in sent.lower()
+        assert "gremlin" not in sent.lower()
+
+    async def test_on_message_answers_not_working_bot_status_as_broken_status(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("the bot is not working")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = []
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> I'm literally replying, so I'm alive - sparks on, boots scuffed. "
+            "If something is actually broken, an admin can run `!statusreport` "
+            "or tell me which command faceplanted."
+        )
+
+    async def test_on_message_answers_tinki_is_dumb_without_openai_or_old_creature_terms(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("tinki is dumb")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = []
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once()
+        sent = message.channel.send.await_args.args[0]
+        assert sent == (
+            "<@123> Rude, but noted. I'm a tiny gnome with a dented wrench, "
+            "not a miracle machine; show me the bug and I'll tighten it."
+        )
+        assert "goblin" not in sent.lower()
+        assert "gremlin" not in sent.lower()
+
+    async def test_on_message_answers_alive_bot_status_without_ping(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("she's alive")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = []
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> Correct. Still alive - tiny boots on, service humming."
+        )
 
     async def test_on_message_ignores_tinki_reference_after_discord_link_preview(self):
         cog = make_ai_cog()

@@ -61,6 +61,16 @@ SPICY_REQUEST_ROAST_REPLY = (
     "Absolutely. Chapter one: you asked a gnome bot for smut in public, "
     "and the whole server's secondhand embarrassment leveled up."
 )
+TINKI_SELF_STATUS_DEAD_REPLY = (
+    "I'm literally replying, so I'm alive - sparks on, boots scuffed. "
+    "If something is actually broken, an admin can run `!statusreport` "
+    "or tell me which command faceplanted."
+)
+TINKI_SELF_STATUS_ALIVE_REPLY = "Correct. Still alive - tiny boots on, service humming."
+TINKI_SELF_INSULT_REPLY = (
+    "Rude, but noted. I'm a tiny gnome with a dented wrench, "
+    "not a miracle machine; show me the bug and I'll tighten it."
+)
 SPICY_REQUEST_DIRECT_TERMS = (
     "erotic",
     "erotica",
@@ -143,7 +153,44 @@ TINKI_PRONOUN_STATUS_PATTERN = re.compile(
     r"(?:(?:still|so|very|really|fucking|kinda)\s+)*"
     r"(?:broken|broke|dead|down|offline|hallucinating|gaslit|gaslighting)\b"
     r"|"
+    r"\bshe(?:'s| is| was)?\s+(?:(?:still|actually|really)\s+)*(?:alive|back|up)\b"
+    r"|"
     r"\bshe\s+(?:replied|responded|answered)\b",
+    re.IGNORECASE,
+)
+TINKI_SELF_DEAD_PATTERN = re.compile(
+    r"\b(?:tinki(?:[-\s]?bot)?|(?:the|this|that|our|your)\s+bot)\b.{0,40}"
+    r"\b(?:dead|broken|broke|down|offline|not\s+working|not\s+replying|not\s+responding)\b"
+    r"|"
+    r"\bshe\s+(?:ain't|isn't|is not|wasn't|was not)\s+(?:working|replying|responding)\b"
+    r"|"
+    r"\bshe(?:'s| is| was)?\s+"
+    r"(?:(?:still|so|very|really|fucking|kinda)\s+)*"
+    r"(?:dead|broken|broke|down|offline)\b"
+    r"|"
+    r"\byou(?:'re| are)?\s+"
+    r"(?:(?:still|so|very|really|fucking|kinda)\s+)*"
+    r"(?:dead|broken|broke|down|offline)\b",
+    re.IGNORECASE,
+)
+TINKI_SELF_ALIVE_PATTERN = re.compile(
+    r"\b(?:tinki(?:[-\s]?bot)?|(?:the|this|that|our|your)\s+bot)\b.{0,40}"
+    r"\b(?:alive|back|up|working|replying|responding)\b"
+    r"|"
+    r"\bshe(?:'s| is| was)?\s+(?:(?:still|actually|really)\s+)*(?:alive|back|up)\b"
+    r"|"
+    r"\byou(?:'re| are)?\s+(?:(?:still|actually|really)\s+)*(?:alive|back|up)\b",
+    re.IGNORECASE,
+)
+TINKI_SELF_INSULT_PATTERN = re.compile(
+    r"\b(?:tinki(?:[-\s]?bot)?|(?:the|this|that|our|your)\s+bot)\b.{0,40}"
+    r"\b(?:dumb|stupid|idiot|useless|bad)\b"
+    r"|"
+    r"\bshe(?:'s| is| was)?\s+(?:(?:so|very|really|fucking|kinda)\s+)*"
+    r"(?:dumb|stupid|useless|bad)\b"
+    r"|"
+    r"\byou(?:'re| are)?\s+(?:(?:so|very|really|fucking|kinda)\s+)*"
+    r"(?:dumb|stupid|useless|bad)\b",
     re.IGNORECASE,
 )
 
@@ -608,6 +655,15 @@ class AI(commands.Cog):
 
         return None
 
+    def _match_tinki_self_status_reply(self, text: str):
+        if TINKI_SELF_DEAD_PATTERN.search(text):
+            return TINKI_SELF_STATUS_DEAD_REPLY
+        if TINKI_SELF_ALIVE_PATTERN.search(text):
+            return TINKI_SELF_STATUS_ALIVE_REPLY
+        if TINKI_SELF_INSULT_PATTERN.search(text):
+            return TINKI_SELF_INSULT_REPLY
+        return None
+
     def _history_has_drg_calculator_context(self, history) -> bool:
         for entry in history:
             content = str(entry.get("content", "") if isinstance(entry, dict) else "")
@@ -754,6 +810,13 @@ class AI(commands.Cog):
         if spicy_roast:
             await self._send_reply_chunks(message.channel, f'{message.author.mention} ', spicy_roast)
             self._update_conversation_history(personas_cog, user_id, persona_key, text, spicy_roast)
+            self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
+            self._save_ai_memory()
+            return
+        self_status_reply = self._match_tinki_self_status_reply(text)
+        if self_status_reply:
+            await self._send_reply_chunks(message.channel, f'{message.author.mention} ', self_status_reply)
+            self._update_conversation_history(personas_cog, user_id, persona_key, text, self_status_reply)
             self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
             self._save_ai_memory()
             return
