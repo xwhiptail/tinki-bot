@@ -320,7 +320,7 @@ Live runtime data on EC2 is stored in:
 
 ### AI replies
 
-Tinki responds when mentioned (`@Tinki-bot`). She also responds directly to linked Discord messages when the message text includes an actual Tinki mention before an accessible message link in the current server. Link previews that mention Tinki do not count as speaking to her. She has a cutesy gnome personality with a soft grunge side, powered by OpenAI, with explicit expertise in World of Warcraft and Final Fantasy XIV/FFXIV. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
+Tinki responds when mentioned (`@Tinki-bot`) and when a normal message clearly talks about Tinki/the bot, such as `Tinki ...`, `the bot ...`, or narrow bot-status phrases like `she ain't working`. She also responds directly to linked Discord messages when the message text includes an actual Tinki mention before an accessible message link in the current server. Link previews that mention Tinki do not count as speaking to her. She has a cutesy gnome personality with a soft grunge side, powered by OpenAI, with explicit expertise in World of Warcraft and Final Fantasy XIV/FFXIV. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
 AI prompts include the current America/New_York and UTC date/time. Fresh/current/recent questions about gaming or world events trigger a short cached web lookup, source snippets are ranked with official game sources preferred when available, and clear source-backed direct answers are validated before Tinki replies so stale model memory cannot override the lookup. Released/live questions are treated separately from announced/upcoming/next-news questions.
 Requests for erotic or spicy writing are deterministically deflected into a playful public tease before any OpenAI call.
 Known context traps like calculator `DRG` versus Final Fantasy `DRG` are answered deterministically so repeated false corrections or retroactive context switches cannot flip the answer.
@@ -374,6 +374,7 @@ For infrastructure cost control outside the bot runtime, use the repo maintenanc
 ### Personas And AI
 
 - `@Tinki-bot <message>` - get a reply from Tinki
+- Messages that clearly talk about Tinki/the bot - get an automatic reply without pinging her
 - `@Tinki-bot <Discord message link> [instruction]` - have Tinki reply directly to a linked message she can access in the current server
 - Tinki keeps lightweight memory of explicit user facts and preferences.
 - For memory-style questions, Tinki can search recent accessible channel history instead of guessing.

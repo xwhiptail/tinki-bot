@@ -316,6 +316,7 @@ class Utility(commands.Cog):
 
 **AI**
 `@Tinki-bot <message>` - get a reply from Tinki
+Messages that clearly talk about Tinki/the bot - get an automatic reply without pinging her
 `@Tinki-bot <Discord message link> [instruction]` - have Tinki reply directly to a linked message in this server
 
 **Uma Musume**

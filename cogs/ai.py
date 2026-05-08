@@ -131,6 +131,21 @@ DISCORD_MESSAGE_LINK_PATTERN = re.compile(
     r"https?://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/channels/"
     r"(?P<guild_id>@me|\d+)/(?P<channel_id>\d+)/(?P<message_id>\d+)"
 )
+TINKI_NAME_REFERENCE_PATTERN = re.compile(r"\btinki(?:[-\s]?bot)?\b", re.IGNORECASE)
+TINKI_GENERIC_BOT_REFERENCE_PATTERN = re.compile(
+    r"\b(?:the|this|that|our|your)\s+bot\b(?!\s+lane\b)",
+    re.IGNORECASE,
+)
+TINKI_PRONOUN_STATUS_PATTERN = re.compile(
+    r"\bshe\s+(?:ain't|isn't|is not|wasn't|was not)\s+(?:working|replying|responding)\b"
+    r"|"
+    r"\bshe(?:'s| is| was)?\s+"
+    r"(?:(?:still|so|very|really|fucking|kinda)\s+)*"
+    r"(?:broken|broke|dead|down|offline|hallucinating|gaslit|gaslighting)\b"
+    r"|"
+    r"\bshe\s+(?:replied|responded|answered)\b",
+    re.IGNORECASE,
+)
 
 
 class AI(commands.Cog):
@@ -262,6 +277,29 @@ class AI(commands.Cog):
             if link_start is None or token_index < link_start:
                 return True
         return False
+
+    def _first_tinki_text_reference_index(self, content: str):
+        matches = []
+        for pattern in (
+            TINKI_NAME_REFERENCE_PATTERN,
+            TINKI_GENERIC_BOT_REFERENCE_PATTERN,
+            TINKI_PRONOUN_STATUS_PATTERN,
+        ):
+            match = pattern.search(content)
+            if match:
+                matches.append(match.start())
+        return min(matches) if matches else None
+
+    def _message_talks_about_tinki_in_text(self, message) -> bool:
+        content = str(getattr(message, "content", "") or "")
+        if not content or content.lstrip().startswith(("!", "$")):
+            return False
+        reference_index = self._first_tinki_text_reference_index(content)
+        if reference_index is None:
+            return False
+        link_match = DISCORD_MESSAGE_LINK_PATTERN.search(content)
+        link_start = link_match.start() if link_match else None
+        return link_start is None or reference_index < link_start
 
     def _strip_bot_mention(self, text: str) -> str:
         stripped = text
@@ -835,6 +873,7 @@ class AI(commands.Cog):
             return
 
         mentions_bot_in_text = self._message_mentions_bot_in_text(message)
+        talks_about_tinki_in_text = self._message_talks_about_tinki_in_text(message)
 
         if message.reference is not None and mentions_bot_in_text and not message.content.startswith('!'):
             try:
@@ -852,7 +891,7 @@ class AI(commands.Cog):
                 self._track_random_ai_message_id(bot_reply.id)
                 return
 
-        if message.reference is None and mentions_bot_in_text:
+        if message.reference is None and (mentions_bot_in_text or talks_about_tinki_in_text):
             text = self._strip_bot_mention(message.content)
             if not text:
                 return
@@ -860,7 +899,7 @@ class AI(commands.Cog):
             try:
                 await self._handle_mention(message, text)
             except Exception:
-                logger.exception("AI mention handling failed")
+                logger.exception("AI message handling failed")
                 await message.channel.send(f'{message.author.mention} Sorry, something went wrong on my side.')
 
     @commands.Cog.listener()

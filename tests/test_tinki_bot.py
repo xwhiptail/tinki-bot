@@ -1564,6 +1564,64 @@ class TestAIListeners:
         assert len(stripped) == 1000
         assert stripped == "x" * 1000
 
+    async def test_on_message_responds_to_plain_tinki_reference_without_ping(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("Tinki is being suspiciously quiet")
+        message.mentions = []
+
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle_mock:
+            await cog.on_message(message)
+
+        handle_mock.assert_awaited_once_with(message, "Tinki is being suspiciously quiet")
+
+    async def test_on_message_responds_to_the_bot_reference_without_ping(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("the bot is broken again")
+        message.mentions = []
+
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle_mock:
+            await cog.on_message(message)
+
+        handle_mock.assert_awaited_once_with(message, "the bot is broken again")
+
+    async def test_on_message_responds_to_bot_pronoun_status_without_ping(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("she ain't working")
+        message.mentions = []
+
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle_mock:
+            await cog.on_message(message)
+
+        handle_mock.assert_awaited_once_with(message, "she ain't working")
+
+    async def test_on_message_ignores_tinki_reference_after_discord_link_preview(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("hi https://discord.com/channels/111/222/333 Tinki-bot is being weird")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = []
+
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle_mock:
+            await cog.on_message(message)
+
+        handle_mock.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
+
+    async def test_on_message_ignores_unrelated_bot_lane_reference(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("the bot lane is doomed")
+        message.mentions = []
+
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle_mock:
+            await cog.on_message(message)
+
+        handle_mock.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
+
     async def test_on_message_short_circuits_hard_stop_refusal_before_ai_generation(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
@@ -3021,6 +3079,7 @@ class TestUtilityChangelog:
         assert "!uptime" in sent_text
         assert "`!emote [name] [1x-4x]` - search 7TV, preview results in the picker, choose a size, and send" in sent_text
         assert "`@Tinki-bot <Discord message link> [instruction]`" in sent_text
+        assert "Messages that clearly talk about Tinki/the bot" in sent_text
 
 
 class TestUtilityCommands:
