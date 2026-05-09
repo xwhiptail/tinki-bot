@@ -80,6 +80,7 @@ Use this as the default workflow unless the user says otherwise:
 - 2026-05-08: Tightened memory/history behavior so Tinki does not overfit stale context or correction bait. Saved facts/topics now require query overlap unless the user is explicitly asking for a memory lookup, general recent history no longer falls back to stale last messages, and user correction bait like "that's wrong"/"I never said" does not become future topic context. Updated README, command-test map, and focused coverage; full local pytest passed (`337 passed`).
 - 2026-05-08: Added addressed-only web/media behavior. Only pings or plain-text `Tinki`/`Tinki-bot` wake AI replies; addressed public web links add compact fetched page context, and addressed image attachments are passed to the vision-capable OpenAI model. Generic `the bot` or pronoun chatter stays silent unless Tinki is named or pinged. Updated README, `!commands`, command-test map, and coverage; full local pytest passed (`344 passed`).
 - 2026-05-08: Added repo-root `codex.md` derived from `CLAUDE.md` and updated `AGENTS.md`/handoff startup guidance to read it first.
+- 2026-05-08: Fixed `Tinki shut up` being mistaken for alive/up status chatter. Direct hush requests now stay silent before the self-status matcher runs; focused regression passed.
 - Live bot host is now `t3a.nano` AL2023 at `98.92.242.38`.
 - Old host `52.91.60.81` has `tinki-bot.service` stopped and disabled.
 - `deploy-ec2.local.sh` points at the new host.

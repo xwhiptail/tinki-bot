@@ -195,6 +195,14 @@ TINKI_SELF_INSULT_PATTERN = re.compile(
     r"(?:dumb|stupid|useless|bad)\b",
     re.IGNORECASE,
 )
+TINKI_SILENCE_REQUEST_PATTERN = re.compile(
+    r"^\s*(?:tinki(?:[-\s]?bot)?|you)?[\s,:;-]*"
+    r"(?:(?:please\s+)?(?:shut\s+(?:the\s+\w+\s+)?up|be\s+quiet|hush|quiet\s+down|"
+    r"stop\s+(?:talking|replying|responding))|"
+    r"(?:can|could)\s+you\s+(?:please\s+)?"
+    r"(?:shut\s+(?:the\s+\w+\s+)?up|be\s+quiet|stop\s+(?:talking|replying|responding)))\b",
+    re.IGNORECASE,
+)
 OLD_CREATURE_LABEL_PATTERN = re.compile(r"\b(?P<label>goblin|gremlin)(?P<plural>s?)\b", re.IGNORECASE)
 OLD_CREATURE_FACT_CONTEXT_PATTERN = re.compile(
     r"\b(?:world of warcraft|warcraft|horde|bilgewater|kezan|cartel|playable race|npc|race)\b",
@@ -862,6 +870,8 @@ class AI(commands.Cog):
             self._update_conversation_history(personas_cog, user_id, persona_key, text, refusal)
             self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
             self._save_ai_memory()
+            return
+        if TINKI_SILENCE_REQUEST_PATTERN.search(text):
             return
         spicy_roast = self._match_spicy_request_roast(text)
         if spicy_roast:

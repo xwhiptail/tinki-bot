@@ -1792,6 +1792,19 @@ class TestAIListeners:
             "<@123> Correct. Still alive - tiny boots on, service humming."
         )
 
+    async def test_on_message_stays_silent_for_tinki_shut_up(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("tinki shut up")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = []
+
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
+
     async def test_on_message_sanitizes_old_creature_labels_from_ai_reply(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
