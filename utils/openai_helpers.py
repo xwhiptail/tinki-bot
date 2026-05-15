@@ -68,6 +68,9 @@ async def gpt_wrap_fact(fact: str, user_text: str, system_prompt, model: str = O
     system = (
         GREMLIN_SYSTEM_STYLE + "\n\n"
         + build_current_time_context() + "\n\n"
+        "The assistant reply is prefilled with a verified deterministic fact. "
+        "Do not contradict it, recalculate it, list alternate answers, or add new factual claims; "
+        "only add a very short flavor flourish after the dash, or return nothing.\n\n"
         f"Your name is @Tinki-bot. "
         f"Use this persona description as extra flavor: {system_prompt}"
     )
@@ -80,6 +83,7 @@ async def gpt_wrap_fact(fact: str, user_text: str, system_prompt, model: str = O
                 {"role": "user", "content": user_text},
                 {"role": "assistant", "content": f"{fact} —"},
             ],
+            max_tokens=40,
         )
         tail = completion.choices[0].message.content if completion.choices else ""
         return f"{fact} — {tail.lstrip('— ').strip()}" if tail else fact

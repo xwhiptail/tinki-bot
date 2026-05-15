@@ -784,6 +784,48 @@ class TestMaybeCountLetterReply:
         r = maybe_count_letter_reply("how many letter e's in the word sleep")
         assert r is not None and "2" in r
 
+    def test_days_of_week_letter_count(self):
+        r = maybe_count_letter_reply("how many days of the week contain the letter d")
+        assert r == (
+            "All 7 days of the week contain 'd': Monday, Tuesday, Wednesday, "
+            "Thursday, Friday, Saturday, and Sunday."
+        )
+
+    def test_days_of_week_correction_prompt(self):
+        r = maybe_count_letter_reply("so no other days of the week have a d in them, tinki?")
+        assert r == (
+            "All 7 days of the week contain 'd': Monday, Tuesday, Wednesday, "
+            "Thursday, Friday, Saturday, and Sunday."
+        )
+
+    def test_which_days_of_week_letter_count(self):
+        r = maybe_count_letter_reply("which days of the week contain the letter t")
+        assert r == (
+            "3 days of the week contain 't': Tuesday, Thursday, and Saturday. "
+            "Monday, Wednesday, Friday, and Sunday do not."
+        )
+
+    def test_days_of_week_missing_letter_count(self):
+        r = maybe_count_letter_reply("how many days of the week do not contain the letter d")
+        assert r == (
+            "0 days of the week do not contain 'd'. "
+            "All 7 contain it: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, and Sunday."
+        )
+
+    def test_months_of_year_letter_count(self):
+        r = maybe_count_letter_reply("how many months of the year contain the letter r")
+        assert r == (
+            "8 months of the year contain 'r': January, February, March, April, "
+            "September, October, November, and December. May, June, July, and August do not."
+        )
+
+    def test_months_of_year_correction_prompt(self):
+        r = maybe_count_letter_reply("so no other months of the year have an r in them, tinki?")
+        assert r == (
+            "8 months of the year contain 'r': January, February, March, April, "
+            "September, October, November, and December. May, June, July, and August do not."
+        )
+
 
 class TestMaybeBotInsightReply:
     def test_model_question_returns_configured_model(self):
@@ -2494,6 +2536,10 @@ class TestOpenAIHelpers:
                 wrapped = await gpt_wrap_fact("4", "2+2", "persona")
 
         assert wrapped.startswith("4")
+        sent_kwargs = fake_client.chat.completions.create.call_args.kwargs
+        system_message = sent_kwargs["messages"][0]["content"]
+        assert "verified deterministic fact" in system_message
+        assert sent_kwargs.get("max_completion_tokens", sent_kwargs.get("max_tokens")) == 40
         run_blocking_mock.assert_awaited_once()
 
     async def test_create_chat_completion_uses_completion_token_limit_for_gpt5_models(self):

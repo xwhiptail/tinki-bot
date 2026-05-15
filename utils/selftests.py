@@ -53,6 +53,9 @@ def run_letter_count_selftests():
         ("letter s in mississippi", "how many s's in mississippi", "4"),
         ("letter e in cheese",      "how many e's in cheese?",     "3"),
         ("letter zero count",       "how many z's in apple",       "0"),
+        ("letter d in days",        "how many days of the week contain the letter d", "All 7"),
+        ("letter missing in days",  "how many days of the week do not contain the letter d", "0 days"),
+        ("letter r in months",      "how many months of the year contain the letter r", "8"),
         ("letter no match",         "what time is it",              None),
     ]
     results = []
