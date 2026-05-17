@@ -10,6 +10,16 @@
 
 Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered cute alt baddie gnome replies, and Uma Musume gacha.
 
+## Branding
+
+<p align="center">
+  <img src="assets/branding/tinki-character-art-1.png" alt="Tinki character art 1" width="32%">
+  <img src="assets/branding/tinki-character-art-2.png" alt="Tinki character art 2" width="32%">
+  <img src="assets/branding/tinki-character-art-3.png" alt="Tinki character art 3" width="32%">
+</p>
+
+Additional repo art and usage notes live in [`assets/README.md`](assets/README.md).
+
 ## Requirements
 
 - Python 3.10+ recommended for local development
@@ -26,6 +36,7 @@ Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered cute 
 - `tests/` - local pytest suite for pure functions and isolated command helpers
 - `requirements.txt` - Python dependencies
 - `.env.example` - environment variable template
+- `assets/README.md` - gallery and notes for repo art assets
 - `assets/branding/` - repo art for README, GitHub social preview, and bot branding
 - `data/` - local runtime data directory for sqlite/json files
 - `INSTALL.md` - local setup and production install notes
