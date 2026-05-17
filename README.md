@@ -13,10 +13,14 @@ Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered cute 
 ## Branding
 
 <p align="center">
-  <img src="assets/branding/tinki-character-art-1.png" alt="Tinki character art 1" width="24%">
-  <img src="assets/branding/tinki-character-art-2.png" alt="Tinki character art 2" width="24%">
-  <img src="assets/branding/tinki-character-art-3.png" alt="Tinki character art 3" width="24%">
-  <img src="assets/branding/tinki-profile-sassy-fishnet.png" alt="Tinki sassy Discord profile art" width="24%">
+  <img src="assets/branding/tinki-character-art-1.png" alt="Tinki character art 1" width="32%">
+  <img src="assets/branding/tinki-character-art-2.png" alt="Tinki character art 2" width="32%">
+  <img src="assets/branding/tinki-character-art-3.png" alt="Tinki character art 3" width="32%">
+</p>
+
+<p align="center">
+  <img src="assets/branding/tinki-profile-sassy-fishnet.png" alt="Tinki sassy Discord profile art with fishnet top" width="32%">
+  <img src="assets/branding/tinki-profile-sassy-smirk.png" alt="Tinki sassy Discord profile art with smirk" width="32%">
 </p>
 
 Additional repo art and usage notes live in [`assets/README.md`](assets/README.md).
