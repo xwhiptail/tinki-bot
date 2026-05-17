@@ -5,9 +5,10 @@ Repo-only art for README, GitHub social preview, and bot branding. These files a
 ## Character Art
 
 <p align="center">
-  <img src="branding/tinki-character-art-1.png" alt="Tinki character art 1" width="32%">
-  <img src="branding/tinki-character-art-2.png" alt="Tinki character art 2" width="32%">
-  <img src="branding/tinki-character-art-3.png" alt="Tinki character art 3" width="32%">
+  <img src="branding/tinki-character-art-1.png" alt="Tinki character art 1" width="24%">
+  <img src="branding/tinki-character-art-2.png" alt="Tinki character art 2" width="24%">
+  <img src="branding/tinki-character-art-3.png" alt="Tinki character art 3" width="24%">
+  <img src="branding/tinki-profile-sassy-fishnet.png" alt="Tinki sassy Discord profile art" width="24%">
 </p>
 
 ## Branding Files
@@ -18,3 +19,4 @@ Repo-only art for README, GitHub social preview, and bot branding. These files a
 - `branding/tinki-character-art-1.png` - generated Tinki character art sheet.
 - `branding/tinki-character-art-2.png` - generated Tinki character art sheet.
 - `branding/tinki-character-art-3.png` - generated Tinki character art sheet.
+- `branding/tinki-profile-sassy-fishnet.png` - generated Discord profile art with fishnet top.
