@@ -784,6 +784,18 @@ class TestMaybeCountLetterReply:
         r = maybe_count_letter_reply("how many letter e's in the word sleep")
         assert r is not None and "2" in r
 
+    def test_messy_many_letter_in_word_phrasing(self):
+        r = maybe_count_letter_reply("got many r in raspberry")
+        assert r == "'r' appears 3 times in 'raspberry'"
+
+    def test_word_has_how_many_letter_phrasing(self):
+        r = maybe_count_letter_reply("how many r does raspberry have?")
+        assert r == "'r' appears 3 times in 'raspberry'"
+
+    def test_correction_bait_word_has_count_phrasing(self):
+        r = maybe_count_letter_reply("raspberry has two r's, right?")
+        assert r == "'r' appears 3 times in 'raspberry'"
+
     def test_days_of_week_letter_count(self):
         r = maybe_count_letter_reply("how many days of the week contain the letter d")
         assert r == (

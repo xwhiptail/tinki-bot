@@ -138,6 +138,43 @@ def _named_list_letter_reply(named_list, target_letter: str, *, wants_missing: b
     return f"{reply} {_format_english_list(missing_items)} do not."
 
 
+def _word_letter_from_query(lowered: str) -> Optional[tuple[str, str]]:
+    letter_then_word_patterns = (
+        r"\bhow many\s+(?:letter\s+)?([a-z])(?:'s|s)?\s+"
+        r"(?:(?:are\s+there|are)\s+)?in\s+(?:the word\s+)?([a-z]+)\b",
+        r"\bhow many\s+(?:letter\s+)?([a-z])(?:'s|s)?\s+"
+        r"(?:does|do)\s+(?:the word\s+)?([a-z]+)\s+"
+        r"(?:have|contain|include)\b",
+        r"\b(?:got\s+)?many\s+(?:letter\s+)?([a-z])(?:'s|s)?\s+"
+        r"in\s+(?:the word\s+)?([a-z]+)\b",
+        r"\b(?:count|counting|counted)\s+(?:letter\s+)?([a-z])(?:'s|s)?\s+"
+        r"in\s+(?:the word\s+)?([a-z]+)\b",
+    )
+    for pattern in letter_then_word_patterns:
+        match = re.search(pattern, lowered)
+        if match:
+            return match.groups()
+
+    word_then_letter_patterns = (
+        r"\b(?:the word\s+)?([a-z]+)\s+"
+        r"(?:has|have|contains|contain|includes|include)\s+"
+        r"(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+)?"
+        r"(?:letter\s+)?([a-z])(?:'s|s)?\b",
+    )
+    for pattern in word_then_letter_patterns:
+        match = re.search(pattern, lowered)
+        if match:
+            word, target_letter = match.groups()
+            return target_letter, word
+    return None
+
+
+def _word_letter_reply(target_letter: str, target_word: str) -> str:
+    count = target_word.count(target_letter)
+    times = "time" if count == 1 else "times"
+    return f"'{target_letter}' appears {count} {times} in '{target_word}'"
+
+
 def maybe_count_letter_reply(text: str) -> Optional[str]:
     lowered = text.strip().lower().rstrip(' ?!.')
     named_list = _named_list_from_query(lowered)
@@ -150,13 +187,8 @@ def maybe_count_letter_reply(text: str) -> Optional[str]:
                 wants_missing=_asks_for_missing_items(lowered),
             )
 
-    match = re.search(
-        r'how many\s+(?:letter\s+)?([a-z])(?:\'s|s)?\s+(?:are\s+)?in\s+(?:the word\s+)?([a-z]+)',
-        lowered,
-    )
-    if not match:
+    word_letter = _word_letter_from_query(lowered)
+    if not word_letter:
         return None
-    target_letter, target_word = match.groups()
-    count = target_word.count(target_letter)
-    times = "time" if count == 1 else "times"
-    return f"'{target_letter}' appears {count} {times} in '{target_word}'"
+    target_letter, target_word = word_letter
+    return _word_letter_reply(target_letter, target_word)

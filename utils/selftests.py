@@ -50,6 +50,7 @@ def run_calculate_selftests():
 def run_letter_count_selftests():
     cases = [
         ("letter r in strawberry",  "how many r's in strawberry",  "3"),
+        ("letter r in raspberry",   "got many r in raspberry",     "3"),
         ("letter s in mississippi", "how many s's in mississippi", "4"),
         ("letter e in cheese",      "how many e's in cheese?",     "3"),
         ("letter zero count",       "how many z's in apple",       "0"),
