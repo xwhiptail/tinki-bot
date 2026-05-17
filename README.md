@@ -8,7 +8,7 @@
 
 # tinki-bot
 
-Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered cutesy grunge gnome replies, and Uma Musume gacha.
+Discord bot for server utilities, memes, reminders, emotes, OpenAI-powered cute alt baddie gnome replies, and Uma Musume gacha.
 
 ## Requirements
 
@@ -320,7 +320,7 @@ Live runtime data on EC2 is stored in:
 
 ### AI replies
 
-Tinki responds only when directly addressed with an actual `@Tinki-bot` ping or the word `Tinki`/`Tinki-bot` in the message. Generic chatter like `the bot is dead` or `she ain't working` stays silent unless the message also names or pings Tinki. Simple named bot-status chatter like `Tinki is dead/alive/dumb` gets a short deterministic self-status reply before OpenAI. She also responds directly to linked Discord messages when the message text includes an actual Tinki mention before an accessible message link in the current server. Link previews that mention Tinki do not count as speaking to her. She has a cutesy gnome personality with a soft grunge side, powered by OpenAI, with explicit expertise in World of Warcraft and Final Fantasy XIV/FFXIV. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
+Tinki responds only when directly addressed with an actual `@Tinki-bot` ping or the word `Tinki`/`Tinki-bot` in the message. Generic chatter like `the bot is dead` or `she ain't working` stays silent unless the message also names or pings Tinki. Simple named bot-status chatter like `Tinki is dead/alive/dumb` gets a short deterministic self-status reply before OpenAI. She also responds directly to linked Discord messages when the message text includes an actual Tinki mention before an accessible message link in the current server. Link previews that mention Tinki do not count as speaking to her. She has a cutesy gnome personality with cute alt baddie energy, powered by OpenAI, with explicit expertise in World of Warcraft and Final Fantasy XIV/FFXIV. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
 Direct hush requests like `Tinki shut up` or `@Tinki-bot be quiet` stay silent instead of being treated as alive/up status chatter.
 AI prompts include the current America/New_York and UTC date/time. Fresh/current/recent questions about gaming or world events, including common game aliases like `RoR2`, trigger a short cached web lookup, source snippets are ranked with official game sources preferred when available, and clear source-backed direct answers are validated before Tinki replies so stale model memory cannot override the lookup. Released/live questions are treated separately from announced/upcoming/next-news questions. When Tinki is addressed, regular public web links are fetched for compact page title/description context, and image attachments are passed to the vision-capable model for direct inspection.
 Requests for erotic or spicy writing are deterministically deflected into a playful public tease before any OpenAI call.

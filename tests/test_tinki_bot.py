@@ -1119,11 +1119,13 @@ class TestAIBrain:
         assert "gremlin" not in config.GREMLIN_SYSTEM_STYLE.lower()
         assert "goblin" not in config.GREMLIN_SYSTEM_STYLE.lower()
 
-    def test_gremlin_system_style_is_cutesy_with_grunge_side_not_roast_first(self):
+    def test_gremlin_system_style_is_cute_alt_baddie_not_roast_first(self):
         style = config.GREMLIN_SYSTEM_STYLE
 
-        assert "soft grunge side" in style
-        assert "gentle teasing" in style
+        assert "cute alt baddie energy" in style
+        assert "sup bitches" in style
+        assert "rude-familiar greetings" in style
+        assert "playful teasing" in style
         assert "roast people" not in style
         assert "cringe-wholesome" not in style
         assert "genuine harassment" not in style
@@ -2483,7 +2485,7 @@ class TestAIRandomMessageTracking:
         messages = completion_mock.await_args.kwargs["messages"]
         prompt_text = "\n".join(message["content"] for message in messages)
         assert "playful tease" in prompt_text
-        assert "grunge-side" in prompt_text
+        assert "cute alt baddie" in prompt_text
         assert "roast" not in prompt_text.lower()
         assert "Do NOT be wholesome" not in prompt_text
 
@@ -2502,7 +2504,7 @@ class TestAIRandomMessageTracking:
         messages = completion_mock.await_args.kwargs["messages"]
         prompt_text = "\n".join(message["content"] for message in messages)
         assert "playful tease" in prompt_text
-        assert "grunge-side" in prompt_text
+        assert "cute alt baddie" in prompt_text
         assert "roast" not in prompt_text.lower()
         assert "sharp-tongued" not in prompt_text
 

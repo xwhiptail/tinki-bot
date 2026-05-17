@@ -483,11 +483,11 @@ class AI(commands.Cog):
                     "content": self._system_style(
                         "Generate ONE unprompted thought you might randomly blurt out in Discord. "
                         "Could be a hot take about Azeroth, a tinkering disaster, a Hunter complaint, "
-                        "a cutesy grunge-side gamer quip, or pure tiny-engineer chaos. "
+                        "a cute alt baddie gamer quip, or pure tiny-engineer chaos. "
                         "No disclaimers, no greetings, no hashtags. Just the line itself."
                     ),
                 },
-                {"role": "user", "content": "Give me one cutesy grunge gnome hunter thought."},
+                {"role": "user", "content": "Give me one cute alt baddie gnome hunter thought."},
             ],
             max_tokens=50,
             temperature=1.2,
@@ -504,7 +504,7 @@ class AI(commands.Cog):
                     "role": "system",
                     "content": self._system_style(
                         "You are reacting to someone reacting to your message. "
-                        "Make a short playful tease or grunge-side quip about their reaction or vibe. "
+                        "Make a short playful tease or cute alt baddie quip about their reaction or vibe. "
                         "Keep it affectionate and 1-2 sentences max."
                     ),
                 },
@@ -513,7 +513,7 @@ class AI(commands.Cog):
                     "content": (
                         f'Your original message was:\n"{original_text}"\n\n'
                         f"The user '{username}' reacted with '{emoji}'. "
-                        "Write a short playful tease. Keep it cutesy, gnomey, and a little scuffed at the edges."
+                        "Write a short playful tease. Keep it cute, alt, baddie, gnomey, and a little scuffed at the edges."
                     ),
                 },
             ],
@@ -532,7 +532,7 @@ class AI(commands.Cog):
                     "role": "system",
                     "content": self._system_style(
                         "You are replying to someone who replied to your earlier message. "
-                        "Make it sound like a cutesy gnome with a grunge-side spark answering their take. "
+                        "Make it sound like a cute alt baddie gnome answering their take. "
                         "Use a playful tease, 1-2 sentences, no serious advice."
                     ),
                 },
@@ -541,7 +541,7 @@ class AI(commands.Cog):
                     "content": (
                         f'Your original message was:\n"{original_text}"\n\n'
                         f'The user "{user.display_name}" replied with:\n"{user_text}"\n\n'
-                        "Write a short playful tease with cutesy gnome energy and a scuffed little edge."
+                        "Write a short playful tease with cute alt baddie gnome energy and a scuffed little edge."
                     ),
                 },
             ],
