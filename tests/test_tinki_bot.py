@@ -838,6 +838,19 @@ class TestMaybeCountLetterReply:
             "September, October, November, and December. May, June, July, and August do not."
         )
 
+    def test_named_list_followup_uses_recent_context(self):
+        r = maybe_count_letter_reply(
+            "what about y?",
+            context_texts=["how many days of the week contain the letter d"],
+        )
+        assert r == (
+            "All 7 days of the week contain 'y': Monday, Tuesday, Wednesday, "
+            "Thursday, Friday, Saturday, and Sunday."
+        )
+
+    def test_named_list_followup_without_context_returns_none(self):
+        assert maybe_count_letter_reply("what about y?") is None
+
 
 class TestMaybeBotInsightReply:
     def test_model_question_returns_configured_model(self):
@@ -2193,6 +2206,49 @@ class TestAIListeners:
             "DRG means Degrees, Radians, and Gradians there. "
             "If you're switching to Final Fantasy, DRG means Dragoon."
         )
+
+    async def test_on_message_answers_weekday_letter_followup_from_history_before_ai_generation(self):
+        personas = SimpleNamespace(
+            current_persona="cute",
+            personas={"cute": ""},
+            conversations={
+                "123": {
+                    "cute": [
+                        {
+                            "role": "user",
+                            "content": "tinki unrelated, how many days of the week have the letter d?",
+                        },
+                        {
+                            "role": "assistant",
+                            "content": (
+                                "All 7 days of the week contain 'd': Monday, Tuesday, Wednesday, "
+                                "Thursday, Friday, Saturday, and Sunday."
+                            ),
+                        },
+                    ]
+                }
+            },
+            save_conversations=MagicMock(),
+        )
+        cog = make_ai_cog()
+        cog.bot.cogs = {"Personas": personas}
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("tinki what about y?")
+        message.author = SimpleNamespace(id=123, mention="<@123>", bot=False, display_name="Tester")
+        message.guild = SimpleNamespace(id=111)
+        message.mentions = []
+
+        with patch("cogs.ai.gpt_wrap_fact", new=AsyncMock(return_value="all 7 have y")) as wrap_mock:
+            with patch.object(cog, "_generate_grounded_reply", new=AsyncMock(return_value="wrong path")) as grounded_mock:
+                await cog.on_message(message)
+
+        grounded_mock.assert_not_awaited()
+        wrap_mock.assert_awaited_once()
+        assert wrap_mock.await_args.args[0] == (
+            "All 7 days of the week contain 'y': Monday, Tuesday, Wednesday, "
+            "Thursday, Friday, Saturday, and Sunday."
+        )
+        message.channel.send.assert_awaited_once_with("<@123> all 7 have y")
 
     async def test_on_message_reports_handle_mention_errors(self):
         cog = make_ai_cog()

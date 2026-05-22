@@ -57,11 +57,14 @@ def run_letter_count_selftests():
         ("letter d in days",        "how many days of the week contain the letter d", "All 7"),
         ("letter missing in days",  "how many days of the week do not contain the letter d", "0 days"),
         ("letter r in months",      "how many months of the year contain the letter r", "8"),
+        ("letter follow-up in days", "what about y?", "All 7", ["how many days of the week contain the letter d"]),
         ("letter no match",         "what time is it",              None),
     ]
     results = []
-    for name, inp, expected in cases:
-        got = maybe_count_letter_reply(inp)
+    for case in cases:
+        name, inp, expected = case[:3]
+        context_texts = case[3] if len(case) > 3 else None
+        got = maybe_count_letter_reply(inp, context_texts=context_texts)
         if expected is None:
             ok = got is None
             reason = None if ok else f"expected None but got `{got}`"

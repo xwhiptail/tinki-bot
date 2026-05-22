@@ -1,5 +1,5 @@
 import re
-from typing import Optional
+from typing import Iterable, Optional
 
 
 WEEKDAY_NAMES = (
@@ -73,6 +73,25 @@ def _named_list_from_query(lowered: str):
     for named_list in NAMED_LISTS:
         if any(alias in lowered for alias in named_list["aliases"]):
             return named_list
+    return None
+
+
+def _named_list_from_context(context_texts: Iterable[str]):
+    for context_text in reversed(list(context_texts)):
+        named_list = _named_list_from_query(str(context_text).lower())
+        if named_list:
+            return named_list
+    return None
+
+
+def _followup_letter_from_query(lowered: str):
+    match = re.search(
+        r"\b(?:what|how)\s+about\s+"
+        r"(?:the\s+)?(?:letter\s+)?['\"]?([a-z])['\"]?\b",
+        lowered,
+    )
+    if match:
+        return match.group(1)
     return None
 
 
@@ -175,7 +194,7 @@ def _word_letter_reply(target_letter: str, target_word: str) -> str:
     return f"'{target_letter}' appears {count} {times} in '{target_word}'"
 
 
-def maybe_count_letter_reply(text: str) -> Optional[str]:
+def maybe_count_letter_reply(text: str, context_texts: Optional[Iterable[str]] = None) -> Optional[str]:
     lowered = text.strip().lower().rstrip(' ?!.')
     named_list = _named_list_from_query(lowered)
     if named_list:
@@ -184,6 +203,16 @@ def maybe_count_letter_reply(text: str) -> Optional[str]:
             return _named_list_letter_reply(
                 named_list,
                 named_list_letter,
+                wants_missing=_asks_for_missing_items(lowered),
+            )
+
+    followup_letter = _followup_letter_from_query(lowered)
+    if followup_letter and context_texts:
+        context_named_list = _named_list_from_context(context_texts)
+        if context_named_list:
+            return _named_list_letter_reply(
+                context_named_list,
+                followup_letter,
                 wants_missing=_asks_for_missing_items(lowered),
             )
 

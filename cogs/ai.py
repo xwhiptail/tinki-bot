@@ -922,7 +922,12 @@ class AI(commands.Cog):
             self._save_ai_memory()
             return
 
-        deterministic_fact = maybe_count_letter_reply(text)
+        history_texts = [
+            str(entry.get("content", ""))
+            for entry in history
+            if isinstance(entry, dict)
+        ]
+        deterministic_fact = maybe_count_letter_reply(text, context_texts=history_texts)
         if deterministic_fact:
             reply = await gpt_wrap_fact(deterministic_fact, text, persona_description, model=OPENAI_FAST_MODEL)
             await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
