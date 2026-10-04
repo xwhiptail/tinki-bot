@@ -25,6 +25,19 @@ Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke
 | Addressed replies to ordinary messages | `test_on_message_handles_addressed_untracked_reply`, `test_on_message_handles_addressed_reply_when_reference_unavailable`, `test_on_message_passes_reply_context_to_grounded_reply`, `test_on_message_ignores_unaddressed_untracked_reply` |
 | AI memory/context grounding | `test_memory_context_does_not_fallback_to_unrelated_user_memory`, `test_memory_context_allows_fallback_only_for_explicit_memory_lookup`, `test_update_memory_state_does_not_store_gaslighting_corrections_as_topics`, `test_relevant_history_does_not_fallback_to_stale_last_messages`, `test_relevant_history_ignores_gaslighting_corrections_even_with_overlap` |
 
+## Channel Historian
+
+| Behavior | Direct tests |
+| --- | --- |
+| `!lore <topic>` and earlier dates | `test_lore_command_preserves_earlier_date`, `test_lore_passes_requested_earlier_date_to_discord`, shared command smoke test |
+| `!recap [days]` | `test_recap_command_rejects_invalid_window`, `test_recap_passes_bounded_time_window_to_discord`, shared command smoke test |
+| Addressed natural history requests | `test_on_message_routes_history_request_to_historian`, `test_on_message_does_not_run_historian_without_address`, `test_historian_request_in_tracked_reply_uses_historian` |
+| Permissions and channel isolation | `test_requires_both_user_and_bot_history_permissions`, `test_dm_does_not_fetch_history`, `test_scan_stays_in_channel_and_excludes_bots_commands_and_request`, `test_permission_loss_prevents_publishing_history` |
+| Evidence and retrieval limits | `test_invalid_model_sources_fail_closed`, `test_invalid_or_unavailable_ai_falls_back_to_real_quotes`, `test_scan_enforces_message_cap`, `test_timeout_retains_partial_results_and_marks_coverage`, `test_lore_includes_nearby_replies_but_not_distant_unrelated_messages` |
+
+Helper and cog coverage lives in `tests/test_channel_history.py`; listener routing
+and command registration/smoke coverage lives in `tests/test_tinki_bot.py`.
+
 ## Admin
 
 | Command | Direct tests |

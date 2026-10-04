@@ -27,6 +27,7 @@ from utils.ai_brain import (
 )
 from utils.bot_insight import maybe_bot_insight_reply
 from utils.calculator import maybe_calculate_reply
+from utils.channel_history import parse_history_request
 from utils.current_awareness import build_current_awareness_context, build_current_time_context
 from utils.letter_counter import maybe_count_letter_reply
 from utils.link_context import build_link_context
@@ -873,6 +874,11 @@ class AI(commands.Cog):
             return
         if TINKI_SILENCE_REQUEST_PATTERN.search(text):
             return
+        history_request = parse_history_request(text)
+        historian = self.bot.cogs.get('Historian')
+        if history_request and historian:
+            await historian.answer(message, history_request)
+            return
         spicy_roast = self._match_spicy_request_roast(text)
         if spicy_roast:
             await self._send_reply_chunks(message.channel, f'{message.author.mention} ', spicy_roast)
@@ -1042,7 +1048,8 @@ class AI(commands.Cog):
                 replied_to = await message.channel.fetch_message(message.reference.message_id)
             except discord.HTTPException:
                 replied_to = None
-            if replied_to and replied_to.id in self.random_ai_message_ids:
+            if (replied_to and replied_to.id in self.random_ai_message_ids
+                    and not (self.bot.cogs.get('Historian') and parse_history_request(self._strip_bot_mention(message.content)))):
                 user_text = self._strip_bot_mention(message.content) or "Reply to your message."
                 reply = await self._generate_reply_to_reply(
                     original_text=replied_to.content or "(no text)",

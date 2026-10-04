@@ -345,6 +345,37 @@ Requests for erotic or spicy writing are deterministically deflected into a play
 Known context traps like calculator `DRG` versus Final Fantasy `DRG` are answered deterministically so repeated false corrections or retroactive context switches cannot flip the answer.
 Stored facts and recent chat history are treated as low-confidence hints. Tinki only injects remembered facts/topics when they overlap the current request, keeps fallback memory for explicit memory-lookup questions, and avoids saving "no, you're wrong" correction bait as future topic context.
 
+### Channel historian
+
+Tinki can investigate the current channel's stories and inside jokes, or catch you
+up on recent conversations. She includes links to the original messages and the
+dates covered by her search.
+
+- `!lore toaster` - trace a topic through this channel's messages and nearby replies
+- `!lore before:2025-01-01 toaster` - investigate an earlier slice of history, before that date at midnight UTC
+- `!recap` or `!recap 7` - recap the last seven days; choose 1-30 days
+- `Tinki, explain the toaster incident` - ask for lore naturally
+- `Tinki, what's the lore behind toaster?` - another way to ask
+- `Tinki, what did I miss this week?` - ask for a channel recap
+
+History is fetched from Discord when asked. There is no separate message archive,
+background indexing, or scheduled posting. A request stays in its originating
+server channel or thread; both the requester and Tinki must be able to view that
+channel and read its history. Bot messages and commands are excluded.
+
+Each lookup reads at most 2,000 messages with a 20-second retrieval budget. Up to
+24 source excerpts (about 500 characters each) are sent to the configured
+`OPENAI_FAST_MODEL` for one summary. Recaps sample larger conversations and say so;
+older topics can be explored with `before:YYYY-MM-DD`. "Earliest found" means the
+earliest evidence in that search, not a proven origin. Source links are built from
+Discord message IDs; if the summary is unavailable or has invalid citations,
+Tinki shows actual excerpts instead. Replies stay in Discord as normal, but the
+historian does not save a separate archive or add its evidence to AI memory.
+
+Searches are limited to one per channel every 30 seconds and two at a time across
+the bot. No new paid service or dependency is required; successful AI summaries
+use the existing OpenAI account.
+
 ### Bowling score tracking
 
 Commands: `!pb`, `!avg`, `!median`, `!all`, `!bowlinggraph`, `!bowlingdistgraph`, `!add`
@@ -407,6 +438,12 @@ For infrastructure cost control outside the bot runtime, use the repo maintenanc
 - `!remindme` - list your upcoming and missed reminders
 - `!deletereminder <id>` - delete a reminder by ID
 - `!currenttime` - show the current server time
+
+### Channel History
+
+- `!lore <topic>` - investigate channel lore with original-message citations
+- `!lore before:YYYY-MM-DD <topic>` - search earlier history in this channel
+- `!recap [days]` - recap this channel's last 1-30 days, default 7
 
 ### Emotes And Stickers
 

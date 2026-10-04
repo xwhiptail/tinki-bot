@@ -275,6 +275,9 @@ class Utility(commands.Cog):
 `!changelog [count]` - Shows recent commit summaries.
 `!awscost` - Shows AWS month-to-date and projected monthly cost (admin only).
 `!statusreport` - Shows EC2/runtime status with a summary plus attachment (admin only).
+`!lore <topic>` - Investigate this channel's history with source-message links.
+`!lore before:YYYY-MM-DD <topic>` - Search an earlier slice of this channel (UTC).
+`!recap [days]` - Catch up on this channel; 1-30 days, default 7.
         """
         part2 = """
 **Bot Commands List - Part 2**

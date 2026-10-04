@@ -236,6 +236,11 @@ def make_reminders_cog():
     return _wire_cog(Reminders(MagicMock()))
 
 
+def make_historian_cog():
+    from cogs.historian import Historian
+    return _wire_cog(Historian(MagicMock()))
+
+
 def load_tinki_bot_module():
     module_name = "tinki_bot_entrypoint_test"
     module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tinki-bot.py"))
@@ -251,6 +256,7 @@ COMMAND_COG_FACTORIES = (
     make_bowling_cog,
     make_emotes_cog,
     make_reminders_cog,
+    make_historian_cog,
     make_tracking_cog,
     make_uma_cog,
     make_utility_cog,
@@ -297,6 +303,16 @@ def _make_client_session_cm():
 
 
 def _build_command_smoke_cases(tmp_path, monkeypatch):
+    async def smoke_historian(command_name):
+        cog = make_historian_cog()
+        ctx = make_smoke_ctx()
+        with patch.object(cog, "answer", new=AsyncMock()) as answer:
+            if command_name == "lore":
+                await cog.lore.callback(cog, ctx, topic="toaster")
+            else:
+                await cog.recap.callback(cog, ctx, "7")
+        answer.assert_awaited_once()
+
     async def smoke_admin(command_name):
         cog = make_admin_cog()
         ctx = make_smoke_ctx(author_name="whiptail")
@@ -553,6 +569,8 @@ def _build_command_smoke_cases(tmp_path, monkeypatch):
             assert ctx.send.await_count >= 1
 
     return {
+        "lore": lambda: smoke_historian("lore"),
+        "recap": lambda: smoke_historian("recap"),
         "restart": lambda: smoke_admin("restart"),
         "deploy": lambda: smoke_admin("deploy"),
         "awscost": lambda: smoke_admin("awscost"),
@@ -1882,6 +1900,47 @@ class TestAIHardStopRefusals:
 
 
 class TestAIListeners:
+    @pytest.mark.parametrize("content", [
+        "Tinki, explain the toaster incident", "<@99> what did I miss this week?",
+    ])
+    async def test_on_message_routes_history_request_to_historian(self, content):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        historian = SimpleNamespace(answer=AsyncMock())
+        cog.bot.cogs["Historian"] = historian
+        message = make_message(content)
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as generate, \
+             patch.object(cog, "_save_ai_memory") as save_memory, \
+             patch.object(cog, "_update_conversation_history") as save_conversation:
+            await cog.on_message(message)
+        historian.answer.assert_awaited_once()
+        assert historian.answer.await_args.args[0] is message
+        generate.assert_not_awaited()
+        save_memory.assert_not_called()
+        save_conversation.assert_not_called()
+
+    async def test_on_message_does_not_run_historian_without_address(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        historian = SimpleNamespace(answer=AsyncMock())
+        cog.bot.cogs["Historian"] = historian
+        await cog.on_message(make_message("what did I miss this week?"))
+        historian.answer.assert_not_awaited()
+
+    async def test_historian_request_in_tracked_reply_uses_historian(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        cog.random_ai_message_ids.add(55)
+        historian = SimpleNamespace(answer=AsyncMock())
+        cog.bot.cogs["Historian"] = historian
+        message = make_message("<@99> explain the toaster incident")
+        message.reference = SimpleNamespace(message_id=55)
+        message.channel.fetch_message.return_value = SimpleNamespace(id=55, content="random thought")
+        with patch.object(cog, "_generate_reply_to_reply", new=AsyncMock()) as reply:
+            await cog.on_message(message)
+        historian.answer.assert_awaited_once()
+        reply.assert_not_awaited()
+
     @pytest.mark.parametrize("content", ["<@99> explain this", "Tinki, explain this"])
     async def test_on_message_handles_addressed_untracked_reply(self, content):
         cog = make_ai_cog()
@@ -3749,6 +3808,9 @@ class TestUtilityChangelog:
         assert "`@Tinki-bot <Discord message link> [instruction]`" in sent_text
         assert "Messages that say `Tinki` or `Tinki-bot`" in sent_text
         assert "Addressed messages with public web links or image attachments" in sent_text
+        assert "!lore <topic>" in sent_text
+        assert "!recap [days]" in sent_text
+        assert all(len(call.args[0]) <= 2000 for call in ctx.author.send.await_args_list)
 
 
 class TestUtilityCommands:

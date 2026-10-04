@@ -103,6 +103,7 @@ utils/
   current_awareness.py live/current source snippets for fresh questions
   letter_counter.py   maybe_count_letter_reply
   link_context.py     compact page context for addressed public links
+  channel_history.py  bounded on-demand Discord history retrieval and citations
   url_rewriter.py     rewrite_social_urls
   openai_helpers.py   get_openai_client, GPT wrapping, OpenAI failure handling
   selftests.py        URL, calculation, and letter-count self-tests
@@ -114,6 +115,7 @@ cogs/
   emotes.py           Emotes cog - $ commands, !emote, !allemotes, spinny handling
   tracking.py         Tracking cog - sus/explode/spinny tracking + graph commands
   ai.py               AI cog - addressed AI replies, link/image context, reaction replies
+  historian.py        Historian cog - channel lore and recaps with source links
   utility.py          Utility cog - cat, dog, gif, roulette, purge, retired server stubs
   admin.py            Admin cog - restart, deploy, runtests, testurls, startup diagnostics
   url_filter.py       URLFilter cog - URL rewrites and Twitch clip embed fix

@@ -114,6 +114,13 @@ The deploy scripts update code, but host migration still requires those runtime 
 
 Repo-only branding art under `assets/branding/` is intentionally excluded from routine code deploys.
 
+The channel historian (`!lore` and `!recap`) uses the existing Discord connection
+and OpenAI account. Both the requester and bot need View Channel and Read Message
+History in the invoking server channel/thread. It reads text on demand, sends a
+bounded selection of excerpts to `OPENAI_FAST_MODEL`, and creates no separate
+message archive or scheduled job. The normal deploy includes its new cog and
+history helper; no database migration or new dependency is needed.
+
 The in-bot `!deploy` command downloads the exact commit it checked on GitHub and
 updates `.deploy-commit` only after dependency installation succeeds. If that step
 fails, fix the reported dependency problem and retry `!deploy`; the failed attempt

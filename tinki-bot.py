@@ -19,6 +19,7 @@ COGS = [
     'cogs.emotes',
     'cogs.tracking',
     'cogs.ai',
+    'cogs.historian',
     'cogs.utility',
     'cogs.admin',
     'cogs.url_filter',
