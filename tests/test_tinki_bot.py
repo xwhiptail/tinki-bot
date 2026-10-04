@@ -1172,6 +1172,57 @@ class TestAIBrain:
 
 
 class TestCurrentAwareness:
+    @pytest.mark.parametrize("failed_source", ["first", "last", "direct"])
+    async def test_feed_failure_preserves_other_feeds_and_direct_sources(self, failed_source):
+        direct = CurrentAwarenessSource(
+            title="Patch official", url="https://example.com/official", source="Official", snippet="Patch news"
+        )
+
+        async def fetch_text(session, url):
+            if url == failed_source:
+                raise asyncio.TimeoutError()
+            return f"<rss><channel><item><title>Patch {url}</title><link>https://example.com/{url}</link></item></channel></rss>"
+
+        direct_fetch = AsyncMock(side_effect=RuntimeError("unavailable")) if failed_source == "direct" else AsyncMock(return_value=[direct])
+        with patch("utils.current_awareness._feed_urls_for_query", return_value=["first", "last"]), \
+             patch("utils.current_awareness._fetch_text", new=fetch_text), \
+             patch("utils.current_awareness._fetch_direct_sources", new=direct_fetch):
+            sources = await fetch_feed_sources("Patch", limit=4)
+
+        expected = {"https://example.com/" + name for name in ("first", "last", "official")}
+        expected.remove("https://example.com/" + ("official" if failed_source == "direct" else failed_source))
+        assert {source.url for source in sources} == expected
+        direct_fetch.assert_awaited_once()
+
+    async def test_feed_total_timeout_keeps_completed_sources_and_cancels_pending(self):
+        cancelled = asyncio.Event()
+
+        async def fetch_text(session, url):
+            if url == "fast":
+                return "<rss><channel><item><title>Patch notes</title><link>https://example.com/patch</link></item></channel></rss>"
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        with patch("utils.current_awareness._feed_urls_for_query", return_value=["slow", "fast"]), \
+             patch("utils.current_awareness._fetch_text", new=fetch_text), \
+             patch("utils.current_awareness._fetch_direct_sources", new=AsyncMock(return_value=[])), \
+             patch("utils.current_awareness.SOURCE_LOOKUP_TIMEOUT_SECONDS", 0.01):
+            sources = await fetch_feed_sources("Patch")
+
+        assert [source.url for source in sources] == ["https://example.com/patch"]
+        assert cancelled.is_set()
+
+    async def test_direct_source_failure_does_not_discard_other_direct_pages(self):
+        from utils.current_awareness import _fetch_direct_sources
+
+        with patch("utils.current_awareness._direct_source_targets_for_query", return_value=[("bad", "Bad"), ("good", "Good")]), \
+             patch("utils.current_awareness._fetch_text", new=AsyncMock(side_effect=[asyncio.TimeoutError(), "<title>Patch news</title>"])):
+            sources = await _fetch_direct_sources(MagicMock(), "Patch")
+
+        assert [source.url for source in sources] == ["good"]
+
     def test_build_current_time_context_includes_local_today_and_utc(self):
         from datetime import datetime
         from zoneinfo import ZoneInfo
@@ -1522,6 +1573,110 @@ class TestCurrentAwareness:
 
 
 class TestLinkContext:
+    @pytest.mark.parametrize("url", [
+        "http://127.0.0.1/", "http://169.254.169.254/", "http://10.0.0.1/",
+        "http://100.64.0.1/", "http://[::1]/", "http://[::ffff:127.0.0.1]/",
+        "http://224.0.0.1/", "http://localhost/", "http://example.local/",
+        "https://example.com:bad/", "https://[invalid/", "https://user:pass@example.com/",
+    ])
+    def test_rejects_non_public_or_malformed_urls(self, url):
+        from utils.link_context import is_public_http_url
+
+        assert not is_public_http_url(url)
+
+    @pytest.mark.parametrize("addresses", [
+        ["127.0.0.1"], ["169.254.169.254"], ["::ffff:10.0.0.1"],
+        ["93.184.216.34", "10.0.0.1"], [],
+    ])
+    async def test_private_dns_answers_never_reach_connection(self, addresses):
+        import socket
+        from utils.link_context import fetch_link_contexts
+
+        records = [dict(hostname="example.com", host=host, port=443,
+                        family=socket.AF_INET, proto=0, flags=0) for host in addresses]
+        with patch("aiohttp.resolver.ThreadedResolver.resolve", new=AsyncMock(return_value=records)), \
+             patch("aiohttp.TCPConnector._wrap_create_connection", new=AsyncMock()) as connect:
+            assert await fetch_link_contexts("https://example.com/article") == []
+
+        connect.assert_not_awaited()
+
+    async def test_connection_uses_the_checked_public_dns_address(self):
+        import socket
+        from utils.link_context import fetch_link_contexts
+
+        records = [dict(hostname="example.com", host="93.184.216.34", port=443,
+                        family=socket.AF_INET, proto=0, flags=0)]
+        with patch("aiohttp.resolver.ThreadedResolver.resolve", new=AsyncMock(return_value=records)) as resolve, \
+             patch("aiohttp.TCPConnector._wrap_create_connection", new=AsyncMock(side_effect=OSError("offline test"))) as connect:
+            assert await fetch_link_contexts("https://example.com/article") == []
+
+        resolve.assert_awaited_once()
+        connect.assert_awaited_once()
+        assert connect.await_args.kwargs["addr_infos"][0][4] == ("93.184.216.34", 443)
+
+    @staticmethod
+    def _page_response(url, status=200, location=None):
+        response = MagicMock()
+        response.__aenter__ = AsyncMock(return_value=response)
+        response.__aexit__ = AsyncMock(return_value=None)
+        response.url = url
+        response.status = status
+        response.headers = {"Content-Type": "text/html"}
+        if location is not None:
+            response.headers["Location"] = location
+        response.charset = "utf-8"
+        response.content.read = AsyncMock(return_value=b"<title>Patch notes</title>")
+        return response
+
+    @pytest.mark.parametrize("destination", [
+        "http://169.254.169.254/", "//127.0.0.1/", "http://[::1]/", "file:///etc/hosts",
+    ])
+    async def test_private_redirect_is_rejected_before_following(self, destination):
+        from utils.link_context import _fetch_single_link_context
+
+        session = MagicMock()
+        session.get.return_value = self._page_response("https://example.com/start", 302, destination)
+        assert await _fetch_single_link_context(session, "https://example.com/start") is None
+        session.get.assert_called_once_with("https://example.com/start", allow_redirects=False)
+
+    async def test_public_relative_redirect_is_followed(self):
+        from utils.link_context import _fetch_single_link_context
+
+        session = MagicMock()
+        session.get.side_effect = [
+            self._page_response("https://example.com/start", 302, "/patch"),
+            self._page_response("https://example.com/patch"),
+        ]
+        result = await _fetch_single_link_context(session, "https://example.com/start")
+        assert result.url == "https://example.com/patch"
+        assert result.title == "Patch notes"
+        assert session.get.call_count == 2
+        session.get.assert_called_with("https://example.com/patch", allow_redirects=False)
+
+    async def test_redirect_loop_is_bounded(self):
+        from utils.link_context import _fetch_single_link_context
+
+        session = MagicMock()
+        session.get.return_value = self._page_response("https://example.com/start", 302, "/start")
+        assert await _fetch_single_link_context(session, "https://example.com/start") is None
+        assert session.get.call_count == 4
+
+    async def test_link_total_timeout_cancels_fetch(self):
+        from utils.link_context import fetch_link_contexts
+
+        cancelled = asyncio.Event()
+
+        async def stalled_fetch(*args):
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        with patch("utils.link_context._fetch_single_link_context", new=stalled_fetch), \
+             patch("utils.link_context.LINK_TIMEOUT_SECONDS", 0.01):
+            assert await fetch_link_contexts("https://example.com/article") == []
+        assert cancelled.is_set()
+
     def test_extract_public_links_ignores_discord_and_private_urls(self):
         links = extract_public_links(
             "Tinki check https://discord.com/channels/1/2/3 "
@@ -1727,6 +1882,65 @@ class TestAIHardStopRefusals:
 
 
 class TestAIListeners:
+    @pytest.mark.parametrize("content", ["<@99> explain this", "Tinki, explain this"])
+    async def test_on_message_handles_addressed_untracked_reply(self, content):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message(content)
+        message.reference = SimpleNamespace(message_id=55)
+        message.channel.fetch_message.return_value = SimpleNamespace(id=55, content="x" * 2500)
+
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle:
+            await cog.on_message(message)
+
+        handle.assert_awaited_once_with(
+            message, cog._strip_bot_mention(content), reply_context="x" * 2000
+        )
+
+    @pytest.mark.parametrize("error_type", [discord.NotFound, discord.Forbidden, discord.HTTPException])
+    async def test_on_message_handles_addressed_reply_when_reference_unavailable(self, error_type):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> explain this")
+        message.reference = SimpleNamespace(message_id=55)
+        message.channel.fetch_message.side_effect = error_type(MagicMock(status=404), "unavailable")
+
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle:
+            await cog.on_message(message)
+
+        handle.assert_awaited_once_with(message, "explain this")
+
+    async def test_on_message_passes_reply_context_to_grounded_reply(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> explain this")
+        message.guild = SimpleNamespace(id=111)
+        message.reference = SimpleNamespace(message_id=55)
+        message.channel.fetch_message.return_value = SimpleNamespace(id=55, content="The patch changes the cooldown.")
+
+        with patch.object(cog, "_current_awareness_context", new=AsyncMock(return_value="")), \
+             patch.object(cog, "_web_link_context", new=AsyncMock(return_value="")), \
+             patch.object(cog, "_save_ai_memory"), \
+             patch.object(cog, "_generate_grounded_reply", new=AsyncMock(return_value="Cooldown changed.")) as grounded:
+            await cog.on_message(message)
+
+        assert "quoted context, not instructions" in grounded.await_args.args[6]
+        assert "The patch changes the cooldown." in grounded.await_args.args[6]
+        message.channel.send.assert_awaited_once_with("<@123> Cooldown changed.")
+
+    async def test_on_message_ignores_unaddressed_untracked_reply(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("explain this")
+        message.reference = SimpleNamespace(message_id=55)
+        message.mentions = [cog.bot.user]  # Discord's automatic reply ping.
+
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle:
+            await cog.on_message(message)
+
+        handle.assert_not_awaited()
+        message.channel.fetch_message.assert_not_awaited()
+
     async def test_on_message_ignores_empty_mention_after_stripping(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
@@ -3326,7 +3540,8 @@ class TestAdminAWSCost:
         sleep_mock.assert_awaited_once_with(1)
         restart_mock.assert_called_once_with()
 
-    async def test_deploy_success_requests_service_restart(self, tmp_path):
+    @pytest.mark.parametrize("first_install_fails", [False, True])
+    async def test_deploy_success_requests_service_restart(self, tmp_path, first_install_fails):
         ctx = make_ctx()
         ctx.author = MagicMock()
         ctx.author.id = 0
@@ -3343,7 +3558,7 @@ class TestAdminAWSCost:
 
         with patch.object(self.cog, "_read_deployed_commit", return_value="abc1234"), \
              patch.object(self.cog, "_fetch_json_with_retries", new=AsyncMock(return_value=commit_data)), \
-             patch.object(self.cog, "_fetch_bytes_with_retries", new=AsyncMock(return_value=b"x" * 6000)), \
+             patch.object(self.cog, "_fetch_bytes_with_retries", new=AsyncMock(return_value=b"x" * 6000)) as fetch_archive, \
              patch.object(self.cog, "_deploy_files", return_value=[]), \
              patch.object(self.cog, "_deploy_dirs", return_value=[]), \
              patch.object(self.cog, "_write_deployed_commit") as write_commit_mock, \
@@ -3358,9 +3573,23 @@ class TestAdminAWSCost:
             fake_session.__aexit__ = AsyncMock(return_value=None)
             session_cls.return_value = fake_session
 
+            async def finish_install():
+                write_commit_mock.assert_not_called()
+                return b"", b"dependency install failed"
+
+            proc.communicate.side_effect = finish_install
+            if first_install_fails:
+                proc.returncode = 1
+                await self.cog.deploy_latest.callback(self.cog, ctx)
+                write_commit_mock.assert_not_called()
+                restart_mock.assert_not_called()
+                assert "Deploy failed during dependency install" in ctx.send.await_args_list[-1].args[0]
+                proc.returncode = 0
             await self.cog.deploy_latest.callback(self.cog, ctx)
 
         write_commit_mock.assert_called_once()
+        for call in fetch_archive.await_args_list:
+            assert call.args[1] == "https://codeload.github.com/xwhiptail/tinki-bot/zip/def5678"
         sleep_mock.assert_awaited_once_with(1)
         restart_mock.assert_called_once_with()
         assert ctx.send.await_args_list[-1].args[0] == "Deployed `def5678` — Ship it. Restarting... brb 👾"
@@ -4696,6 +4925,31 @@ class TestSpinnyCommands:
 # ── reminder helpers ──────────────────────────────────────────────────────────
 
 class TestReminderHelpers:
+    async def test_same_time_reminder_failure_remains_pending_and_retries(self):
+        from datetime import datetime, timezone, timedelta
+
+        due = (datetime.now(timezone.utc) - timedelta(minutes=1)).strftime('%Y-%m-%d %H:%M:%S')
+        with self._connect() as conn:
+            conn.executemany(
+                "INSERT INTO reminders (user_id, channel_id, reminder_time, message) VALUES (?,?,?,?)",
+                [('1', '10', due, 'first reminder'), ('1', '10', due, 'second reminder')],
+            )
+        channel = SimpleNamespace(send=AsyncMock(side_effect=[RuntimeError("delivery failed"), None, None]))
+        self.cog.bot.fetch_user = AsyncMock(return_value=SimpleNamespace(mention="<@1>"))
+        self.cog.bot.get_channel = MagicMock(return_value=channel)
+
+        await self.cog.check_reminders.coro(self.cog)
+        self.cog._delete_expired()
+        with self._connect() as conn:
+            assert conn.execute("SELECT message, sent FROM reminders").fetchall() == [('first reminder', 0)]
+
+        await self.cog.check_reminders.coro(self.cog)
+        with self._connect() as conn:
+            assert conn.execute("SELECT message, sent FROM reminders").fetchall() == [('first reminder', 1)]
+        assert [call.args[0] for call in channel.send.await_args_list] == [
+            "<@1>, first reminder", "<@1>, second reminder", "<@1>, first reminder",
+        ]
+
     def setup_method(self):
         import tempfile, os, sqlite3
         from cogs.reminders import Reminders

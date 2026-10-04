@@ -49,9 +49,9 @@ class Reminders(commands.Cog):
         with self._connect() as conn:
             c = conn.cursor()
             now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-            c.execute('SELECT user_id, channel_id, reminder_time, message FROM reminders WHERE reminder_time<=? AND sent=0', (now,))
+            c.execute('SELECT reminder_id, user_id, channel_id, reminder_time, message FROM reminders WHERE reminder_time<=? AND sent=0', (now,))
             reminders = c.fetchall()
-            for user_id, channel_id, reminder_time, message in reminders:
+            for reminder_id, user_id, channel_id, reminder_time, message in reminders:
                 try:
                     user = await self.bot.fetch_user(user_id)
                     channel = self.bot.get_channel(int(channel_id)) if str(channel_id).isdigit() else None
@@ -60,7 +60,7 @@ class Reminders(commands.Cog):
                     if channel is None:
                         raise RuntimeError(f"reminder channel unavailable for channel_id={channel_id}")
                     await channel.send(f"{user.mention}, {message}")
-                    c.execute('UPDATE reminders SET sent=1 WHERE user_id=? AND reminder_time=?', (user_id, reminder_time))
+                    c.execute('UPDATE reminders SET sent=1 WHERE reminder_id=?', (reminder_id,))
                     conn.commit()
                 except Exception:
                     log.exception("Failed to deliver reminder user_id=%s reminder_time=%s", user_id, reminder_time)

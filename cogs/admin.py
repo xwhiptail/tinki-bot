@@ -627,7 +627,6 @@ class Admin(commands.Cog):
         if not self._host_admin_allowed(ctx.author):
             await ctx.send("You do not have permission to use this command.")
             return
-        archive_url = GITHUB_REPO_URL.replace("https://github.com/", "https://codeload.github.com/") + "/zip/refs/heads/main"
         try:
             import aiohttp
 
@@ -647,6 +646,7 @@ class Admin(commands.Cog):
                     return
 
                 await ctx.send("Pulling latest repo snapshot from GitHub...")
+                archive_url = GITHUB_REPO_URL.replace("https://github.com/", "https://codeload.github.com/") + f"/zip/{github_commit}"
                 content = await self._fetch_bytes_with_retries(session, archive_url)
             if len(content) < 5000:
                 await ctx.send(f"Deploy aborted: download looks truncated ({len(content)} bytes).")
@@ -676,8 +676,6 @@ class Admin(commands.Cog):
                     if source_dir.exists():
                         self._copy_deploy_dir(source_dir, target_dir)
 
-            self._write_deployed_commit(repo_root, github_commit)
-
             install = await asyncio.create_subprocess_exec(
                 sys.executable,
                 "-m",
@@ -696,6 +694,7 @@ class Admin(commands.Cog):
                 await ctx.send(f"Deploy failed during dependency install: {detail}")
                 return
 
+            self._write_deployed_commit(repo_root, github_commit)
             await ctx.send(f"Deployed `{self._short_commit(github_commit)}` — {commit_message}. Restarting... brb 👾")
             await asyncio.sleep(1)
             self._request_service_restart()

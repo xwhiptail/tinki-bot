@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import re
 import time
@@ -15,6 +16,7 @@ import aiohttp
 
 DEFAULT_TIMEZONE = "America/New_York"
 CURRENT_AWARENESS_CACHE_TTL_SECONDS = 300
+SOURCE_LOOKUP_TIMEOUT_SECONDS = 8
 
 FRESHNESS_TERMS = (
     "today",
@@ -511,8 +513,11 @@ async def _fetch_text(session, url: str) -> str:
 async def _fetch_direct_sources(session, query: str, limit: int = 2) -> List[CurrentAwarenessSource]:
     sources: List[CurrentAwarenessSource] = []
     for url, label in _direct_source_targets_for_query(query):
-        html = await _fetch_text(session, url)
-        source = parse_direct_page_source(html, url, label)
+        try:
+            html = await _fetch_text(session, url)
+            source = parse_direct_page_source(html, url, label)
+        except Exception:
+            continue
         if source:
             sources.append(source)
         if len(sources) >= limit:
@@ -527,17 +532,35 @@ async def fetch_feed_sources(query: str, limit: int = 4) -> List[CurrentAwarenes
             "Mozilla/5.0 (compatible; TinkiBot/1.0; +https://github.com/xwhiptail/tinki-bot)"
         )
     }
+
+    async def collect_feed(session, url):
+        try:
+            xml_text = await _fetch_text(session, url)
+            sources.extend(parse_feed_sources(xml_text, limit=12))
+        except Exception:
+            pass  # Keep other feeds and direct sources when one publisher fails.
+
+    async def collect_direct_sources(session):
+        try:
+            sources.extend(await _fetch_direct_sources(session, query, limit=limit))
+        except Exception:
+            pass
+
     try:
         async with aiohttp.ClientSession(
             headers=headers,
             timeout=aiohttp.ClientTimeout(total=6),
+            connector=aiohttp.TCPConnector(limit=4),
         ) as session:
-            for url in _feed_urls_for_query(query):
-                xml_text = await _fetch_text(session, url)
-                sources.extend(parse_feed_sources(xml_text, limit=12))
-            sources.extend(await _fetch_direct_sources(session, query, limit=limit))
+            await asyncio.wait_for(
+                asyncio.gather(
+                    collect_direct_sources(session),
+                    *(collect_feed(session, url) for url in _feed_urls_for_query(query)),
+                ),
+                timeout=SOURCE_LOOKUP_TIMEOUT_SECONDS,
+            )
     except Exception:
-        return []
+        pass  # A total-budget timeout still returns sources that already arrived.
 
     ranked = sorted(
         sources,

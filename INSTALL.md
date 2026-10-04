@@ -114,6 +114,14 @@ The deploy scripts update code, but host migration still requires those runtime 
 
 Repo-only branding art under `assets/branding/` is intentionally excluded from routine code deploys.
 
+The in-bot `!deploy` command downloads the exact commit it checked on GitHub and
+updates `.deploy-commit` only after dependency installation succeeds. If that step
+fails, fix the reported dependency problem and retry `!deploy`; the failed attempt
+will not be mistaken for a completed update. This remains an in-place code update,
+so a failed attempt may have copied code or partially installed dependencies; it
+does not provide an atomic rollback. The shell and PowerShell deploy helpers keep
+their existing workflow.
+
 For repeated remote maintenance from Windows, prefer the wrapper scripts in `scripts/` instead of building inline `plink` commands:
 
 ```powershell

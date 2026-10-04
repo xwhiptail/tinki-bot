@@ -22,6 +22,7 @@ Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke
 | `@Tinki-bot <Discord message link> [instruction]` | `test_on_message_replies_directly_to_linked_discord_message`, `test_on_message_rejects_linked_discord_message_from_other_guild`, `test_on_message_refuses_hard_stop_instruction_even_with_discord_link` |
 | Unmentioned Discord message links | `test_on_message_ignores_link_to_tinki_message_without_text_mention`, `test_on_message_ignores_preview_mention_after_discord_link`, `test_on_message_ignores_unmentioned_link_to_non_tinki_message`, `test_on_message_ignores_hard_stop_unmentioned_tinki_link` |
 | Replying to tracked random AI messages | `test_on_message_ignores_reply_ping_to_tracked_random_ai_message_without_text_mention`, `test_on_message_replies_to_tracked_random_ai_reply` |
+| Addressed replies to ordinary messages | `test_on_message_handles_addressed_untracked_reply`, `test_on_message_handles_addressed_reply_when_reference_unavailable`, `test_on_message_passes_reply_context_to_grounded_reply`, `test_on_message_ignores_unaddressed_untracked_reply` |
 | AI memory/context grounding | `test_memory_context_does_not_fallback_to_unrelated_user_memory`, `test_memory_context_allows_fallback_only_for_explicit_memory_lookup`, `test_update_memory_state_does_not_store_gaslighting_corrections_as_topics`, `test_relevant_history_does_not_fallback_to_stale_last_messages`, `test_relevant_history_ignores_gaslighting_corrections_even_with_overlap` |
 
 ## Admin
@@ -29,7 +30,7 @@ Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke
 | Command | Direct tests |
 | --- | --- |
 | `!restart` | `test_restart_sends_message_and_invokes_systemctl` |
-| `!deploy` | `test_deploy_dirs_excludes_repo_only_branding_assets`, `test_deploy_reports_check_without_aws_cost_message`, `test_deploy_aborts_truncated_archive`, `test_deploy_fails_when_archive_extracts_no_root_directory` |
+| `!deploy` | `test_deploy_dirs_excludes_repo_only_branding_assets`, `test_deploy_reports_check_without_aws_cost_message`, `test_deploy_aborts_truncated_archive`, `test_deploy_fails_when_archive_extracts_no_root_directory`, `test_deploy_success_requests_service_restart` (success and dependency-failure retry; pinned archive and marker ordering) |
 | `!awscost` | `test_awscost_command_sends_summary`, `test_awscost_command_denies_non_whiptail` |
 | `!statusreport` | `test_statusreport_command_denies_non_whiptail`, `test_statusreport_command_sends_summary_and_attachment` |
 | `!runtests` | `test_runtests_reports_start_and_summary` |
@@ -59,6 +60,9 @@ Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke
 | `!emote` | `test_emote_command_opens_picker_for_single_result`, `test_emote_command_opens_picker_for_single_exact_match`, `test_emote_command_rejects_invalid_x_size`, plus the 7TV browser helper tests |
 
 ## Reminders
+
+Delivery-loop regression coverage: `test_same_time_reminder_failure_remains_pending_and_retries`
+keeps two reminders for the same user/time independent across delivery failure, cleanup, and retry.
 
 | Command | Direct tests |
 | --- | --- |

@@ -1,10 +1,12 @@
+import asyncio
 import ipaddress
 import re
+import socket
 from dataclasses import dataclass
 from html import unescape
 from html.parser import HTMLParser
 from typing import List, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import aiohttp
 
@@ -16,6 +18,8 @@ DISCORD_MESSAGE_URL_PATTERN = re.compile(
 )
 MAX_LINKS = 2
 MAX_PAGE_BYTES = 200_000
+MAX_REDIRECTS = 3
+LINK_TIMEOUT_SECONDS = 6
 
 
 @dataclass(frozen=True)
@@ -76,8 +80,10 @@ def _is_blocked_host(hostname: str) -> bool:
         ip = ipaddress.ip_address(host)
     except ValueError:
         return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
     return (
-        ip.is_private
+        not ip.is_global
         or ip.is_loopback
         or ip.is_link_local
         or ip.is_multicast
@@ -87,10 +93,27 @@ def _is_blocked_host(hostname: str) -> bool:
 
 
 def is_public_http_url(url: str) -> bool:
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+        # Validate malformed ports and bracketed IPv6 before making a request.
+        parsed.port
+    except ValueError:
+        return False
     if parsed.scheme not in {"http", "https"}:
         return False
+    if parsed.username is not None or parsed.password is not None:
+        return False
     return not _is_blocked_host(parsed.hostname or "")
+
+
+class _PublicResolver(aiohttp.resolver.ThreadedResolver):
+    async def resolve(self, host, port=0, family=socket.AF_INET):
+        addresses = await super().resolve(host, port, family)
+        # The connector uses these exact addresses, avoiding a second DNS lookup
+        # between validation and connection. Reject mixed public/private answers.
+        if not addresses or any(_is_blocked_host(item["host"]) for item in addresses):
+            raise OSError("Link destination is not a public address")
+        return addresses
 
 
 def extract_public_links(text: str, limit: int = MAX_LINKS) -> List[str]:
@@ -134,17 +157,25 @@ def parse_link_context(html: str, url: str) -> Optional[LinkContext]:
 
 
 async def _fetch_single_link_context(session, url: str) -> Optional[LinkContext]:
-    async with session.get(url, allow_redirects=True, max_redirects=3) as response:
-        if not is_public_http_url(str(response.url)):
+    for redirect_count in range(MAX_REDIRECTS + 1):
+        if not is_public_http_url(url):
             return None
-        if response.status != 200:
-            return None
-        content_type = (response.headers.get("Content-Type") or "").lower()
-        if not any(kind in content_type for kind in ("text/html", "application/xhtml+xml", "text/plain")):
-            return None
-        payload = await response.content.read(MAX_PAGE_BYTES + 1)
-        html = payload[:MAX_PAGE_BYTES].decode(response.charset or "utf-8", errors="replace")
-        return parse_link_context(html, str(response.url))
+        async with session.get(url, allow_redirects=False) as response:
+            if response.status in {301, 302, 303, 307, 308}:
+                location = response.headers.get("Location")
+                if not location or redirect_count == MAX_REDIRECTS:
+                    return None
+                url = urljoin(str(response.url), location)
+                continue
+            if response.status != 200:
+                return None
+            content_type = (response.headers.get("Content-Type") or "").lower()
+            if not any(kind in content_type for kind in ("text/html", "application/xhtml+xml", "text/plain")):
+                return None
+            payload = await response.content.read(MAX_PAGE_BYTES + 1)
+            html = payload[:MAX_PAGE_BYTES].decode(response.charset or "utf-8", errors="replace")
+            return parse_link_context(html, str(response.url))
+    return None
 
 
 async def fetch_link_contexts(text: str, limit: int = MAX_LINKS) -> List[LinkContext]:
@@ -156,10 +187,17 @@ async def fetch_link_contexts(text: str, limit: int = MAX_LINKS) -> List[LinkCon
     }
     contexts: List[LinkContext] = []
     try:
-        async with aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(total=6)) as session:
+        async with aiohttp.ClientSession(
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=LINK_TIMEOUT_SECONDS),
+            connector=aiohttp.TCPConnector(resolver=_PublicResolver()),
+            trust_env=False,
+        ) as session:
             for url in urls:
                 try:
-                    context = await _fetch_single_link_context(session, url)
+                    context = await asyncio.wait_for(
+                        _fetch_single_link_context(session, url), timeout=LINK_TIMEOUT_SECONDS
+                    )
                 except Exception:
                     context = None
                 if context:
