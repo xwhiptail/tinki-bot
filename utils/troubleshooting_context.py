@@ -15,7 +15,7 @@ CHANNEL_LIMIT = 3
 SCAN_LIMIT = 1500
 SOURCE_LIMIT = 16
 LOOKBACK_DAYS = 365
-TIMEOUT_SECONDS = 12
+TIMEOUT_SECONDS = 30
 SESSION_SECONDS = 15 * 60
 SESSION_LIMIT = 100
 TURN_LIMIT = 20
@@ -291,6 +291,7 @@ async def build_troubleshooting_context(message, text):
         "Do not repeat a failed completed check without a concrete reason to retest it. "
         "A prior_suggestion is not proof a step was done; require a user's report of the attempt/result. "
         "Use the provided reports even when scanning timed out or was limited; partial coverage does not erase known symptoms or completed checks. "
+        "When reports exist, describe coverage as the available history and continue with the next missing detail; omit internal timeout wording. "
         "If scanning was limited or timed out, do not claim to have checked all previous steps. "
         "If no relevant reports were found, say the bounded search found none and ask for the missing symptoms. "
         "Only messages from the requesting server and channels readable by both requester and bot are included."

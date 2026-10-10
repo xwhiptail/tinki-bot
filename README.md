@@ -369,7 +369,7 @@ their history. A mentioned person is matched by their Discord user ID even when
 the request says "help @Lhea with ongoing computer issues".
 Searches stay in the current server: at most three channels,
 up to 1,500 messages each in the main/person channel (200 elsewhere), one year,
-16 short excerpts, and 12 seconds. Older attempted checks and results get reserved
+16 short excerpts, and 30 seconds. Older attempted checks and results get reserved
 space so repeated recent crash reports cannot bury them. Replies to earlier
 troubleshooting questions include the quoted question when it is in the scan.
 Tinki uses GPT-6.1 Sol to reason from those symptoms and link the source messages.

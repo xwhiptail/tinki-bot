@@ -145,7 +145,7 @@ bot need View Channel and Read Message History in every searched channel. The
 invoking channel, a matching person's channel, and main chat names are preferred;
 `CHANNEL_RANDOM_AI` identifies the main chat in this server. Scanning is bounded
 to three channels, 1,500 messages in main/person channels (200 elsewhere), one year,
-16 excerpts, and 12
+16 excerpts, and 30
 seconds, with at most two concurrent searches. Access is rechecked before quoted
 messages are passed to OpenAI. No new permission, persistent archive, scheduled
 job, or dependency is required. Explicit requests not to search are respected.
@@ -166,7 +166,7 @@ Older attempts/results receive reserved excerpt slots, and referenced earlier
 questions are included when available in the scan. Reported attempts are kept
 distinct from suggestions; capped/time-limited coverage must not be described
 as a complete history search. Waiting for a lookup slot is capped at two seconds,
-followed by the scan's own 12-second deadline. Partial reports are retained at
+followed by the scan's own 30-second deadline. Partial reports are retained at
 that deadline and still inform the reply. A statement that a check was not retried
 recently does not erase a reported earlier failed attempt.
 
