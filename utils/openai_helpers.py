@@ -75,12 +75,14 @@ async def fetch_openai_balance() -> str:
 
 
 async def gpt_wrap_fact(fact: str, user_text: str, system_prompt, model: str = OPENAI_FAST_MODEL) -> str:
-    """Deliver a pre-computed factual answer wrapped in Tinki's personality via assistant prefill."""
+    """Keep the verified fact intact and add only a short personality flourish."""
     client = get_openai_client()
     system = (
         GREMLIN_SYSTEM_STYLE + "\n\n"
         + build_current_time_context() + "\n\n"
-        "The assistant reply is prefilled with a verified deterministic fact. "
+        f"The verified deterministic fact is: {fact}\n"
+        "The application will prepend that fact and a dash to your output. "
+        "Return only a very short flavor flourish, never repeat the fact or add a leading dash. "
         "Do not contradict it, recalculate it, list alternate answers, or add new factual claims; "
         "only add a very short flavor flourish after the dash, or return nothing.\n\n"
         f"Your name is @Tinki-bot. "
@@ -93,11 +95,18 @@ async def gpt_wrap_fact(fact: str, user_text: str, system_prompt, model: str = O
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_text},
-                {"role": "assistant", "content": f"{fact} —"},
             ],
             max_tokens=40,
         )
-        tail = completion.choices[0].message.content if completion.choices else ""
-        return f"{fact} — {tail.lstrip('— ').strip()}" if tail else fact
+        tail = (completion.choices[0].message.content or "").strip() if completion.choices else ""
+        if tail == fact:
+            return fact
+        # Some models echo the full answer despite being asked for flavor only.
+        for separator in (" — ", " - ", " – ", "—"):
+            if tail.startswith(fact + separator):
+                tail = tail[len(fact + separator):].strip()
+                break
+        tail = tail.lstrip('— ').strip()
+        return f"{fact} — {tail}" if tail else fact
     except Exception:
         return fact

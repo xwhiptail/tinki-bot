@@ -1735,6 +1735,32 @@ class TestLinkContext:
         assert "https://example.com/patch" in formatted
 
 
+class TestAIContextGathering:
+    async def test_addressed_computer_troubleshooting_automatically_gathers_context(self):
+        cog = make_ai_cog()
+        message = make_message("Tinki can you diagnose Lhea's computer problems?")
+        cog._troubleshooting_context = AsyncMock(return_value="Recent reports: Lhea's PC black screens.")
+        cog._current_awareness_context = AsyncMock(return_value="")
+        cog._web_link_context = AsyncMock(return_value="")
+        cog._generate_grounded_reply = AsyncMock(return_value="Start with the reported black-screen symptoms.")
+        cog._send_reply_chunks = AsyncMock()
+        cog._save_ai_memory = MagicMock()
+        await cog.on_message(message)
+        cog._troubleshooting_context.assert_awaited_once()
+        args = cog._generate_grounded_reply.await_args.args
+        assert args[1] == "troubleshooting"
+        assert "Lhea's PC black screens" in args[6]
+        cog._save_ai_memory.assert_not_called()
+
+    async def test_unaddressed_main_channel_followup_stays_silent(self):
+        cog = make_ai_cog()
+        message = make_message("check the main channel")
+        cog._troubleshooting_context = AsyncMock()
+        await cog.on_message(message)
+        cog._troubleshooting_context.assert_not_called()
+        message.channel.send.assert_not_awaited()
+
+
 class TestAINaturalCommands:
     async def test_execute_natural_command_rewrites_message_to_command(self):
         cog = make_ai_cog()
@@ -2878,7 +2904,7 @@ class TestOpenAIHelpers:
 
                 wrapped = await gpt_wrap_fact("4", "2+2", "persona")
 
-        assert wrapped.startswith("4")
+        assert wrapped == "4 — obviously"
         sent_kwargs = fake_client.chat.completions.create.call_args.kwargs
         system_message = sent_kwargs["messages"][0]["content"]
         assert "verified deterministic fact" in system_message

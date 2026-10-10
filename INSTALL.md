@@ -131,6 +131,24 @@ snapshot to the repo and `/etc/tinki-bot.env`, restore the old model marker if
 present, remove repo files listed in `added-files.json`, and restart the service.
 Keep the environment snapshot private; no runtime data restore is required.
 
+To deploy automatic troubleshooting context without releasing other pending
+features, use the same instance/region settings with `./deploy-ec2.sh --ai-only`.
+This also updates only `cogs/ai.py`, `utils/troubleshooting_context.py`, and its
+standalone tests. The full-release marker and other cogs stay intact; the overlay
+is recorded in `.deploy-ai-commit`, and `ai_update_*` snapshots follow the same
+rollback rules and three-snapshot retention. The helper selects the newest model
+or AI marker for model-file hash checks, and the newest full or AI marker for
+AI-feature hash checks. Payloads are compressed to stay within SSM request limits.
+
+Troubleshooting context uses the existing Discord connection. Both requester and
+bot need View Channel and Read Message History in every searched channel. The
+invoking channel, a matching person's channel, and main chat names are preferred;
+`CHANNEL_RANDOM_AI` identifies the main chat in this server. Scanning is bounded
+to three channels, 200 messages per channel, seven days, ten excerpts, and eight
+seconds, with at most two concurrent searches. Access is rechecked before quoted
+messages are passed to OpenAI. No new permission, persistent archive, scheduled
+job, or dependency is required. Explicit requests not to search are respected.
+
 If you want `!awscost` and deploy-time AWS cost reporting, the bot runtime also needs AWS credentials with Cost Explorer access.
 
 If you are migrating to a brand new EC2 host instead of doing a normal code deploy, copy the live runtime state too:

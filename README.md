@@ -177,6 +177,11 @@ See `INSTALL.md` for requirements and rollback. Quick replies use GPT-6 Luna wit
 reasoning disabled; more involved replies and images use GPT-6.1 Sol at low
 reasoning effort.
 
+`./deploy-ec2.sh --ai-only` uses the same safeguards for an AI-context release.
+It also sends the AI listener, troubleshooting-context helper, and its standalone
+tests, while preserving the entrypoint and other feature modules. It records
+`.deploy-ai-commit` and keeps root-only `ai_update_*` rollback snapshots.
+
 Host replacement reminder:
 
 - normal deploys update code only
@@ -356,6 +361,16 @@ Live runtime data on EC2 is stored in:
 Tinki responds only when directly addressed with an actual `@Tinki-bot` ping or the word `Tinki`/`Tinki-bot` in the message. Generic chatter like `the bot is dead` or `she ain't working` stays silent unless the message also names or pings Tinki. Simple named bot-status chatter like `Tinki is dead/alive/dumb` gets a short deterministic self-status reply before OpenAI. She also responds directly to linked Discord messages when the message text includes an actual Tinki mention before an accessible message link in the current server. Link previews that mention Tinki do not count as speaking to her. She has a cutesy gnome personality with cute alt baddie energy, powered by OpenAI, with explicit expertise in World of Warcraft and Final Fantasy XIV/FFXIV. Math questions and letter-count questions are answered deterministically first, then wrapped with GPT flavor.
 Direct hush requests like `Tinki shut up` or `@Tinki-bot be quiet` stay silent instead of being treated as alive/up status chatter.
 AI prompts include the current America/New_York and UTC date/time. Fresh/current/recent questions about gaming or world events, including common game aliases like `RoR2`, trigger a short cached web lookup, source snippets are ranked with official game sources preferred when available, and clear source-backed direct answers are validated before Tinki replies so stale model memory cannot override the lookup. Feed requests use at most four connections and an eight-second overall budget; a failed source does not discard results from other sources. Released/live questions are treated separately from announced/upcoming/next-news questions. When Tinki is addressed, regular public web links are fetched for compact page title/description context, and image attachments are passed to the vision-capable model for direct inspection. Link fetching checks resolved IP addresses before connecting, rejects private destinations at every redirect, and caps each link lookup at six seconds including redirects.
+
+Addressed computer-troubleshooting questions automatically gather recent reports
+from the invoking channel, a matching person's channel, and the main chat
+(`CHANNEL_RANDOM_AI`, `main`, or `general`), when both requester and bot can read
+their history. Searches stay in the current server: at most three channels,
+200 messages per channel, seven days, ten short excerpts, and eight seconds.
+Tinki uses GPT-6.1 Sol to reason from those symptoms and link the source messages.
+Retrieved reports and derived troubleshooting answers are not saved to AI memory
+or conversation files. Ordinary unaddressed messages stay silent; there is no
+background scanning. For example: `Tinki, can you diagnose Lhea's computer problems?`
 
 Explicitly naming or pinging Tinki in a Discord reply also works for ordinary messages, with up to 2,000 characters of the referenced message included as quoted context. If Discord cannot fetch the reference, Tinki still handles the addressed request. Automatic reply pings alone stay silent.
 Requests for erotic or spicy writing are deterministically deflected into a playful public tease before any OpenAI call.

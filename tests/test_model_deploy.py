@@ -63,8 +63,14 @@ def test_failed_production_tests_restore_code_env_and_remove_added_files(deploym
     assert (backup / "tinki-bot.env").read_bytes() == env_before
 
 
-def test_success_changes_only_model_files_and_separate_marker(deployment, monkeypatch):
+@pytest.mark.parametrize("scope", ["models", "ai"])
+def test_success_changes_only_scoped_files_and_separate_marker(deployment, monkeypatch, scope):
     repo, env_file, data, payload = deployment
+    (repo / "cogs/bowling.py").write_text("preserve bowling")
+    if scope == "ai":
+        payload["scope"] = "ai"
+        payload["files"] = {name: base64.b64encode(b"new model code").decode() for name in deploy.AI_FILES}
+        payload["expected_hashes"]["cogs/ai.py"] = hashlib.sha256((repo / "cogs/ai.py").read_bytes()).hexdigest()
     calls = []
 
     def run(command, **kwargs):
@@ -81,8 +87,10 @@ def test_success_changes_only_model_files_and_separate_marker(deployment, monkey
                         if str(path) == "/proc/999/environ" else read_text(path, *a, **k))
     deploy.apply_payload(payload)
     assert (repo / ".deploy-commit").read_text() == "original .deploy-commit"
-    assert (repo / ".deploy-model-commit").read_text() == "model-commit\n"
-    assert (repo / "cogs/ai.py").read_text() == "original cogs/ai.py"
+    marker = ".deploy-ai-commit" if scope == "ai" else ".deploy-model-commit"
+    assert (repo / marker).read_text() == "model-commit\n"
+    assert (repo / "cogs/ai.py").read_text() == ("new model code" if scope == "ai" else "original cogs/ai.py")
+    assert (repo / "cogs/bowling.py").read_text() == "preserve bowling"
     assert (repo / "tinki-bot.py").read_text() == "original tinki-bot.py"
     assert "DISCORD=preserve-me\n" in env_file.read_text()
     assert env_file.stat().st_mode & 0o777 == 0o640

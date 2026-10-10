@@ -1,4 +1,4 @@
-"""Deploy only OpenAI configuration, its adapter, and standalone model tests via SSM."""
+"""Deploy a committed model or AI-context overlay via SSM, preserving other features."""
 import argparse
 import ast
 import base64
@@ -11,9 +11,11 @@ import shutil
 import subprocess
 import tempfile
 import time
+import zlib
 
 
 MODEL_FILES = ("config.py", "utils/openai_helpers.py", "tests/test_openai_models.py")
+AI_FILES = MODEL_FILES + ("cogs/ai.py", "utils/troubleshooting_context.py", "tests/test_troubleshooting_context.py")
 MODEL_KEYS = ("OPENAI_MODEL", "OPENAI_FAST_MODEL")
 
 
@@ -54,18 +56,27 @@ def atomic_write(path, content, metadata):
 def apply_payload(payload):
     repo = Path(payload["repo"])
     env_file = Path(payload["env_file"])
-    assert set(payload["files"]) == set(MODEL_FILES), "Unexpected deployment files"
+    scope = payload.get("scope", "models")
+    allowed = AI_FILES if scope == "ai" else MODEL_FILES
+    assert set(payload["files"]) == set(allowed), "Unexpected deployment files"
     for name, expected in payload["expected_hashes"].items():
+        if expected is None:
+            assert not (repo / name).exists(), f"Unexpected existing live {name}"
+            continue
         actual = hashlib.sha256((repo / name).read_bytes()).hexdigest()
         assert actual == expected, f"Live {name} differs from the expected committed version"
     # The entrypoint, every feature module, and the full-deploy marker stay intact.
-    protected = [repo / "tinki-bot.py", repo / ".deploy-commit", *sorted((repo / "cogs").glob("*.py"))]
+    protected = [repo / "tinki-bot.py", repo / ".deploy-commit", *[
+        path for path in sorted((repo / "cogs").glob("*.py")) if str(path.relative_to(repo)) not in allowed
+    ]]
     protected_before = {path: path.read_bytes() for path in protected}
-    targets = [repo / name for name in MODEL_FILES] + [env_file, repo / ".deploy-model-commit"]
+    marker = repo / (".deploy-ai-commit" if scope == "ai" else ".deploy-model-commit")
+    targets = [repo / name for name in allowed] + [env_file, marker]
     originals = {path: (path.read_bytes(), path.stat()) if path.exists() else None for path in targets}
     backup_root = repo.parent / "backup"
     backup_root.mkdir(exist_ok=True)
-    backup = Path(tempfile.mkdtemp(prefix="openai_models_", dir=backup_root))
+    backup_prefix = "ai_update_" if scope == "ai" else "openai_models_"
+    backup = Path(tempfile.mkdtemp(prefix=backup_prefix, dir=backup_root))
     backup.chmod(0o700)
     for path, original in originals.items():
         if original is not None:
@@ -85,7 +96,10 @@ def apply_payload(payload):
         for name, encoded in payload["files"].items():
             path = repo / name
             metadata = originals[path][1] if originals[path] else fallback_metadata
-            atomic_write(path, base64.b64decode(encoded), metadata)
+            content = base64.b64decode(encoded)
+            if payload.get("compressed"):
+                content = zlib.decompress(content)
+            atomic_write(path, content, metadata)
         with tempfile.TemporaryDirectory(prefix="tinki-model-tests-") as test_data:
             test_env = dict(os.environ, TINKI_DATA_DIR=test_data,
                             MPLBACKEND="Agg", PYTHONDONTWRITEBYTECODE="1")
@@ -99,7 +113,6 @@ def apply_payload(payload):
         atomic_write(env_file, replace_model_settings(
             originals[env_file][0].decode("utf-8"), payload["models"],
         ).encode("utf-8"), originals[env_file][1])
-        marker = repo / ".deploy-model-commit"
         atomic_write(marker, (payload["commit"] + "\n").encode(), fallback_metadata)
         assert all(path.read_bytes() == data for path, data in protected_before.items())
         restarted = True
@@ -110,8 +123,8 @@ def apply_payload(payload):
         running_env = dict(item.split("=", 1) for item in
                            Path(f"/proc/{pid}/environ").read_text().split("\0") if "=" in item)
         assert all(running_env.get(key) == value for key, value in payload["models"].items())
-        print("Model settings verified in the running service; feature files unchanged.", flush=True)
-        for old in sorted(backup_root.glob("openai_models_*"), key=lambda p: p.stat().st_mtime, reverse=True)[3:]:
+        print("Model settings verified in the running service; other feature files unchanged.", flush=True)
+        for old in sorted(backup_root.glob(backup_prefix + "*"), key=lambda p: p.stat().st_mtime, reverse=True)[3:]:
             shutil.rmtree(old)
     except BaseException:
         for path, original in originals.items():
@@ -124,11 +137,12 @@ def apply_payload(payload):
         raise
 
 
-def build_payload(root, commit, base, repo):
+def build_payload(root, commit, base, repo, scope="models", feature_base=None):
     def read_at(ref, name):
         return subprocess.check_output(["git", "show", f"{ref}:{name}"], cwd=root)
 
-    files = {name: read_at(commit, name) for name in MODEL_FILES}
+    names = AI_FILES if scope == "ai" else MODEL_FILES
+    files = {name: read_at(commit, name) for name in names}
     models = {}
     for node in ast.parse(files["config.py"]).body:
         if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
@@ -136,10 +150,15 @@ def build_payload(root, commit, base, repo):
             if key in MODEL_KEYS:
                 models[key] = ast.literal_eval(node.value.args[1])
     assert set(models) == set(MODEL_KEYS)
+    expected = {name: hashlib.sha256(read_at(base, name)).hexdigest() for name in MODEL_FILES[:2]}
+    if scope == "ai":
+        for name in AI_FILES[3:]:
+            present = subprocess.run(["git", "cat-file", "-e", f"{feature_base}:{name}"], cwd=root, capture_output=True)
+            expected[name] = hashlib.sha256(read_at(feature_base, name)).hexdigest() if present.returncode == 0 else None
     return dict(
-        repo=repo, env_file="/etc/tinki-bot.env", commit=commit, models=models,
-        files={name: base64.b64encode(data).decode() for name, data in files.items()},
-        expected_hashes={name: hashlib.sha256(read_at(base, name)).hexdigest() for name in MODEL_FILES[:2]},
+        repo=repo, env_file="/etc/tinki-bot.env", commit=commit, models=models, scope=scope, compressed=True,
+        files={name: base64.b64encode(zlib.compress(data)).decode() for name, data in files.items()},
+        expected_hashes=expected,
     )
 
 
@@ -150,9 +169,11 @@ def main():
     parser.add_argument("--repo", required=True)
     parser.add_argument("--instance-id", required=True)
     parser.add_argument("--region", default="us-east-1")
+    parser.add_argument("--scope", choices=["models", "ai"], default="models")
+    parser.add_argument("--feature-base")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
-    payload = build_payload(root, args.commit, args.base, args.repo)
+    payload = build_payload(root, args.commit, args.base, args.repo, args.scope, args.feature_base)
     source = Path(__file__).read_text().rsplit('\nif __name__ == "__main__":', 1)[0]
     command = "python3 - <<'TINKI_MODELS'\n" + source + "\napply_payload(" + repr(payload) + ")\nTINKI_MODELS"
     with tempfile.TemporaryDirectory(prefix="tinki-model-deploy-") as temp_dir:

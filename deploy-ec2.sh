@@ -5,11 +5,13 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/scripts/remote-common.sh"
 
-MODELS_ONLY=false
-if [[ "${1:-}" == "--models-only" && "$#" == 1 ]]; then
-  MODELS_ONLY=true
+AI_SCOPE=""
+if [[ "$#" == 1 && "${1:-}" == "--models-only" ]]; then
+  AI_SCOPE=models
+elif [[ "$#" == 1 && "${1:-}" == "--ai-only" ]]; then
+  AI_SCOPE=ai
 elif [[ "$#" != 0 ]]; then
-  echo "Usage: ./deploy-ec2.sh [--models-only]" >&2
+  echo "Usage: ./deploy-ec2.sh [--models-only|--ai-only]" >&2
   exit 1
 fi
 
@@ -36,12 +38,21 @@ if [[ "$LOCAL_COMMIT" != "$GITHUB_COMMIT" ]]; then
   exit 1
 fi
 
-if [[ "$MODELS_ONLY" == true ]]; then
+if [[ -n "$AI_SCOPE" ]]; then
   : "${TINKI_EC2_INSTANCE_ID:?Set TINKI_EC2_INSTANCE_ID for the SSM model-only deployment}"
   MODEL_BASE="$(remote_bash <<EOF
 set -e
-if [ "$REMOTE_REPO_DIR/.deploy-model-commit" -nt "$REMOTE_REPO_DIR/.deploy-commit" ]; then
-  cat "$REMOTE_REPO_DIR/.deploy-model-commit"
+latest="$REMOTE_REPO_DIR/.deploy-commit"
+for marker in "$REMOTE_REPO_DIR/.deploy-model-commit" "$REMOTE_REPO_DIR/.deploy-ai-commit"; do
+  if [ "\$marker" -nt "\$latest" ]; then latest="\$marker"; fi
+done
+cat "\$latest"
+EOF
+)"
+  FEATURE_BASE="$(remote_bash <<EOF
+set -e
+if [ "$REMOTE_REPO_DIR/.deploy-ai-commit" -nt "$REMOTE_REPO_DIR/.deploy-commit" ]; then
+  cat "$REMOTE_REPO_DIR/.deploy-ai-commit"
 else
   cat "$REMOTE_REPO_DIR/.deploy-commit"
 fi
@@ -49,6 +60,7 @@ EOF
 )"
   exec python3 "$PROJECT_ROOT/scripts/deploy_openai_models.py" \
     --commit "$LOCAL_COMMIT" --base "$MODEL_BASE" --repo "$REMOTE_REPO_DIR" \
+    --scope "$AI_SCOPE" --feature-base "$FEATURE_BASE" \
     --instance-id "$TINKI_EC2_INSTANCE_ID" --region "${TINKI_AWS_REGION:-us-east-1}"
 fi
 

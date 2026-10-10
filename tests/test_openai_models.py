@@ -1,6 +1,6 @@
 """Model compatibility tests that also run on the pre-historian live release."""
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -8,6 +8,7 @@ from utils.openai_helpers import (
     _normalize_chat_completion_kwargs,
     create_async_chat_completion,
     create_chat_completion,
+    gpt_wrap_fact,
 )
 
 
@@ -66,3 +67,18 @@ def test_older_model_override_keeps_its_existing_request_parameters():
 def test_legacy_model_override_keeps_legacy_token_limit():
     original = dict(model="gpt-4.1-mini", max_tokens=40)
     assert _normalize_chat_completion_kwargs(original) == original
+
+
+@pytest.mark.parametrize("tail,expected", [
+    ("tiny math, big menace", "4 — tiny math, big menace"),
+    ("4 — tiny math, big menace", "4 — tiny math, big menace"),
+    ("4", "4"),
+    (None, "4"),
+])
+async def test_fact_flavor_does_not_repeat_or_replace_verified_answer(tail, expected):
+    client = MagicMock()
+    client.chat.completions.create.return_value = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=tail))],
+    )
+    with patch("utils.openai_helpers.get_openai_client", return_value=client):
+        assert await gpt_wrap_fact("4", "2+2", "") == expected

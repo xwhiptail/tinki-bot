@@ -24,7 +24,16 @@ Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke
 | Replying to tracked random AI messages | `test_on_message_ignores_reply_ping_to_tracked_random_ai_message_without_text_mention`, `test_on_message_replies_to_tracked_random_ai_reply` |
 | Addressed replies to ordinary messages | `test_on_message_handles_addressed_untracked_reply`, `test_on_message_handles_addressed_reply_when_reference_unavailable`, `test_on_message_passes_reply_context_to_grounded_reply`, `test_on_message_ignores_unaddressed_untracked_reply` |
 | AI memory/context grounding | `test_memory_context_does_not_fallback_to_unrelated_user_memory`, `test_memory_context_allows_fallback_only_for_explicit_memory_lookup`, `test_update_memory_state_does_not_store_gaslighting_corrections_as_topics`, `test_relevant_history_does_not_fallback_to_stale_last_messages`, `test_relevant_history_ignores_gaslighting_corrections_even_with_overlap` |
-| OpenAI model routing and request compatibility | `test_create_chat_completion_uses_completion_token_limit_for_reasoning_models` in `tests/test_tinki_bot.py`; `test_sync_model_calls_preserve_content_and_normalize_parameters`, `test_async_model_call_preserves_json_output_contract`, `test_explicit_reasoning_removes_incompatible_sampling_without_mutating_input`, and model override coverage in `tests/test_openai_models.py` |
+| OpenAI model routing and request compatibility | `test_create_chat_completion_uses_completion_token_limit_for_reasoning_models` and `test_gpt_wrap_fact_offloads_sync_openai_call_to_thread` in `tests/test_tinki_bot.py`; `test_sync_model_calls_preserve_content_and_normalize_parameters`, `test_async_model_call_preserves_json_output_contract`, `test_explicit_reasoning_removes_incompatible_sampling_without_mutating_input`, `test_fact_flavor_does_not_repeat_or_replace_verified_answer`, and model override coverage in `tests/test_openai_models.py` |
+
+## Automatic Troubleshooting Context
+
+Automatic troubleshooting lookup is covered by
+`test_addressed_computer_troubleshooting_automatically_gathers_context` and
+`test_unaddressed_main_channel_followup_stays_silent` in `tests/test_tinki_bot.py`.
+`tests/test_troubleshooting_context.py` covers cross-channel named-person reports,
+requester and bot permissions, access revocation, stale and other-server messages,
+timeouts, direct messages, addressed routing, and source links.
 
 ## Channel Historian
 
