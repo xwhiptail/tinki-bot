@@ -144,17 +144,25 @@ Troubleshooting context uses the existing Discord connection. Both requester and
 bot need View Channel and Read Message History in every searched channel. The
 invoking channel, a matching person's channel, and main chat names are preferred;
 `CHANNEL_RANDOM_AI` identifies the main chat in this server. Scanning is bounded
-to three channels, 200 messages per channel, seven days, ten excerpts, and eight
+to three channels, 1,500 messages in main/person channels (200 elsewhere), one year,
+16 excerpts, and 12
 seconds, with at most two concurrent searches. Access is rechecked before quoted
 messages are passed to OpenAI. No new permission, persistent archive, scheduled
 job, or dependency is required. Explicit requests not to search are respected.
 Interactive troubleshooting keeps at most 100 temporary conversations, each with
 the original reports and the last ten exchanges. They expire after 15 minutes of
-inactivity and are cleared on restart. Only the original requester replying to
-the latest troubleshooting answer in the same server/channel can continue without
-a ping. Source permissions are checked before and after generating each answer;
+inactivity and are cleared on restart. Anyone replying to the latest troubleshooting
+answer in the same server/channel can continue without a ping. For two minutes
+after a question, short relevant answers in normal chat also work if exactly one
+active conversation matches. Each speaker is recorded with their answer.
+Source permissions for the current speaker are checked before and after generating each answer;
 lost access discards the conversation. No conversation or fetched report is
 written to runtime data.
+Older attempts/results receive reserved excerpt slots, and referenced earlier
+questions are included when available in the scan. Reported attempts are kept
+distinct from suggestions; capped/time-limited coverage must not be described
+as a complete history search. The outer lookup deadline is 14 seconds including
+waiting for one of the two lookup slots.
 
 If you want `!awscost` and deploy-time AWS cost reporting, the bot runtime also needs AWS credentials with Cost Explorer access.
 

@@ -1736,6 +1736,24 @@ class TestLinkContext:
 
 
 class TestAIContextGathering:
+    async def test_anyone_can_answer_pending_troubleshooting_without_ping_or_reply(self):
+        from utils.troubleshooting_context import TroubleshootingSession
+        cog = make_ai_cog()
+        message = make_message("can still hear audio")
+        message.author.id = 321
+        message.guild = SimpleNamespace(id=1)
+        message.channel.id = 10
+        session = TroubleshootingSession(
+            123, 1, 10, "diagnose Lhea's PC", "", set(), float("inf"),
+            subject="lhea", awaiting_until=float("inf"),
+            turns=[{"role": "assistant", "text": "Can you still hear audio when it goes black?"}],
+        )
+        cog._troubleshooting_sessions[55] = session
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle:
+            await cog.on_message(message)
+        handle.assert_awaited_once_with(message, message.content, troubleshooting_session=session)
+        message.channel.fetch_message.assert_not_awaited()
+
     async def test_troubleshooting_reply_without_ping_uses_active_session(self):
         from utils.troubleshooting_context import TroubleshootingSession
         cog = make_ai_cog()
@@ -1756,6 +1774,8 @@ class TestAIContextGathering:
         cog = make_ai_cog()
         message = make_message("Tinki help fix my PC crashes")
         message.guild = None
+        message.author.id = 123
+        message.author.display_name = "Tester"
         cog._troubleshooting_context = AsyncMock(return_value="")
         cog._generate_grounded_reply = AsyncMock(return_value="Does it freeze or restart?")
         cog._send_reply_chunks = AsyncMock()
@@ -1776,7 +1796,9 @@ class TestAIContextGathering:
     async def test_addressed_computer_troubleshooting_automatically_gathers_context(self):
         cog = make_ai_cog()
         message = make_message("Tinki can you diagnose Lhea's computer problems?")
-        cog._troubleshooting_context = AsyncMock(return_value="Recent reports: Lhea's PC black screens.")
+        message.author.id = 123
+        message.author.display_name = "Tester"
+        cog._troubleshooting_context = AsyncMock(return_value="Recent reports: Lhea's PC black screens. Prior attempt: Win+Ctrl+Shift+B did nothing.")
         cog._current_awareness_context = AsyncMock(return_value="")
         cog._web_link_context = AsyncMock(return_value="")
         cog._generate_grounded_reply = AsyncMock(return_value="Start with the reported black-screen symptoms.")
@@ -1787,6 +1809,7 @@ class TestAIContextGathering:
         args = cog._generate_grounded_reply.await_args.args
         assert args[1] == "troubleshooting"
         assert "Lhea's PC black screens" in args[6]
+        assert "Prior attempt: Win+Ctrl+Shift+B did nothing" in args[6]
         cog._save_ai_memory.assert_not_called()
 
     async def test_unaddressed_main_channel_followup_stays_silent(self):

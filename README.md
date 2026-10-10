@@ -362,25 +362,35 @@ Tinki responds only when directly addressed with an actual `@Tinki-bot` ping or 
 Direct hush requests like `Tinki shut up` or `@Tinki-bot be quiet` stay silent instead of being treated as alive/up status chatter.
 AI prompts include the current America/New_York and UTC date/time. Fresh/current/recent questions about gaming or world events, including common game aliases like `RoR2`, trigger a short cached web lookup, source snippets are ranked with official game sources preferred when available, and clear source-backed direct answers are validated before Tinki replies so stale model memory cannot override the lookup. Feed requests use at most four connections and an eight-second overall budget; a failed source does not discard results from other sources. Released/live questions are treated separately from announced/upcoming/next-news questions. When Tinki is addressed, regular public web links are fetched for compact page title/description context, and image attachments are passed to the vision-capable model for direct inspection. Link fetching checks resolved IP addresses before connecting, rejects private destinations at every redirect, and caps each link lookup at six seconds including redirects.
 
-Addressed computer-troubleshooting questions automatically gather recent reports
+Addressed computer-troubleshooting questions automatically gather symptoms and prior attempts
 from the invoking channel, a matching person's channel, and the main chat
 (`CHANNEL_RANDOM_AI`, `main`, or `general`), when both requester and bot can read
 their history. Searches stay in the current server: at most three channels,
-200 messages per channel, seven days, ten short excerpts, and eight seconds.
+up to 1,500 messages each in the main/person channel (200 elsewhere), one year,
+16 short excerpts, and 12 seconds. Older attempted checks and results get reserved
+space so repeated recent crash reports cannot bury them. Replies to earlier
+troubleshooting questions include the quoted question when it is in the scan.
 Tinki uses GPT-6.1 Sol to reason from those symptoms and link the source messages.
+She checks reported prior attempts/results before suggesting another step and
+avoids repeating a failed check unless there is a specific reason to retest it.
+Suggestions alone are not treated as completed steps. A capped or timed-out
+scan is partial history, and Tinki must not claim to have checked everything.
 She gives a brief summary and asks one focused question at a time, then offers
 one practical check based on the answer. Use Discord's **Reply** on her latest
-troubleshooting question to continue without another ping. The requester can
+troubleshooting question to continue without another ping. Anyone in the channel can
 reply with symptoms, results, or an error screenshot; `stop`, `done`, or `fixed`
-ends the conversation. Follow-ups retain the original reports and up to ten
+ends the conversation. A short answer matching the pending question also works
+in ordinary chat for two minutes after the question, when there is one matching
+active conversation. Each person's access to the quoted sources is rechecked.
+Follow-ups retain the original reports and up to ten
 exchanges in temporary memory, expire after 15 minutes of inactivity, and stay
-with the same requester, server, and channel. Source access is checked again on
+in the same server and channel, with the speaker recorded for each answer. Source access is checked again on
 each turn. Restarting Tinki clears these conversations.
 Retrieved reports and derived troubleshooting answers are not saved to AI memory
 or conversation files. Ordinary unaddressed messages stay silent; there is no
 background scanning. For example: `Tinki, can you diagnose Lhea's computer problems?`
 
-Explicitly naming or pinging Tinki in a Discord reply also works for ordinary messages, with up to 2,000 characters of the referenced message included as quoted context. If Discord cannot fetch the reference, Tinki still handles the addressed request. Automatic reply pings alone stay silent except when the requester replies to her latest active troubleshooting question.
+Explicitly naming or pinging Tinki in a Discord reply also works for ordinary messages, with up to 2,000 characters of the referenced message included as quoted context. If Discord cannot fetch the reference, Tinki still handles the addressed request. Automatic reply pings alone stay silent except for replies to her latest active troubleshooting question.
 Requests for erotic or spicy writing are deterministically deflected into a playful public tease before any OpenAI call.
 Known context traps like calculator `DRG` versus Final Fantasy `DRG` are answered deterministically so repeated false corrections or retroactive context switches cannot flip the answer.
 Stored facts and recent chat history are treated as low-confidence hints. Tinki only injects remembered facts/topics when they overlap the current request, keeps fallback memory for explicit memory-lookup questions, and avoids saving "no, you're wrong" correction bait as future topic context.

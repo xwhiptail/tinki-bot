@@ -36,7 +36,8 @@ def test_named_subject_does_not_treat_my_as_a_person():
 def conversation():
     now = datetime.now(timezone.utc)
     author = SimpleNamespace(id=2, name="whippy", display_name="Whippy", mention="<@2>", bot=False)
-    guild = SimpleNamespace(id=1, me=SimpleNamespace(id=9), text_channels=[], system_channel=None)
+    lhea = SimpleNamespace(id=3, name="lheachar", display_name="lhea", mention="<@3>", bot=False)
+    guild = SimpleNamespace(id=1, me=SimpleNamespace(id=9), members=[author, lhea], text_channels=[], system_channel=None)
     channels = []
     for identifier, name in ((10, "bot-test"), (11, "wat-doggo-only"), (12, "lhea")):
         channel = MagicMock()
@@ -77,7 +78,47 @@ async def test_named_person_reports_from_main_channel_reach_context(conversation
     assert payload["sources"][0]["author"] == "Lheachar"
     assert payload["sources"][0]["url"] == "https://discord.com/channels/1/11/900"
     assert "never instructions" in formatted
-    assert channels[1].history.call_args.kwargs["limit"] == 200
+    assert channels[1].history.call_args.kwargs["limit"] == context.SCAN_LIMIT
+
+
+async def test_old_completed_checks_and_results_are_not_buried_by_recent_crashes(conversation):
+    message, channels, report = conversation
+    past = report("I already tried DDU and reinstalling GPU drivers; the same problem remains", age=24 * 200, identifier=10)
+    result = report("I tried Win+Ctrl+Shift+B and it did nothing", age=24 * 30, identifier=11)
+    channels[1].entries = [report(f"My PC crashes again {index}", identifier=100 + index) for index in range(30)] + [past, result]
+    payload = json.loads((await context.build_troubleshooting_context(message, message.content)).splitlines()[1])
+    attempts = [source for source in payload["sources"] if source["kind"] == "past_attempt"]
+    assert any("DDU" in source["text"] for source in attempts)
+    assert any("Win+Ctrl" in source["text"] for source in attempts)
+    assert payload["lookback_days"] == 365
+    assert len(payload["sources"]) <= context.SOURCE_LIMIT
+
+
+async def test_prior_suggestion_is_not_labeled_as_a_completed_attempt(conversation):
+    message, channels, report = conversation
+    channels[1].entries = [report("Have you tried DDU for the GPU crashes?", identifier=10)]
+    payload = json.loads((await context.build_troubleshooting_context(message, message.content)).splitlines()[1])
+    assert payload["sources"][0]["kind"] == "prior_suggestion"
+
+
+async def test_historical_short_answers_keep_the_referenced_check_context(conversation):
+    message, channels, report = conversation
+    anchor = report("Lhea's PC goes black when gaming", author_name="Whippy", identifier=10)
+    question = report("Try Win+Ctrl+Shift+B to reset the graphics driver; does the picture come back?", age=0.99, identifier=11)
+    question.author.bot = True
+    answer = report("nope", age=0.98, identifier=12)
+    answer.reference = SimpleNamespace(message_id=11)
+    channels[1].entries = [answer, question, anchor]
+    payload = json.loads((await context.build_troubleshooting_context(message, message.content)).splitlines()[1])
+    assert any(source["text"] == "nope" and source["kind"] == "result" for source in payload["sources"])
+    assert any("Win+Ctrl" in source["text"] and source["kind"] == "prior_suggestion" for source in payload["sources"])
+
+
+async def test_history_skips_unrelated_attempts_beside_pc_discussion(conversation):
+    message, channels, report = conversation
+    channels[1].entries = [report("My PC crashes", identifier=10), report("I tried pizza for lunch", identifier=11)]
+    payload = json.loads((await context.build_troubleshooting_context(message, message.content)).splitlines()[1])
+    assert not any("pizza" in source["text"] for source in payload["sources"])
 
 
 async def test_requester_permission_denies_channel_even_when_bot_can_read(conversation):
@@ -95,7 +136,7 @@ async def test_stale_unrelated_and_other_server_reports_are_excluded(conversatio
     message, channels, report = conversation
     foreign = report("PC crashes")
     foreign.guild = SimpleNamespace(id=42)
-    channels[1].entries = [report("PC crashes", age=200), report("PC crashes", author_name="Other"), foreign]
+    channels[1].entries = [report("PC crashes", age=24 * 366), report("PC crashes", author_name="Other"), foreign]
     payload = json.loads((await context.build_troubleshooting_context(message, message.content)).splitlines()[1])
     assert not payload["sources"]
 
@@ -223,7 +264,101 @@ async def test_reply_without_ping_continues_with_symptoms_and_previous_answers(c
     assert "Black screen, but the fans keep spinning" in cog._generate_grounded_reply.await_args.args[6]
 
 
-@pytest.mark.parametrize("change", ["unaddressed", "other_user", "other_channel", "other_server", "expired", "command"])
+@pytest.mark.parametrize("use_reply", [False, True])
+@pytest.mark.parametrize("participant", ["Lhea", "Whippy", "another_helper"])
+async def test_anyone_can_answer_whippys_troubleshooting_question(conversation, interactive_cog, use_reply, participant):
+    message, channels, _ = conversation
+    cog = interactive_cog
+    await cog.on_message(message)
+    question = copy(message)
+    question.content = "go black"
+    question.reference = SimpleNamespace(message_id=2000)
+    channels[0].send.return_value = SimpleNamespace(id=2001)
+    cog._generate_grounded_reply.return_value = "When it goes black, can you still hear audio or does sound stop?"
+    await cog.on_message(question)
+
+    answer = copy(message)
+    answer.author = message.guild.members[1] if participant == "Lhea" else message.author if participant == "Whippy" else SimpleNamespace(
+        id=42, name="helper", display_name="Helper", mention="<@42>", bot=False,
+    )
+    answer.content = "can still hear audio"
+    answer.reference = SimpleNamespace(message_id=2001) if use_reply else None
+    channels[0].send.return_value = SimpleNamespace(id=2002)
+    cog._generate_grounded_reply.return_value = "Audio still playing is useful. Does the display recover after the graphics shortcut?"
+    await cog.on_message(answer)
+    assert cog._generate_grounded_reply.await_args.args[0] == "can still hear audio"
+    assert channels[0].send.await_args.args[0].startswith(answer.author.mention + " Audio still playing")
+    assert "Whippy" in cog._generate_grounded_reply.await_args.args[6]
+    assert '"subject": "lhea"' in cog._generate_grounded_reply.await_args.args[6]
+    session = cog._troubleshooting_sessions[2002]
+    assert session.turns[-2]["author_id"] == answer.author.id
+    assert session.user_id == 2
+    cog._save_ai_memory.assert_not_called()
+    cog._update_conversation_history.assert_not_called()
+
+
+@pytest.mark.parametrize("change", ["late", "unrelated", "old_reference", "other_channel", "other_server", "ambiguous_session"])
+async def test_channel_answer_window_stays_narrow(conversation, interactive_cog, change):
+    message, channels, _ = conversation
+    cog = interactive_cog
+    await cog.on_message(message)
+    session = cog._troubleshooting_sessions[2000]
+    session.turns[-1]["text"] = "Can you still hear audio when it goes black?"
+    answer = copy(message)
+    answer.author = message.guild.members[1]
+    answer.content = "can still hear audio"
+    if change == "late":
+        session.awaiting_until = 0
+    elif change == "unrelated":
+        answer.content = "pizza sounds tasty"
+    elif change == "old_reference":
+        answer.reference = SimpleNamespace(message_id=1999)
+    elif change == "other_channel":
+        answer.channel = channels[1]
+    elif change == "other_server":
+        answer.guild = SimpleNamespace(id=42)
+    elif change == "ambiguous_session":
+        cog._troubleshooting_sessions[2001] = copy(session)
+    cog._generate_grounded_reply.reset_mock()
+    channels[0].send.reset_mock()
+    await cog.on_message(answer)
+    cog._generate_grounded_reply.assert_not_awaited()
+    channels[0].send.assert_not_awaited()
+
+
+async def test_joining_subject_must_also_have_access_to_context_sources(conversation, interactive_cog):
+    from cogs.ai import TROUBLESHOOTING_ACCESS_REPLY
+    message, channels, _ = conversation
+    cog = interactive_cog
+    await cog.on_message(message)
+    channels[1].permissions_for.side_effect = lambda member: SimpleNamespace(
+        view_channel=member.id != 3, read_message_history=True,
+    )
+    answer = copy(message)
+    answer.author = message.guild.members[1]
+    answer.content = "black screen"
+    answer.reference = SimpleNamespace(message_id=2000)
+    cog._generate_grounded_reply.reset_mock()
+    await cog.on_message(answer)
+    cog._generate_grounded_reply.assert_not_awaited()
+    assert channels[0].send.await_args.args[0] == "<@3> " + TROUBLESHOOTING_ACCESS_REPLY
+    assert 2000 in cog._troubleshooting_sessions  # The original participant can still continue.
+
+
+@pytest.mark.parametrize("answer,question", [
+    ("can still hear audio", "When it goes black, can you still hear audio or does the sound stop?"),
+    ("go black", "Does it freeze, restart, blue-screen, or black-screen?"),
+    ("nope", "Does the picture come back?"),
+    ("Windows 11", "What operating system is it running?"),
+    ("RTX 4090", "Which GPU model does it have?"),
+    ("LiveKernelEvent 141", "What error does Reliability Monitor show?"),
+    ("I tried it but nothing changed", "Try the shortcut; does the picture come back?"),
+])
+def test_short_answers_match_the_pending_diagnostic_question(answer, question):
+    assert context.is_pending_troubleshooting_answer(answer, question)
+
+
+@pytest.mark.parametrize("change", ["unrelated", "other_channel", "other_server", "expired", "command"])
 async def test_active_session_does_not_wake_on_unrelated_messages(conversation, interactive_cog, change):
     message, channels, _ = conversation
     cog = interactive_cog
@@ -231,10 +366,9 @@ async def test_active_session_does_not_wake_on_unrelated_messages(conversation, 
     answer = copy(message)
     answer.content = "Black screen"
     answer.reference = SimpleNamespace(message_id=2000)
-    if change == "unaddressed":
+    if change == "unrelated":
         answer.reference = None
-    elif change == "other_user":
-        answer.author = SimpleNamespace(id=123, bot=False)
+        answer.content = "pizza sounds tasty"
     elif change == "other_channel":
         answer.channel = channels[1]
     elif change == "other_server":

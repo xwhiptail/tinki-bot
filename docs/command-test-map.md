@@ -38,12 +38,25 @@ requester and bot permissions, access revocation, stale and other-server message
 timeouts, direct messages, addressed routing, and source links.
 Interactive follow-ups are covered by
 `test_troubleshooting_reply_without_ping_uses_active_session` and
+`test_anyone_can_answer_pending_troubleshooting_without_ping_or_reply` and
 `test_troubleshooting_first_reply_explains_how_to_answer` in
 `tests/test_tinki_bot.py`. Standalone production coverage in
 `tests/test_troubleshooting_context.py` checks retained symptoms/answers, short
 one-question replies, silent unrelated/expired/foreign-user messages, command
 exclusion, stopping, duplicate in-flight replies, and permission revocation
-before and during generation. Ordinary reply-ping behavior remains unchanged.
+before and during generation. `test_anyone_can_answer_whippys_troubleshooting_question`
+reproduces Lhea's screenshot with Whippy, Lhea, and another helper using Reply or
+ordinary chat. `test_channel_answer_window_stays_narrow` checks the two-minute
+window, unrelated answers, stale references, wrong channels/servers, and ambiguous
+conversations. `test_joining_subject_must_also_have_access_to_context_sources`
+checks source access for a joining participant. Other reply-ping behavior remains unchanged.
+Historical attempted checks are covered by
+`test_old_completed_checks_and_results_are_not_buried_by_recent_crashes`,
+`test_prior_suggestion_is_not_labeled_as_a_completed_attempt`,
+`test_historical_short_answers_keep_the_referenced_check_context`, and
+`test_history_skips_unrelated_attempts_beside_pc_discussion` in the standalone
+context tests. Retrieval still checks permissions, stale and foreign-server
+messages, scan/excerpt limits, and partial results on timeout.
 
 ## Channel Historian
 
