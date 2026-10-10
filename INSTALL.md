@@ -148,6 +148,13 @@ to three channels, 200 messages per channel, seven days, ten excerpts, and eight
 seconds, with at most two concurrent searches. Access is rechecked before quoted
 messages are passed to OpenAI. No new permission, persistent archive, scheduled
 job, or dependency is required. Explicit requests not to search are respected.
+Interactive troubleshooting keeps at most 100 temporary conversations, each with
+the original reports and the last ten exchanges. They expire after 15 minutes of
+inactivity and are cleared on restart. Only the original requester replying to
+the latest troubleshooting answer in the same server/channel can continue without
+a ping. Source permissions are checked before and after generating each answer;
+lost access discards the conversation. No conversation or fetched report is
+written to runtime data.
 
 If you want `!awscost` and deploy-time AWS cost reporting, the bot runtime also needs AWS credentials with Cost Explorer access.
 

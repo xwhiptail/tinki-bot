@@ -1736,6 +1736,34 @@ class TestLinkContext:
 
 
 class TestAIContextGathering:
+    async def test_troubleshooting_reply_without_ping_uses_active_session(self):
+        from utils.troubleshooting_context import TroubleshootingSession
+        cog = make_ai_cog()
+        message = make_message("Black screen, fans still running")
+        message.author.id = 123
+        message.guild = SimpleNamespace(id=1)
+        message.channel.id = 10
+        message.reference = SimpleNamespace(message_id=55)
+        session = TroubleshootingSession(123, 1, 10, "diagnose my PC", "", set(), float("inf"))
+        cog._troubleshooting_sessions[55] = session
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle:
+            await cog.on_message(message)
+        handle.assert_awaited_once_with(message, message.content, troubleshooting_session=session)
+        message.channel.fetch_message.assert_not_awaited()
+
+    async def test_troubleshooting_first_reply_explains_how_to_answer(self):
+        from cogs.ai import TROUBLESHOOTING_REPLY_HINT
+        cog = make_ai_cog()
+        message = make_message("Tinki help fix my PC crashes")
+        message.guild = None
+        cog._troubleshooting_context = AsyncMock(return_value="")
+        cog._generate_grounded_reply = AsyncMock(return_value="Does it freeze or restart?")
+        cog._send_reply_chunks = AsyncMock()
+        cog._save_ai_memory = MagicMock()
+        await cog.on_message(message)
+        assert cog._send_reply_chunks.await_args.args[2] == "Does it freeze or restart?\n\n" + TROUBLESHOOTING_REPLY_HINT
+        cog._save_ai_memory.assert_not_called()
+
     async def test_verified_fact_flavor_keeps_tinki_gnome_identity(self):
         cog = make_ai_cog()
         message = make_message("Tinki 2+2")

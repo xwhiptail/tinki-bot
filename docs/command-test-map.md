@@ -36,6 +36,14 @@ deterministic fact replies, including model-generated flavor.
 `tests/test_troubleshooting_context.py` covers cross-channel named-person reports,
 requester and bot permissions, access revocation, stale and other-server messages,
 timeouts, direct messages, addressed routing, and source links.
+Interactive follow-ups are covered by
+`test_troubleshooting_reply_without_ping_uses_active_session` and
+`test_troubleshooting_first_reply_explains_how_to_answer` in
+`tests/test_tinki_bot.py`. Standalone production coverage in
+`tests/test_troubleshooting_context.py` checks retained symptoms/answers, short
+one-question replies, silent unrelated/expired/foreign-user messages, command
+exclusion, stopping, duplicate in-flight replies, and permission revocation
+before and during generation. Ordinary reply-ping behavior remains unchanged.
 
 ## Channel Historian
 

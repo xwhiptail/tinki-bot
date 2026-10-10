@@ -1,4 +1,5 @@
 import asyncio
+from copy import copy
 from datetime import datetime, timedelta, timezone
 import json
 from types import SimpleNamespace
@@ -52,6 +53,7 @@ def conversation():
         channel.history.side_effect = history
         channels.append(channel)
     guild.text_channels = channels
+    guild.get_channel = lambda identifier: next((channel for channel in channels if channel.id == identifier), None)
     message = SimpleNamespace(
         id=999, created_at=now, author=author, guild=guild, channel=channels[0],
         content="<@9> can you diagnose Lhea's computer problems?",
@@ -174,3 +176,216 @@ async def test_verified_fact_flavor_preserves_identity_at_reply_boundary(convers
     with patch("cogs.ai.gpt_wrap_fact", new=AsyncMock(return_value="4 — calculator goblin")):
         await cog._handle_mention(message, "2+2")
     assert cog._send_reply_chunks.await_args.args[2] == "4 — calculator gnome"
+
+
+@pytest.fixture
+def interactive_cog(conversation):
+    from cogs.ai import AI
+    message, channels, _ = conversation
+    cog = AI(SimpleNamespace(cogs={}, commands=[], user=SimpleNamespace(id=9)))
+    cog._troubleshooting_context = AsyncMock(return_value=(
+        "Recent Discord troubleshooting context:\n" + json.dumps({"sources": [{
+            "text": "PC crashes after boot", "url": "https://discord.com/channels/1/11/900",
+        }]})
+    ))
+    cog._generate_grounded_reply = AsyncMock(return_value="When it crashes, is it a freeze, restart, blue screen, or black screen?")
+    cog._save_ai_memory = MagicMock()
+    cog._update_conversation_history = MagicMock()
+    channels[0].send = AsyncMock(return_value=SimpleNamespace(id=2000))
+    return cog
+
+
+async def test_reply_without_ping_continues_with_symptoms_and_previous_answers(conversation, interactive_cog):
+    message, channels, _ = conversation
+    cog = interactive_cog
+    await cog.on_message(message)
+    assert "Use **Reply** to answer" in channels[0].send.await_args.args[0]
+    answer = copy(message)
+    answer.content = "Black screen, but the fans keep spinning"
+    answer.reference = SimpleNamespace(message_id=2000)
+    channels[0].send.return_value = SimpleNamespace(id=2001)
+    cog._generate_grounded_reply.return_value = "Does sound keep playing after the display goes black?"
+    await cog.on_message(answer)
+    args = cog._generate_grounded_reply.await_args.args
+    assert args[0] == answer.content
+    assert args[1] == "troubleshooting"
+    assert "PC crashes after boot" in args[6]
+    assert "freeze, restart" in args[6]
+    assert "Lhea" in args[6]
+    assert set(cog._troubleshooting_sessions) == {2001}
+    cog._troubleshooting_context.assert_awaited_once()
+    cog._save_ai_memory.assert_not_called()
+    cog._update_conversation_history.assert_not_called()
+
+    answer.reference.message_id = 2001
+    answer.content = "Yes, sound keeps playing"
+    await cog.on_message(answer)
+    assert "Black screen, but the fans keep spinning" in cog._generate_grounded_reply.await_args.args[6]
+
+
+@pytest.mark.parametrize("change", ["unaddressed", "other_user", "other_channel", "other_server", "expired", "command"])
+async def test_active_session_does_not_wake_on_unrelated_messages(conversation, interactive_cog, change):
+    message, channels, _ = conversation
+    cog = interactive_cog
+    await cog.on_message(message)
+    answer = copy(message)
+    answer.content = "Black screen"
+    answer.reference = SimpleNamespace(message_id=2000)
+    if change == "unaddressed":
+        answer.reference = None
+    elif change == "other_user":
+        answer.author = SimpleNamespace(id=123, bot=False)
+    elif change == "other_channel":
+        answer.channel = channels[1]
+    elif change == "other_server":
+        answer.guild = SimpleNamespace(id=123)
+    elif change == "expired":
+        cog._troubleshooting_sessions[2000].expires_at = 0
+    elif change == "command":
+        answer.content = "!commands"
+    cog._generate_grounded_reply.reset_mock()
+    channels[0].send.reset_mock()
+    await cog.on_message(answer)
+    cog._generate_grounded_reply.assert_not_awaited()
+    channels[0].send.assert_not_awaited()
+
+
+@pytest.mark.parametrize("answer", ["stop", "it's fixed", "hush"])
+async def test_user_can_end_the_interactive_session(conversation, interactive_cog, answer):
+    message, channels, _ = conversation
+    cog = interactive_cog
+    await cog.on_message(message)
+    followup = copy(message)
+    followup.content = answer
+    followup.reference = SimpleNamespace(message_id=2000)
+    cog._generate_grounded_reply.reset_mock()
+    await cog.on_message(followup)
+    assert not cog._troubleshooting_sessions
+    cog._generate_grounded_reply.assert_not_awaited()
+
+
+@pytest.mark.parametrize("during_generation", [False, True])
+async def test_followup_rechecks_source_permissions_and_discards_session(conversation, interactive_cog, during_generation):
+    from cogs.ai import TROUBLESHOOTING_ACCESS_REPLY
+    message, channels, _ = conversation
+    cog = interactive_cog
+    await cog.on_message(message)
+    answer = copy(message)
+    answer.content = "Black screen"
+    answer.reference = SimpleNamespace(message_id=2000)
+    cog._generate_grounded_reply.reset_mock()
+
+    def revoke():
+        channels[1].permissions_for.return_value = SimpleNamespace(view_channel=False, read_message_history=False)
+
+    if during_generation:
+        async def generate(*args, **kwargs):
+            revoke()
+            return "Private report summary"
+        cog._generate_grounded_reply.side_effect = generate
+    else:
+        revoke()
+    await cog.on_message(answer)
+    assert not cog._troubleshooting_sessions
+    assert channels[0].send.await_args.args[0] == "<@2> " + TROUBLESHOOTING_ACCESS_REPLY
+    if not during_generation:
+        cog._generate_grounded_reply.assert_not_awaited()
+
+
+async def test_duplicate_followup_is_ignored_while_answer_is_running(conversation, interactive_cog):
+    message, channels, _ = conversation
+    cog = interactive_cog
+    await cog.on_message(message)
+    answer = copy(message)
+    answer.content = "Black screen"
+    answer.reference = SimpleNamespace(message_id=2000)
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def generate(*args, **kwargs):
+        started.set()
+        await finish.wait()
+        return "Does sound keep playing?"
+
+    cog._generate_grounded_reply.reset_mock()
+    cog._generate_grounded_reply.side_effect = generate
+    task = asyncio.create_task(cog.on_message(answer))
+    await started.wait()
+    await cog.on_message(answer)
+    finish.set()
+    await task
+    cog._generate_grounded_reply.assert_awaited_once()
+
+
+async def test_stop_during_generation_cancels_pending_answer(conversation, interactive_cog):
+    message, channels, _ = conversation
+    cog = interactive_cog
+    await cog.on_message(message)
+    answer = copy(message)
+    answer.content = "Black screen"
+    answer.reference = SimpleNamespace(message_id=2000)
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def generate(*args, **kwargs):
+        started.set()
+        await finish.wait()
+        return "Does sound keep playing?"
+
+    cog._generate_grounded_reply.side_effect = generate
+    task = asyncio.create_task(cog.on_message(answer))
+    await started.wait()
+    answer.content = "stop"
+    await cog.on_message(answer)
+    channels[0].send.reset_mock()
+    finish.set()
+    await task
+    assert not cog._troubleshooting_sessions
+    channels[0].send.assert_not_awaited()
+
+
+async def test_session_storage_and_turns_are_bounded(conversation, interactive_cog, monkeypatch):
+    import cogs.ai as ai_module
+    message, channels, _ = conversation
+    cog = interactive_cog
+    monkeypatch.setattr(ai_module, "SESSION_LIMIT", 2)
+    for identifier in range(2000, 2003):
+        channels[0].send.return_value = SimpleNamespace(id=identifier)
+        await cog.on_message(message)
+    assert set(cog._troubleshooting_sessions) == {2001, 2002}
+    answer = copy(message)
+    answer.content = "Still a black screen"
+    answer.reference = SimpleNamespace(message_id=2002)
+    for _ in range(12):
+        await cog.on_message(answer)
+    assert len(cog._troubleshooting_sessions[2002].turns) == context.TURN_LIMIT
+
+
+async def test_generated_troubleshooting_reply_is_short_and_one_question(conversation):
+    from cogs.ai import AI
+    message, _, _ = conversation
+    cog = AI(SimpleNamespace(cogs={}, commands=[], user=SimpleNamespace(id=9)))
+
+    def completion(text):
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))]), ""
+
+    cog._create_openai_chat_completion = AsyncMock(side_effect=[
+        completion("What is your CPU? What is your GPU? What is your PSU?"),
+        completion("Does sound keep playing after the black screen?"),
+    ])
+    reply = await cog._generate_grounded_reply(
+        "Black screen", "troubleshooting", "", {"facts": [], "topics": [], "preferences": []},
+        [], [], "Recent reports: PC crashes",
+    )
+    assert reply == "Does sound keep playing after the black screen?"
+    assert cog._create_openai_chat_completion.await_count == 2
+    system = cog._create_openai_chat_completion.await_args.kwargs["messages"][0]["content"]
+    assert "ONE focused question" in system
+    assert "Do not dump a list" in system
+
+
+def test_session_sources_are_only_real_source_urls_not_quoted_links():
+    quoted = "header\n" + json.dumps({"sources": [{
+        "text": "https://discord.com/channels/1/99/101",
+        "url": "https://discord.com/channels/1/11/900",
+    }]})
+    assert context.source_channel_ids(quoted) == {11}
+    assert context.source_channel_ids("") == set()

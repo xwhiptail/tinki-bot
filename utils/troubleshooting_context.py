@@ -1,5 +1,6 @@
 """Recent server context for addressed computer troubleshooting, without an archive."""
 import asyncio
+from dataclasses import dataclass, field
 from datetime import timedelta, timezone
 import json
 import re
@@ -15,10 +16,49 @@ SCAN_LIMIT = 200
 SOURCE_LIMIT = 10
 LOOKBACK_DAYS = 7
 TIMEOUT_SECONDS = 8
+SESSION_SECONDS = 15 * 60
+SESSION_LIMIT = 100
+TURN_LIMIT = 20
 TECH = re.compile(r"\b(?:computer|pc|laptop|desktop|gpu|cpu|windows|macbook|hardware|driver|bios|ram|ssd|motherboard|power supply|bsod|blue screen)\b", re.I)
 PROBLEM = re.compile(r"\b(?:diagnos\w*|troubleshoot\w*|debug\w*|help|fix|problem\w*|issue\w*|broken|crash\w*|freez\w*|error\w*|shut\w* down|won.t (?:boot|start|turn on)|black screen|stutter\w*|overheat\w*)\b", re.I)
 SYMPTOM = re.compile(r"\b(?:crash\w*|freez\w*|error\w*|reboot\w*|restart\w*|shut\w* down|bsod|blue screen|black screen|overheat\w*|stutter\w*|no display|won.t (?:boot|start|turn on)|turn\w* off)\b", re.I)
 SUBJECT = re.compile(r"\b([^\W\d_][\w.-]*)\s*(?:['’]s)?\s+(?:(?:gaming|new|old)\s+)?(?:computer|pc|laptop|desktop)\b", re.I)
+
+
+@dataclass
+class TroubleshootingSession:
+    user_id: int
+    guild_id: int
+    channel_id: int
+    request: str
+    context: str
+    source_channels: set
+    expires_at: float
+    turns: list = field(default_factory=list)
+    in_flight: bool = False
+    closed: bool = False
+
+
+def source_channel_ids(context):
+    """Read only the helper's source URLs, not links inside quoted message text."""
+    try:
+        sources = json.loads(context.splitlines()[1])["sources"]
+    except (IndexError, KeyError, TypeError, ValueError):
+        return set()
+    ids = set()
+    for source in sources:
+        match = re.fullmatch(r"https://discord.com/channels/\d+/(\d+)/\d+", source.get("url", ""))
+        if match:
+            ids.add(int(match[1]))
+    return ids
+
+
+def validate_troubleshooting_reply(reply):
+    if len(reply.split()) > 90:
+        return False, "troubleshooting reply exceeds 90 words; keep it conversational"
+    if reply.count("?") > 1:
+        return False, "ask only one focused troubleshooting question at a time"
+    return True, ""
 
 
 def normalize(text):

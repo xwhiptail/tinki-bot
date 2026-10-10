@@ -368,11 +368,19 @@ from the invoking channel, a matching person's channel, and the main chat
 their history. Searches stay in the current server: at most three channels,
 200 messages per channel, seven days, ten short excerpts, and eight seconds.
 Tinki uses GPT-6.1 Sol to reason from those symptoms and link the source messages.
+She gives a brief summary and asks one focused question at a time, then offers
+one practical check based on the answer. Use Discord's **Reply** on her latest
+troubleshooting question to continue without another ping. The requester can
+reply with symptoms, results, or an error screenshot; `stop`, `done`, or `fixed`
+ends the conversation. Follow-ups retain the original reports and up to ten
+exchanges in temporary memory, expire after 15 minutes of inactivity, and stay
+with the same requester, server, and channel. Source access is checked again on
+each turn. Restarting Tinki clears these conversations.
 Retrieved reports and derived troubleshooting answers are not saved to AI memory
 or conversation files. Ordinary unaddressed messages stay silent; there is no
 background scanning. For example: `Tinki, can you diagnose Lhea's computer problems?`
 
-Explicitly naming or pinging Tinki in a Discord reply also works for ordinary messages, with up to 2,000 characters of the referenced message included as quoted context. If Discord cannot fetch the reference, Tinki still handles the addressed request. Automatic reply pings alone stay silent.
+Explicitly naming or pinging Tinki in a Discord reply also works for ordinary messages, with up to 2,000 characters of the referenced message included as quoted context. If Discord cannot fetch the reference, Tinki still handles the addressed request. Automatic reply pings alone stay silent except when the requester replies to her latest active troubleshooting question.
 Requests for erotic or spicy writing are deterministically deflected into a playful public tease before any OpenAI call.
 Known context traps like calculator `DRG` versus Final Fantasy `DRG` are answered deterministically so repeated false corrections or retroactive context switches cannot flip the answer.
 Stored facts and recent chat history are treated as low-confidence hints. Tinki only injects remembered facts/topics when they overlap the current request, keeps fallback memory for explicit memory-lookup questions, and avoids saving "no, you're wrong" correction bait as future topic context.
