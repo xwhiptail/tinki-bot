@@ -63,8 +63,8 @@ pip install -r requirements.txt
 - `DISCORD`
 - `GIPHY`
 - `OPENAI_API_KEY`
-- `OPENAI_MODEL` optional, defaults to `gpt-5.4`
-- `OPENAI_FAST_MODEL` optional, defaults to `gpt-5.4-mini` for routine mention replies
+- `OPENAI_MODEL` optional, defaults to `gpt-6.1-sol` for involved questions and images
+- `OPENAI_FAST_MODEL` optional, defaults to `gpt-6-luna` for routine mention replies
 - `AWS_COST_REGION` optional, defaults to `us-east-1` for Cost Explorer queries
 - `USER_WHIPTAIL_ID` optional, preferred trusted user ID for host-level admin commands like `!restart` and `!deploy`
 - `TINKI_DATA_DIR` optional, defaults to `./data`
@@ -168,6 +168,15 @@ cd /path/to/tinki-bot
 - upload the current repo files
 - restart `tinki-bot.service`
 
+To upgrade only the OpenAI models while other features are still pending, run
+`TINKI_EC2_INSTANCE_ID=your-instance-id ./deploy-ec2.sh --models-only` on
+macOS/Linux. This needs AWS CLI SSM access, checks the previous committed model
+files, preserves feature modules and runtime data, runs the live tests, and
+updates only the model files and the two model settings in `/etc/tinki-bot.env`.
+See `INSTALL.md` for requirements and rollback. Quick replies use GPT-6 Luna with
+reasoning disabled; more involved replies and images use GPT-6.1 Sol at low
+reasoning effort.
+
 Host replacement reminder:
 
 - normal deploys update code only
@@ -209,6 +218,14 @@ Notes:
 - expected AWS permissions are `cloudwatch:PutMetricAlarm`, `cloudwatch:PutMetricData`, `ec2:DescribeInstances`, `ec2:DescribeVolumes`, `sns:CreateTopic`, `sns:Subscribe`, `sns:ListSubscriptionsByTopic`, `budgets:CreateBudget`, `budgets:UpdateBudget`, `budgets:CreateNotification`, `budgets:DescribeBudget`, and `sts:GetCallerIdentity`
 
 ### Rollback
+
+For a model-only release, use the root-only `openai_models_*` snapshot printed by
+the deploy. It contains the previous configuration, OpenAI helper, entrypoint,
+environment file, previous model marker if present, and a list of added files.
+Restore those files to their original locations, remove files listed in
+`added-files.json`, and restart `tinki-bot`. Keep the environment snapshot private.
+The model deploy automatically restores its files and settings if tests or the
+service restart fail. It keeps the three most recent model snapshots.
 
 If a deploy breaks the bot, SSH to the server and roll back the code file:
 
@@ -514,6 +531,7 @@ For infrastructure cost control outside the bot runtime, use the repo maintenanc
 - Do not commit secrets, local databases, generated JSON files, or virtual environments.
 - Deploy backups are pruned to the 3 most recent automatically.
 - Deploy state is tracked in `/opt/apps/tinki-bot/repo/.deploy-commit`.
+- Model-only releases are tracked separately in `.deploy-model-commit`; the full-release marker remains unchanged.
 - Normal repo flow is documented in `AGENTS.md`, `CLAUDE.md`, and `HANDOFF.md`: sync first, make the smallest focused change, run relevant tests, push, then deploy with `.\deploy-ec2.ps1` when you want the change live.
 - For Windows-to-EC2 operations, prefer the checked-in wrapper scripts in `scripts/` instead of inline `plink`/bash/python command strings.
 - For macOS/Linux-to-EC2 operations, prefer `./deploy-ec2.sh` and the shell wrappers in `scripts/` instead of ad hoc `ssh`/`scp` one-liners.

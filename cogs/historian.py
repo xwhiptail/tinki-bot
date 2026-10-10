@@ -7,6 +7,7 @@ from discord.ext import commands
 from openai import AsyncOpenAI
 
 from config import OPENAI_FAST_MODEL
+from utils.openai_helpers import create_async_chat_completion
 from utils.channel_history import (
     HistoryRequest, coverage_note, parse_lore_request, quote_fallback,
     render_history_answer, scan_channel_history, select_history_sources, source_payload,
@@ -50,7 +51,8 @@ class Historian(commands.Cog):
     async def _summarize(self, request, sources):
         # No chat archive or model conversation is retained between requests.
         async with AsyncOpenAI(timeout=18, max_retries=0) as client:
-            completion = await client.chat.completions.create(
+            completion = await create_async_chat_completion(
+                client,
                 model=OPENAI_FAST_MODEL,
                 messages=[
                     {"role": "system", "content": HISTORIAN_PROMPT},

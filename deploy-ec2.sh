@@ -5,6 +5,14 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/scripts/remote-common.sh"
 
+MODELS_ONLY=false
+if [[ "${1:-}" == "--models-only" && "$#" == 1 ]]; then
+  MODELS_ONLY=true
+elif [[ "$#" != 0 ]]; then
+  echo "Usage: ./deploy-ec2.sh [--models-only]" >&2
+  exit 1
+fi
+
 REMOTE_NAME="origin"
 LOCAL_COMMIT="$(git -C "$PROJECT_ROOT" rev-parse HEAD)"
 REMOTE_URL="$(git -C "$PROJECT_ROOT" remote get-url "$REMOTE_NAME")"
@@ -26,6 +34,22 @@ echo "GitHub main:   ${GITHUB_COMMIT:0:7}"
 if [[ "$LOCAL_COMMIT" != "$GITHUB_COMMIT" ]]; then
   echo "Local HEAD does not match GitHub main. Pull/push first so deploy matches GitHub." >&2
   exit 1
+fi
+
+if [[ "$MODELS_ONLY" == true ]]; then
+  : "${TINKI_EC2_INSTANCE_ID:?Set TINKI_EC2_INSTANCE_ID for the SSM model-only deployment}"
+  MODEL_BASE="$(remote_bash <<EOF
+set -e
+if [ "$REMOTE_REPO_DIR/.deploy-model-commit" -nt "$REMOTE_REPO_DIR/.deploy-commit" ]; then
+  cat "$REMOTE_REPO_DIR/.deploy-model-commit"
+else
+  cat "$REMOTE_REPO_DIR/.deploy-commit"
+fi
+EOF
+)"
+  exec python3 "$PROJECT_ROOT/scripts/deploy_openai_models.py" \
+    --commit "$LOCAL_COMMIT" --base "$MODEL_BASE" --repo "$REMOTE_REPO_DIR" \
+    --instance-id "$TINKI_EC2_INSTANCE_ID" --region "${TINKI_AWS_REGION:-us-east-1}"
 fi
 
 REPO_FILES=(

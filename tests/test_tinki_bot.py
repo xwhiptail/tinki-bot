@@ -2885,7 +2885,8 @@ class TestOpenAIHelpers:
         assert sent_kwargs.get("max_completion_tokens", sent_kwargs.get("max_tokens")) == 40
         run_blocking_mock.assert_awaited_once()
 
-    async def test_create_chat_completion_uses_completion_token_limit_for_gpt5_models(self):
+    @pytest.mark.parametrize("model", ["gpt-5.4", "gpt-6-luna", "gpt-6.1-sol"])
+    async def test_create_chat_completion_uses_completion_token_limit_for_reasoning_models(self, model):
         completion = SimpleNamespace(choices=[])
         fake_client = MagicMock()
         fake_client.chat.completions.create = MagicMock(return_value=completion)
@@ -2898,7 +2899,7 @@ class TestOpenAIHelpers:
 
             result = await create_chat_completion(
                 fake_client,
-                model="gpt-5.4",
+                model=model,
                 messages=[],
                 max_tokens=42,
             )

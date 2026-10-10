@@ -38,8 +38,8 @@ Required:
 
 Optional:
 
-- `OPENAI_MODEL`
-- `OPENAI_FAST_MODEL`
+- `OPENAI_MODEL` (default `gpt-6.1-sol`)
+- `OPENAI_FAST_MODEL` (default `gpt-6-luna`)
 - `AWS_COST_REGION`
 - `USER_WHIPTAIL_ID` for the trusted operator who may run host-level admin commands
 - `TINKI_DATA_DIR`
@@ -102,6 +102,34 @@ cd /path/to/tinki-bot
 ```
 
 Before the first deploy on macOS/Linux, copy `deploy-ec2.local.sh.example` to `deploy-ec2.local.sh` and set your real EC2 host, user, and SSH key path there, or set `TINKI_EC2_HOST`, `TINKI_EC2_USER`, and `TINKI_EC2_KEY_PATH` in your shell environment.
+
+For an OpenAI model upgrade without releasing other pending features, use:
+
+```bash
+TINKI_EC2_INSTANCE_ID=your-instance-id ./deploy-ec2.sh --models-only
+```
+
+This macOS/Linux option requires AWS CLI access to SSM `SendCommand` and
+`GetCommandInvocation` on that instance. `TINKI_AWS_REGION` defaults to
+`us-east-1`. The instance ID must identify the same host configured for SSH.
+The helper sends committed `config.py`, `utils/openai_helpers.py`, and standalone
+model tests, updates only the two OpenAI model variables in `/etc/tinki-bot.env`,
+runs the live test suite with temporary test data, then restarts the service.
+It checks the previous committed file hashes before writing and backs up code
+and settings in a root-only `openai_models_*` directory, retaining three snapshots.
+Failure restores the previous files and settings. `.deploy-model-commit` records
+the model overlay; `.deploy-commit`, feature modules, entrypoint, and runtime data
+are preserved. The normal deploy still releases the complete repository.
+
+GPT-6 Luna uses `reasoning_effort=none` for quick replies. GPT-6.1 Sol uses `low`
+for more involved replies and images. The shared OpenAI helper normalizes token
+limits and removes incompatible sampling parameters when reasoning is enabled;
+an older model environment override retains its existing request behavior.
+
+For model rollback, restore the model files and `tinki-bot.env` from the printed
+snapshot to the repo and `/etc/tinki-bot.env`, restore the old model marker if
+present, remove repo files listed in `added-files.json`, and restart the service.
+Keep the environment snapshot private; no runtime data restore is required.
 
 If you want `!awscost` and deploy-time AWS cost reporting, the bot runtime also needs AWS credentials with Cost Explorer access.
 

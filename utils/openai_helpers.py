@@ -13,11 +13,19 @@ def get_openai_client() -> OpenAI:
 
 def _model_prefers_max_completion_tokens(model: str) -> bool:
     model_name = str(model or "").lower()
-    return model_name.startswith(("gpt-5", "o1", "o3", "o4"))
+    return model_name.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4"))
 
 
 def _normalize_chat_completion_kwargs(kwargs):
     normalized = dict(kwargs)
+    model = str(normalized.get("model") or "").lower()
+    if model.startswith("gpt-6"):
+        # Keep quick chat non-reasoning; Sol 6.1 and Astra require at least low.
+        default_effort = "low" if model.startswith(("gpt-6.1-sol", "gpt-6-astra")) else "none"
+        effort = normalized.setdefault("reasoning_effort", default_effort)
+        if effort != "none":
+            for parameter in ("temperature", "top_p", "top_logprobs", "logprobs"):
+                normalized.pop(parameter, None)
     if (
         "max_tokens" in normalized
         and "max_completion_tokens" not in normalized
@@ -25,6 +33,10 @@ def _normalize_chat_completion_kwargs(kwargs):
     ):
         normalized["max_completion_tokens"] = normalized.pop("max_tokens")
     return normalized
+
+
+async def create_async_chat_completion(client, **kwargs):
+    return await client.chat.completions.create(**_normalize_chat_completion_kwargs(kwargs))
 
 
 async def run_blocking(func, *args, **kwargs):
