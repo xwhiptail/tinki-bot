@@ -1736,6 +1736,15 @@ class TestLinkContext:
 
 
 class TestAIContextGathering:
+    async def test_verified_fact_flavor_keeps_tinki_gnome_identity(self):
+        cog = make_ai_cog()
+        message = make_message("Tinki 2+2")
+        cog._send_reply_chunks = AsyncMock()
+        cog._save_ai_memory = MagicMock()
+        with patch("cogs.ai.gpt_wrap_fact", new=AsyncMock(return_value="4 — calculator goblin")):
+            await cog._handle_mention(message, "2+2")
+        assert cog._send_reply_chunks.await_args.args[2] == "4 — calculator gnome"
+
     async def test_addressed_computer_troubleshooting_automatically_gathers_context(self):
         cog = make_ai_cog()
         message = make_message("Tinki can you diagnose Lhea's computer problems?")

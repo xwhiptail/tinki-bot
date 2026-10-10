@@ -952,6 +952,7 @@ class AI(commands.Cog):
         deterministic_fact = maybe_count_letter_reply(text, context_texts=history_texts)
         if deterministic_fact:
             reply = await gpt_wrap_fact(deterministic_fact, text, persona_description, model=OPENAI_FAST_MODEL)
+            reply = self._sanitize_identity_drift(reply)
             await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
             self._update_conversation_history(personas_cog, user_id, persona_key, text, reply)
             self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
@@ -961,6 +962,7 @@ class AI(commands.Cog):
         deterministic_fact = maybe_calculate_reply(text)
         if deterministic_fact:
             reply = await gpt_wrap_fact(deterministic_fact, text, persona_description, model=OPENAI_FAST_MODEL)
+            reply = self._sanitize_identity_drift(reply)
             await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
             self._update_conversation_history(personas_cog, user_id, persona_key, text, reply)
             self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
@@ -970,6 +972,7 @@ class AI(commands.Cog):
         deterministic_fact = maybe_bot_insight_reply(text)
         if deterministic_fact:
             reply = await gpt_wrap_fact(deterministic_fact, text, persona_description, model=OPENAI_FAST_MODEL)
+            reply = self._sanitize_identity_drift(reply)
             await self._send_reply_chunks(message.channel, f'{message.author.mention} ', reply)
             self._update_conversation_history(personas_cog, user_id, persona_key, text, reply)
             self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)

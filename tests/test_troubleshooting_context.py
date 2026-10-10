@@ -162,3 +162,15 @@ async def test_unaddressed_diagnosis_does_not_search_or_reply(conversation):
     await cog.on_message(message)
     cog._troubleshooting_context.assert_not_called()
     cog._send_reply_chunks.assert_not_called()
+
+
+async def test_verified_fact_flavor_preserves_identity_at_reply_boundary(conversation):
+    from cogs.ai import AI
+    from unittest.mock import patch
+    message, _, _ = conversation
+    cog = AI(SimpleNamespace(cogs={}, commands=[], user=SimpleNamespace(id=9)))
+    cog._send_reply_chunks = AsyncMock()
+    cog._save_ai_memory = MagicMock()
+    with patch("cogs.ai.gpt_wrap_fact", new=AsyncMock(return_value="4 — calculator goblin")):
+        await cog._handle_mention(message, "2+2")
+    assert cog._send_reply_chunks.await_args.args[2] == "4 — calculator gnome"

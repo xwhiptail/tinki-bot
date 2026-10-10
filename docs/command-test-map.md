@@ -31,6 +31,8 @@ Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke
 Automatic troubleshooting lookup is covered by
 `test_addressed_computer_troubleshooting_automatically_gathers_context` and
 `test_unaddressed_main_channel_followup_stays_silent` in `tests/test_tinki_bot.py`.
+`test_verified_fact_flavor_keeps_tinki_gnome_identity` covers identity cleanup on
+deterministic fact replies, including model-generated flavor.
 `tests/test_troubleshooting_context.py` covers cross-channel named-person reports,
 requester and bot permissions, access revocation, stale and other-server messages,
 timeouts, direct messages, addressed routing, and source links.
