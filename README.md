@@ -365,7 +365,9 @@ AI prompts include the current America/New_York and UTC date/time. Fresh/current
 Addressed computer-troubleshooting questions automatically gather symptoms and prior attempts
 from the invoking channel, a matching person's channel, and the main chat
 (`CHANNEL_RANDOM_AI`, `main`, or `general`), when both requester and bot can read
-their history. Searches stay in the current server: at most three channels,
+their history. A mentioned person is matched by their Discord user ID even when
+the request says "help @Lhea with ongoing computer issues".
+Searches stay in the current server: at most three channels,
 up to 1,500 messages each in the main/person channel (200 elsewhere), one year,
 16 short excerpts, and 12 seconds. Older attempted checks and results get reserved
 space so repeated recent crash reports cannot bury them. Replies to earlier
@@ -375,6 +377,8 @@ She checks reported prior attempts/results before suggesting another step and
 avoids repeating a failed check unless there is a specific reason to retest it.
 Suggestions alone are not treated as completed steps. A capped or timed-out
 scan is partial history, and Tinki must not claim to have checked everything.
+Reports already fetched remain usable when the scan times out. A search waits
+at most two seconds for one of the two lookup slots before reporting it is busy.
 She gives a brief summary and asks one focused question at a time, then offers
 one practical check based on the answer. Use Discord's **Reply** on her latest
 troubleshooting question to continue without another ping. Anyone in the channel can

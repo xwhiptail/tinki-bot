@@ -30,6 +30,7 @@ def test_other_questions_and_explicit_opt_out_skip_context(text):
 def test_named_subject_does_not_treat_my_as_a_person():
     assert context.troubleshooting_subject("diagnose Lhea's computer problems") == "lhea"
     assert context.troubleshooting_subject("help with my PC problems") == ""
+    assert context.troubleshooting_subject("help Lhea with ongoing computer issues") == ""
 
 
 @pytest.fixture
@@ -81,6 +82,19 @@ async def test_named_person_reports_from_main_channel_reach_context(conversation
     assert channels[1].history.call_args.kwargs["limit"] == context.SCAN_LIMIT
 
 
+@pytest.mark.parametrize("mention", ["<@3>", "<@!3>", "<@3>'s"])
+async def test_mentioned_person_with_ongoing_issues_matches_reports_by_user_id(conversation, mention):
+    message, channels, report = conversation
+    message.content = f"<@9> can you help {mention} with ongoing computer issues? Consider all of the things Lhea has tried in the past"
+    message.mentions = [message.guild.members[1]]
+    channels[1].entries = [report("I tried every GPU driver; it still crashes", author_name="Renamed", identifier=10)]
+    formatted = await context.build_troubleshooting_context(message, message.content)
+    payload = json.loads(formatted.splitlines()[1])
+    assert payload["sources"][0]["author_id"] == 3
+    assert payload["sources"][0]["kind"] == "past_attempt"
+    assert context.troubleshooting_target(message, message.content) == ("lhea", 3)
+
+
 async def test_old_completed_checks_and_results_are_not_buried_by_recent_crashes(conversation):
     message, channels, report = conversation
     past = report("I already tried DDU and reinstalling GPU drivers; the same problem remains", age=24 * 200, identifier=10)
@@ -101,6 +115,22 @@ async def test_prior_suggestion_is_not_labeled_as_a_completed_attempt(conversati
     assert payload["sources"][0]["kind"] == "prior_suggestion"
 
 
+@pytest.mark.parametrize("answer", [
+    "i haven't tried that recently but trying that in the past didnt' fix it",
+    "I haven't tried that recently, but I tried it before and it didn't help",
+    "I haven't tried that recently; last time it did not work",
+])
+async def test_not_retried_recently_preserves_earlier_failed_attempt(conversation, answer):
+    message, channels, report = conversation
+    anchor = report("Lhea's PC goes black when gaming", author_name="Whippy", identifier=10)
+    question = report("Try Win+Ctrl+Shift+B to reset the graphics driver; does the picture come back?", age=0.99, identifier=11)
+    question.author.bot = True
+    channels[1].entries = [report(answer, age=0.98, identifier=12), question, anchor]
+    payload = json.loads((await context.build_troubleshooting_context(message, message.content)).splitlines()[1])
+    assert any(source["text"] == answer and source["kind"] == "past_attempt" for source in payload["sources"])
+    assert any("Win+Ctrl" in source["text"] and source["kind"] == "prior_suggestion" for source in payload["sources"])
+
+
 async def test_historical_short_answers_keep_the_referenced_check_context(conversation):
     message, channels, report = conversation
     anchor = report("Lhea's PC goes black when gaming", author_name="Whippy", identifier=10)
@@ -119,6 +149,14 @@ async def test_history_skips_unrelated_attempts_beside_pc_discussion(conversatio
     channels[1].entries = [report("My PC crashes", identifier=10), report("I tried pizza for lunch", identifier=11)]
     payload = json.loads((await context.build_troubleshooting_context(message, message.content)).splitlines()[1])
     assert not any("pizza" in source["text"] for source in payload["sources"])
+
+
+async def test_history_skips_old_pc_game_chatter_without_a_troubleshooting_report(conversation):
+    message, channels, report = conversation
+    channels[1].entries = [report("My PC crashes", identifier=10),
+                           report("sure when nintendo puts it on pc", age=24 * 100, identifier=11)]
+    payload = json.loads((await context.build_troubleshooting_context(message, message.content)).splitlines()[1])
+    assert not any("nintendo" in source["text"] for source in payload["sources"])
 
 
 async def test_requester_permission_denies_channel_even_when_bot_can_read(conversation):
@@ -162,9 +200,38 @@ async def test_timeout_preserves_partial_context_and_discloses_it(conversation, 
         await asyncio.Event().wait()
 
     channels[1].history.side_effect = lambda **kwargs: entries()
-    payload = json.loads((await context.build_troubleshooting_context(message, message.content)).splitlines()[1])
+    formatted = await context.build_troubleshooting_context(message, message.content)
+    payload = json.loads(formatted.splitlines()[1])
     assert payload["timed_out"]
     assert len(payload["sources"]) == 1
+    assert "partial coverage does not erase known symptoms" in formatted
+
+
+async def test_queued_lookup_retains_partial_reports_after_scan_timeout(conversation, monkeypatch):
+    from cogs.ai import AI
+    message, channels, report = conversation
+    monkeypatch.setattr(context, "TIMEOUT_SECONDS", 0.01)
+    async def entries():
+        yield report("My PC crashes; I tried DDU and it did nothing")
+        await asyncio.Event().wait()
+    channels[1].history.side_effect = lambda **kwargs: entries()
+    cog = AI(SimpleNamespace(cogs={}, commands=[], user=SimpleNamespace(id=9)))
+    cog._troubleshooting_slots = asyncio.Semaphore(0)
+    asyncio.get_running_loop().call_later(0.01, cog._troubleshooting_slots.release)
+    formatted = await cog._troubleshooting_context(message, message.content)
+    payload = json.loads(formatted.splitlines()[1])
+    assert payload["timed_out"] and payload["sources"][0]["kind"] == "past_attempt"
+    assert "DDU" in payload["sources"][0]["text"]
+
+
+async def test_busy_history_lookup_does_not_start_another_scan(conversation):
+    from cogs.ai import AI
+    message, channels, _ = conversation
+    cog = AI(SimpleNamespace(cogs={}, commands=[], user=SimpleNamespace(id=9)))
+    cog._troubleshooting_slots = asyncio.Semaphore(0)
+    formatted = await cog._troubleshooting_context(message, message.content)
+    assert "busy" in formatted
+    assert all(not channel.history.called for channel in channels)
 
 
 async def test_dm_does_not_fetch_server_history(conversation):

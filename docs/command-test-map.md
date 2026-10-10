@@ -53,10 +53,18 @@ checks source access for a joining participant. Other reply-ping behavior remain
 Historical attempted checks are covered by
 `test_old_completed_checks_and_results_are_not_buried_by_recent_crashes`,
 `test_prior_suggestion_is_not_labeled_as_a_completed_attempt`,
+`test_not_retried_recently_preserves_earlier_failed_attempt`,
 `test_historical_short_answers_keep_the_referenced_check_context`, and
-`test_history_skips_unrelated_attempts_beside_pc_discussion` in the standalone
+`test_history_skips_unrelated_attempts_beside_pc_discussion` /
+`test_history_skips_old_pc_game_chatter_without_a_troubleshooting_report` in the standalone
 context tests. Retrieval still checks permissions, stale and foreign-server
 messages, scan/excerpt limits, and partial results on timeout.
+`test_mentioned_person_with_ongoing_issues_matches_reports_by_user_id` reproduces
+the mentioned-person wording in the latest screenshot. Queued/partial and busy
+lookups are covered by `test_queued_lookup_retains_partial_reports_after_scan_timeout`
+and `test_busy_history_lookup_does_not_start_another_scan`.
+`TestAIContextGathering.test_mentioned_computer_help_keeps_partial_history_for_generation`
+checks that those partial reports reach the AI listener's generation step.
 
 ## Channel Historian
 

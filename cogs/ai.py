@@ -35,7 +35,7 @@ from utils.openai_helpers import create_chat_completion, get_openai_client, gpt_
 from utils.troubleshooting_context import (
     ANSWER_WINDOW_SECONDS, SESSION_LIMIT, SESSION_SECONDS, TURN_LIMIT, TroubleshootingSession,
     build_troubleshooting_context, can_read, needs_troubleshooting_context,
-    is_pending_troubleshooting_answer, troubleshooting_subject,
+    is_pending_troubleshooting_answer, troubleshooting_target,
     source_channel_ids, validate_troubleshooting_reply,
 )
 
@@ -332,13 +332,15 @@ class AI(commands.Cog):
         return parse_history_request(text)
 
     async def _troubleshooting_context(self, message, text):
-        async def lookup():
-            async with self._troubleshooting_slots:
-                return await build_troubleshooting_context(message, text)
         try:
-            return await asyncio.wait_for(lookup(), timeout=14)
+            await asyncio.wait_for(self._troubleshooting_slots.acquire(), timeout=2)
         except asyncio.TimeoutError:
-            return "Troubleshooting history lookup timed out. Ask for the missing symptoms without inventing a report."
+            return "Troubleshooting history searches are busy. No reports were fetched for this request; do not invent past attempts."
+        try:
+            # The helper keeps reports already read when its own scan deadline expires.
+            return await build_troubleshooting_context(message, text)
+        finally:
+            self._troubleshooting_slots.release()
 
     def _track_random_ai_message_id(self, message_id: int, max_ids: int = 500):
         if message_id in self.random_ai_message_ids:
@@ -807,7 +809,7 @@ class AI(commands.Cog):
                 message.author.id, message.guild.id if message.guild else 0,
                 message.channel.id, text, context, source_channel_ids(context),
                 time.monotonic() + SESSION_SECONDS,
-                subject=troubleshooting_subject(text),
+                subject=troubleshooting_target(message, text)[0],
             )
         session.in_flight = True
         try:

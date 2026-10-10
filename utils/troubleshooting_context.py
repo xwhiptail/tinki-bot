@@ -26,7 +26,7 @@ SYMPTOM = re.compile(r"\b(?:crash\w*|freez\w*|error\w*|reboot\w*|restart\w*|shut
 SUBJECT = re.compile(r"\b([^\W\d_][\w.-]*)\s*(?:['’]s)?\s+(?:(?:gaming|new|old)\s+)?(?:computer|pc|laptop|desktop)\b", re.I)
 DIAGNOSTIC_TOOL = re.compile(r"\b(?:ddu|memtest\w*|sfc|dism|xmp|expo|reliability monitor|win\s*[+\-]?\s*ctrl)\b", re.I)
 PAST_ACTION = re.compile(r"\b(?:tried|tested|used|ran|checked|installed|uninstalled|reinstalled|updated|reset|disabled|enabled|swapped|replaced|reseated|rolled back|rolling back|rollback)\b", re.I)
-RESULT = re.compile(r"\b(?:didn.t (?:work|help|fix)|no (?:change|difference)|nothing changed|same (?:problem|issue)|still (?:crash\w*|black|freez\w*)|worked|fixed it|failed|did nothing)\b", re.I)
+RESULT = re.compile(r"\b(?:did(?:n['’]?t['’]?|\s+not) (?:work|help|fix)|no (?:change|difference)|nothing changed|same (?:problem|issue)|still (?:crash\w*|black|freez\w*)|worked|fixed it|failed|did nothing)\b", re.I)
 
 
 @dataclass
@@ -73,9 +73,25 @@ def normalize(text):
 
 def troubleshooting_subject(text):
     match = SUBJECT.search(text)
-    if match and normalize(match[1]) not in {"my", "your", "her", "his", "their", "the", "a", "this", "that"}:
+    if match and normalize(match[1]) not in {"my", "your", "her", "his", "their", "the", "a", "this", "that", "ongoing", "new", "old", "gaming"}:
         return normalize(match[1])
     return ""
+
+
+def troubleshooting_target(message, text):
+    """Prefer a real Discord user mention over guessing a name beside 'computer'."""
+    bot_id = getattr(getattr(message.guild, "me", None), "id", None)
+    ids = {int(value) for value in re.findall(r"<@!?(\d+)>", text)} - {bot_id}
+    if len(ids) == 1:
+        user_id = next(iter(ids))
+        member = next((person for person in getattr(message, "mentions", []) if person.id == user_id), None)
+        if member is None and message.guild is not None:
+            member = getattr(message.guild, "get_member", lambda _: None)(user_id)
+        if member is None:
+            return "", user_id
+        if not member.bot:
+            return normalize(member.display_name), user_id
+    return troubleshooting_subject(text), None
 
 
 def is_pending_troubleshooting_answer(text, previous_reply):
@@ -141,7 +157,7 @@ def context_channels(message, subject):
 async def build_troubleshooting_context(message, text):
     if not needs_troubleshooting_context(text) or message.guild is None:
         return ""
-    subject = troubleshooting_subject(text)
+    subject, subject_id = troubleshooting_target(message, text)
     candidates = context_channels(message, subject)
     cutoff = message.created_at - timedelta(days=LOOKBACK_DAYS)
     collected = []
@@ -190,12 +206,18 @@ async def build_troubleshooting_context(message, text):
             continue
         def person_matches(entry):
             names = normalize(str(entry.author.display_name) + " " + str(entry.author.name))
+            if subject_id is not None:
+                return (entry.author.id == subject_id
+                        or bool(re.search(rf"<@!?{subject_id}>", entry.content))
+                        or bool(subject and subject in normalize(entry.content)))
             return (subject in names or subject in normalize(entry.content)) if subject else entry.author.id == message.author.id
 
         def technical(entry):
             return bool(TECH.search(entry.content) or SYMPTOM.search(entry.content) or DIAGNOSTIC_TOOL.search(entry.content))
 
-        anchors = [entry for entry in entries if not entry.author.bot and person_matches(entry) and technical(entry)]
+        anchors = [entry for entry in entries if not entry.author.bot and person_matches(entry) and technical(entry)
+                   and (PROBLEM.search(entry.content) or SYMPTOM.search(entry.content)
+                        or PAST_ACTION.search(entry.content) or RESULT.search(entry.content))]
         by_id = {entry.id: entry for entry in entries}
         for entry in entries:
             if entry.author.bot:
@@ -205,6 +227,8 @@ async def build_troubleshooting_context(message, text):
             nearby = any(abs((entry.created_at - anchor.created_at).total_seconds()) <= (
                 900 if entry.author.id == anchor.author.id else 120
             ) for anchor in anchors)
+            if not nearby:
+                continue
             reference = getattr(entry, "reference", None)
             parent = by_id.get(reference.message_id) if reference else None
             if parent is None and nearby:
@@ -219,7 +243,8 @@ async def build_troubleshooting_context(message, text):
                 continue
             if not technical(entry) and not contextual:
                 continue
-            suggestion = bool(re.search(r"\b(?:haven.t|not yet|should|going to|have you tried|did you try)\b", content, re.I))
+            # Not repeating a check recently does not undo a reported earlier result.
+            suggestion = not result and bool(re.search(r"\b(?:haven.t|not yet|should|going to|have you tried|did you try)\b", content, re.I))
             kind = "prior_suggestion" if suggestion and past_action else "past_attempt" if past_action else "result" if result or pending_answer else "symptom"
             score = 4 * bool(person_matches(entry)) + 2 * bool(SYMPTOM.search(content))
             matches.append((score, entry, channel, kind))
@@ -265,6 +290,7 @@ async def build_troubleshooting_context(message, text):
         "Read the past_attempt and result excerpts before proposing another check. "
         "Do not repeat a failed completed check without a concrete reason to retest it. "
         "A prior_suggestion is not proof a step was done; require a user's report of the attempt/result. "
+        "Use the provided reports even when scanning timed out or was limited; partial coverage does not erase known symptoms or completed checks. "
         "If scanning was limited or timed out, do not claim to have checked all previous steps. "
         "If no relevant reports were found, say the bounded search found none and ask for the missing symptoms. "
         "Only messages from the requesting server and channels readable by both requester and bot are included."

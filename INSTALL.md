@@ -149,6 +149,8 @@ to three channels, 1,500 messages in main/person channels (200 elsewhere), one y
 seconds, with at most two concurrent searches. Access is rechecked before quoted
 messages are passed to OpenAI. No new permission, persistent archive, scheduled
 job, or dependency is required. Explicit requests not to search are respected.
+Mentioned people are matched by Discord user ID, independently of wording near
+"computer" or display-name changes.
 Interactive troubleshooting keeps at most 100 temporary conversations, each with
 the original reports and the last ten exchanges. They expire after 15 minutes of
 inactivity and are cleared on restart. Anyone replying to the latest troubleshooting
@@ -156,13 +158,17 @@ answer in the same server/channel can continue without a ping. For two minutes
 after a question, short relevant answers in normal chat also work if exactly one
 active conversation matches. Each speaker is recorded with their answer.
 Source permissions for the current speaker are checked before and after generating each answer;
-lost access discards the conversation. No conversation or fetched report is
+loss of the original requester's access discards the conversation. A joining
+participant without source access is denied without ending the original session.
+No conversation or fetched report is
 written to runtime data.
 Older attempts/results receive reserved excerpt slots, and referenced earlier
 questions are included when available in the scan. Reported attempts are kept
 distinct from suggestions; capped/time-limited coverage must not be described
-as a complete history search. The outer lookup deadline is 14 seconds including
-waiting for one of the two lookup slots.
+as a complete history search. Waiting for a lookup slot is capped at two seconds,
+followed by the scan's own 12-second deadline. Partial reports are retained at
+that deadline and still inform the reply. A statement that a check was not retried
+recently does not erase a reported earlier failed attempt.
 
 If you want `!awscost` and deploy-time AWS cost reporting, the bot runtime also needs AWS credentials with Cost Explorer access.
 

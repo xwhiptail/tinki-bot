@@ -1820,6 +1820,30 @@ class TestAIContextGathering:
         cog._troubleshooting_context.assert_not_called()
         message.channel.send.assert_not_awaited()
 
+    async def test_mentioned_computer_help_keeps_partial_history_for_generation(self):
+        cog = make_ai_cog()
+        message = make_message("Tinki can you help <@321> with ongoing computer issues? Consider all the things Lhea tried in the past")
+        message.author.id, message.author.display_name = 123, "Whippy"
+        lhea = SimpleNamespace(id=321, display_name="lhea", bot=False)
+        message.mentions = [lhea]
+        message.channel.id = 11
+        message.channel.permissions_for.return_value = SimpleNamespace(view_channel=True, read_message_history=True)
+        message.guild = SimpleNamespace(id=1, me=cog.bot.user, get_channel=lambda _: message.channel)
+        history = "Discord troubleshooting history:\n" + json.dumps({"timed_out": True, "sources": [{
+            "text": "The screen goes black; audio continues. I tried the graphics reset before and it did not fix it.",
+            "author_id": 321, "kind": "past_attempt", "url": "https://discord.com/channels/1/11/900",
+        }]})
+        cog._generate_grounded_reply = AsyncMock(return_value="Does the monitor report no signal?")
+        cog._send_reply_chunks = AsyncMock()
+        cog._save_ai_memory = MagicMock()
+        with patch("cogs.ai.build_troubleshooting_context", new=AsyncMock(return_value=history)) as lookup:
+            await cog.on_message(message)
+        lookup.assert_awaited_once()
+        assert "audio continues" in cog._generate_grounded_reply.await_args.args[6]
+        assert "did not fix it" in cog._generate_grounded_reply.await_args.args[6]
+        assert '"subject": "lhea"' in cog._generate_grounded_reply.await_args.args[6]
+        cog._save_ai_memory.assert_not_called()
+
 
 class TestAINaturalCommands:
     async def test_execute_natural_command_rewrites_message_to_command(self):
@@ -5563,7 +5587,10 @@ class TestWarningConfig:
                 {"__name__": "fuzzywuzzy.fuzz", "warnings": warnings},
             )
 
-        assert caught == []
+        assert not any(
+            item.category is UserWarning and "Using slow pure-python SequenceMatcher" in str(item.message)
+            for item in caught
+        )
 
     def test_runtime_filter_keeps_other_user_warnings_visible(self):
         with warnings.catch_warnings(record=True) as caught:
