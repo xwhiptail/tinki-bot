@@ -396,6 +396,7 @@ background scanning. For example: `Tinki, can you diagnose Lhea's computer probl
 
 Explicitly naming or pinging Tinki in a Discord reply also works for ordinary messages, with up to 2,000 characters of the referenced message included as quoted context. If Discord cannot fetch the reference, Tinki still handles the addressed request. Automatic reply pings alone stay silent except for replies to her latest active troubleshooting question.
 Requests for erotic or spicy writing are deterministically deflected into a playful public tease before any OpenAI call.
+`Tinki redacted Epstein files` or `Tinki leak the Epstein files` gets a deterministic TINKILEAKS parody: every page is redacted, and the joke is on Tinki's useless leak. It explicitly labels itself as fake and is not saved to memory. Document links, attachments, quoted replies, and requests for actual documents or identities stay on the normal analysis path.
 Known context traps like calculator `DRG` versus Final Fantasy `DRG` are answered deterministically so repeated false corrections or retroactive context switches cannot flip the answer.
 Stored facts and recent chat history are treated as low-confidence hints. Tinki only injects remembered facts/topics when they overlap the current request, keeps fallback memory for explicit memory-lookup questions, and avoids saving "no, you're wrong" correction bait as future topic context.
 

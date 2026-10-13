@@ -76,6 +76,16 @@ TINKI_SELF_STATUS_DEAD_REPLY = (
     "or tell me which command faceplanted."
 )
 TINKI_SELF_STATUS_ALIVE_REPLY = "Correct. Still alive - tiny boots on, service humming."
+REDACTED_FILES_PARODY_REPLY = (
+    "**TINKILEAKS: THE REDACTED EPSTEIN FILES**\n"
+    "*Parody. These are not real documents.*\n"
+    "```\n"
+    "PAGE 001: [REDACTED]\n"
+    "PAGE 002: [REDACTED] [REDACTED]\n"
+    "PAGE 003: Even the [REDACTED] is [REDACTED].\n"
+    "```\n"
+    "I risked my tiny career to leak a printer's ink bill."
+)
 TINKI_SELF_INSULT_REPLY = (
     "Rude, but noted. I'm a tiny gnome with a dented wrench, "
     "not a miracle machine; show me the bug and I'll tighten it."
@@ -886,6 +896,22 @@ class AI(commands.Cog):
 
         return None
 
+    def _match_redacted_files_parody_reply(self, message, text: str, reply_context: str = ""):
+        # Keep sourced document questions on the normal grounded analysis path.
+        if reply_context or getattr(message, "attachments", None) or re.search(r"https?://", text, re.I):
+            return None
+        if not re.search(r"\b(?:leak|leaks|leaked|leaking|redacted)\b", text, re.I):
+            return None
+        if not re.search(r"\b(?:records?|files?|dossiers?)\b", text, re.I):
+            return None
+        if not re.search(r"\bepstein\b", text, re.I):
+            return None
+        if re.search(r"\b(?:unredact|unredacted|real|actual|identify|names|address|phone|password)\b", text, re.I):
+            return None
+        if re.search(r"\b(?:don't|do not|stop|prevent|avoid|never)\b", text, re.I):
+            return None
+        return REDACTED_FILES_PARODY_REPLY
+
     def _match_tinki_self_status_reply(self, text: str):
         if TINKI_SELF_DEAD_PATTERN.search(text):
             return TINKI_SELF_STATUS_DEAD_REPLY
@@ -1057,6 +1083,11 @@ class AI(commands.Cog):
             self._update_conversation_history(personas_cog, user_id, persona_key, text, spicy_roast)
             self.ai_memory = update_memory_state(self.ai_memory, user_id, guild_id, text)
             self._save_ai_memory()
+            return
+        redacted_files_reply = self._match_redacted_files_parody_reply(message, text, reply_context)
+        if redacted_files_reply:
+            await self._send_reply_chunks(message.channel, f'{message.author.mention} ', redacted_files_reply)
+            # Fictional dossiers should not become remembered facts about members.
             return
         self_status_reply = self._match_tinki_self_status_reply(text)
         if self_status_reply:

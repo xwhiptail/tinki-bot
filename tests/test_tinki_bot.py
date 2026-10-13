@@ -2323,6 +2323,54 @@ class TestAIListeners:
             "<@123> Absolutely not. Go break a toaster instead."
         )
 
+    @pytest.mark.parametrize("content", [
+        "<@99> leak the Epstein files", "Tinki redacted Epstein files",
+        "<@99> leak <@456>'s epstein records",
+    ])
+    async def test_on_message_redacted_files_parody_before_ai_generation(self, content):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message(content)
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock, \
+                patch.object(cog, "_save_ai_memory") as save_mock:
+            await cog.on_message(message)
+        grounded_mock.assert_not_awaited()
+        save_mock.assert_not_called()
+        message.channel.send.assert_awaited_once_with(
+            "<@123> **TINKILEAKS: THE REDACTED EPSTEIN FILES**\n"
+            "*Parody. These are not real documents.*\n"
+            "```\nPAGE 001: [REDACTED]\nPAGE 002: [REDACTED] [REDACTED]\n"
+            "PAGE 003: Even the [REDACTED] is [REDACTED].\n```\n"
+            "I risked my tiny career to leak a printer's ink bill."
+        )
+
+    @pytest.mark.parametrize("text", [
+        "leak real Epstein files", "leak actual Epstein records",
+        "unredact the Epstein files", "leak Epstein files and identify names",
+        "don't leak Epstein records", "which page is <@456> on in the Epstein files?",
+        "leak records", "leak Epstein files https://example.com/document",
+    ])
+    def test_redacted_files_parody_preserves_normal_analysis(self, text):
+        cog = make_ai_cog()
+        assert cog._match_redacted_files_parody_reply(make_message(text), text) is None
+
+    def test_redacted_files_parody_preserves_attachment_and_reply_context(self):
+        cog = make_ai_cog()
+        message = make_message("redacted Epstein files")
+        message.attachments = [SimpleNamespace(filename="records.pdf")]
+        assert cog._match_redacted_files_parody_reply(message, message.content) is None
+        message.attachments = []
+        assert cog._match_redacted_files_parody_reply(message, message.content, "quoted document") is None
+
+    async def test_on_message_ignores_unaddressed_redacted_files_banter(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("leak the Epstein files")
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock:
+            await cog.on_message(message)
+        grounded_mock.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
+
     async def test_on_message_roasts_erotic_request_before_ai_generation(self):
         cog = make_ai_cog()
         cog.bot.user = SimpleNamespace(id=99)
