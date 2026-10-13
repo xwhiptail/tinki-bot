@@ -2337,11 +2337,10 @@ class TestAIListeners:
         grounded_mock.assert_not_awaited()
         save_mock.assert_not_called()
         message.channel.send.assert_awaited_once()
-        assert message.channel.send.await_args.kwargs['file'].filename == "tinkileaks-parody.png"
+        assert message.channel.send.await_args.kwargs['files'][0].filename == "tinkileaks-redacted-1.png"
         assert message.channel.send.await_args.args[0] == (
             "<@123> **TINKILEAKS: THE REDACTED EPSTEIN FILES**\n"
-            "*Parody. These are not real documents.*\n"
-            "```\nPAGE 001: [REDACTED]\nPAGE 002: [REDACTED] [REDACTED]\n"
+                    "```\nPAGE 001: [REDACTED]\nPAGE 002: [REDACTED] [REDACTED]\n"
             "PAGE 003: Even the [REDACTED] is [REDACTED].\n```\n"
             "I risked my tiny career to leak a printer's ink bill."
         )
@@ -2374,10 +2373,11 @@ class TestAIListeners:
         cog.bot.user = SimpleNamespace(id=99)
         message = make_message(content)
         message.mentions = [cog.bot.user, SimpleNamespace(id=456, display_name="cate")]
-        async def inspect_attachment(content, *, file):
-            assert "Fictional Discord cameo: cate" in content
+        async def inspect_attachment(content, *, files):
+            assert "Discord cameo: cate" in content
             assert "<@456>" not in content
-            with Image.open(file.fp) as image:
+            assert len(files) == 1
+            with Image.open(files[0].fp) as image:
                 assert image.format == "PNG"
                 assert image.size == (1000, 1280)
             return SimpleNamespace(id=888)
@@ -2387,6 +2387,26 @@ class TestAIListeners:
             await cog.on_message(message)
         grounded_mock.assert_not_awaited()
         renderer.assert_called_once_with(["cate"])
+        message.channel.send.assert_awaited_once()
+
+    async def test_redacted_files_sends_separate_documents_for_each_tagged_person(self):
+        from utils.redacted_files import render_redacted_files
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> leak the Epstein files for <@456> <@457> <@458>")
+        message.mentions = [SimpleNamespace(id=uid, display_name=name) for uid, name in (
+            (456, "cate"), (457, "Whiptail"), (458, "Lhea"),
+        )]
+        async def inspect_attachments(content, *, files):
+            assert len(files) == 3
+            assert [file.filename for file in files] == [f"tinkileaks-redacted-{i}.png" for i in range(1, 4)]
+            for file in files:
+                with Image.open(file.fp) as image:
+                    assert image.format == "PNG"
+        message.channel.send.side_effect = inspect_attachments
+        with patch("cogs.ai.render_redacted_files", wraps=render_redacted_files) as renderer:
+            await cog.on_message(message)
+        assert [call.args[0] for call in renderer.call_args_list] == [["cate"], ["Whiptail"], ["Lhea"]]
         message.channel.send.assert_awaited_once()
 
     def test_redacted_files_cameos_limit_sanitize_and_ignore_unmentioned_users(self):
@@ -2408,6 +2428,7 @@ class TestAIListeners:
         ("Jun", ["SOAPLAND ITINERARY", "FUTA FOLDER", "PORN-GAME BACKLOG", "BIG BUTTS DEPARTMENT"]),
         ("cate", ["SOAPLAND ITINERARY", "FUTA FOLDER", "PORN-GAME BACKLOG", "BIG BUTTS DEPARTMENT"]),
         ("lhea.", ["ZELDA SPEEDRUN SPLITS", "FFXIV GLAMOUR BUDGET"]),
+        ("Whiptail", ["BIG TITS DEPARTMENT", "GOTH GIRLS", "GOON CAVE BLUEPRINTS"]),
         ("other", []),
     ])
     def test_redacted_files_personalized_annotations(self, name, expected):
@@ -2428,6 +2449,10 @@ class TestAIListeners:
         assert "JUN/CATE / SOAPLAND ITINERARY" in drawn
         assert "LHEA / ZELDA SPEEDRUN SPLITS" in drawn
         assert "LHEA / FFXIV GLAMOUR BUDGET" in drawn
+        assert "DEPARTMENT OF REDACTION" in drawn
+        assert "CLEARANCE LEVEL: TINY BOOTS ONLY" in drawn
+        assert "GNOME INTELLIGENCE AGENCY" in drawn
+        assert not any("parody" in text.lower() or "fiction" in text.lower() for text in drawn)
         with Image.open(image) as preview:
             assert preview.size == (1000, 1280)
 

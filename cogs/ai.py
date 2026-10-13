@@ -79,7 +79,6 @@ TINKI_SELF_STATUS_DEAD_REPLY = (
 TINKI_SELF_STATUS_ALIVE_REPLY = "Correct. Still alive - tiny boots on, service humming."
 REDACTED_FILES_PARODY_REPLY = (
     "**TINKILEAKS: THE REDACTED EPSTEIN FILES**\n"
-    "*Parody. These are not real documents.*\n"
     "```\n"
     "PAGE 001: [REDACTED]\n"
     "PAGE 002: [REDACTED] [REDACTED]\n"
@@ -935,28 +934,36 @@ class AI(commands.Cog):
         if names:
             safe_names = [discord.utils.escape_mentions(discord.utils.escape_markdown(name)) for name in names]
             annotations = cameo_annotations(names)
-            cameo_text = "Fictional Discord cameo: " + ", ".join(safe_names) + "\n"
+            cameo_text = "Discord cameo: " + ", ".join(safe_names) + "\n"
             cameo_text += "".join(f"{label}: [REDACTED]\n" for label in annotations)
             reply = reply.replace(
                 "```\nPAGE 001", cameo_text + "```\nPAGE 001", 1,
             )
         content = f'{message.author.mention} {reply}'
+        documents = []
         try:
-            document = await asyncio.to_thread(render_redacted_files, names)
+            for name in names or [None]:
+                documents.append(await asyncio.to_thread(render_redacted_files, [name] if name else []))
         except Exception:
+            for document in documents:
+                document.close()
             logger.exception("Could not render redacted-files parody")
             await message.channel.send(content)
             return
-        attachment = discord.File(document, filename="tinkileaks-parody.png")
+        attachments = [
+            discord.File(document, filename=f"tinkileaks-redacted-{index}.png")
+            for index, document in enumerate(documents, 1)
+        ]
         try:
             try:
-                await message.channel.send(content, file=attachment)
+                await message.channel.send(content, files=attachments)
             except discord.Forbidden:
                 # Channels without Attach Files can still enjoy the text gag.
                 await message.channel.send(content)
         finally:
-            attachment.close()
-            document.close()
+            for attachment, document in zip(attachments, documents):
+                attachment.close()
+                document.close()
 
     def _match_tinki_self_status_reply(self, text: str):
         if TINKI_SELF_DEAD_PATTERN.search(text):

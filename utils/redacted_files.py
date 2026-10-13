@@ -23,6 +23,8 @@ def cameo_annotations(names: list[str]) -> list[str]:
         ))
     if 'lhea' in normalized:
         labels.extend(("LHEA / ZELDA SPEEDRUN SPLITS", "LHEA / FFXIV GLAMOUR BUDGET"))
+    if 'whiptail' in normalized:
+        labels.extend(("WHIPTAIL / BIG TITS DEPARTMENT", "WHIPTAIL / GOTH GIRLS", "WHIPTAIL / GOON CAVE BLUEPRINTS"))
     return labels
 
 
@@ -37,11 +39,11 @@ def render_redacted_files(names: list[str]) -> io.BytesIO:
     red = "#9d3027"
     draw.rectangle((30, 30, 970, 1250), outline=ink, width=2)
     draw.text((70, 65), "TINKILEAKS", font=title, fill=ink)
-    draw.text((70, 126), "EPSTEIN FILES PARODY", font=heading, fill=ink)
+    draw.text((70, 126), "THE REDACTED EPSTEIN FILES", font=heading, fill=ink)
     draw.rectangle((70, 182, 930, 272), outline=red, width=4)
-    draw.text((95, 194), "PARODY - ENTIRELY FICTIONAL", font=heading, fill=red)
-    draw.text((95, 235), "NOT REAL DOCUMENTS. NO REAL ALLEGATIONS.", font=small, fill=red)
-    draw.text((70, 305), "FICTIONAL DISCORD CAMEO", font=small, fill=ink)
+    draw.text((95, 194), "DEPARTMENT OF REDACTION", font=heading, fill=red)
+    draw.text((95, 235), "CLEARANCE LEVEL: TINY BOOTS ONLY", font=small, fill=red)
+    draw.text((70, 305), "DISCORD CAMEOS", font=small, fill=ink)
     for index, name in enumerate(names[:3] or ["[REDACTED]"]):
         name = clean_cameo_name(name)
         name_font = heading
@@ -62,7 +64,7 @@ def render_redacted_files(names: list[str]) -> io.BytesIO:
     draw.text((70, 1060), "Even the redactions have been redacted.", font=body, fill=ink)
     draw.rectangle((70, 1125, 930, 1205), outline=red, width=3)
     draw.text((95, 1140), "GNOME INTELLIGENCE AGENCY", font=heading, fill=red)
-    draw.text((95, 1177), "Fictional meme / page 001 of [REDACTED]", font=small, fill=red)
+    draw.text((95, 1177), "Page 001 of [REDACTED] / tiny eyes only", font=small, fill=red)
     output = io.BytesIO()
     page.save(output, format="PNG")
     output.seek(0)
