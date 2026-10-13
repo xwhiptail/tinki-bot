@@ -21,6 +21,7 @@ Personalized document content: `test_redacted_files_personalized_annotations` an
 The exact reply assertion and image draw assertions also cover the removal of explicit parody/fiction labels while preserving the gnome-agency jokes and redaction stamp.
 `test_redacted_files_sends_separate_documents_for_each_tagged_person` verifies one PNG per tagged person in a single Discord response. Personalized annotation coverage includes Whiptail's requested headings as well as Jun/Cate and Lhea.
 `test_redacted_files_personalized_annotations` also verifies the screenshot's Whippy display-name alias selects Whiptail's headings.
+The tagged cameo/image listener test includes `release the files on @cate` and generic tagged record leaks; `test_tagged_release_request_preserves_real_document_analysis` verifies sensitive-record, source-link, and negated requests bypass the meme.
 
 | Behavior | Direct tests |
 | --- | --- |

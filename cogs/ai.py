@@ -900,16 +900,18 @@ class AI(commands.Cog):
         # Keep sourced document questions on the normal grounded analysis path.
         if reply_context or getattr(message, "attachments", None) or re.search(r"https?://", text, re.I):
             return None
-        tagged_page_bait = self._redacted_files_cameos(message, text) and re.search(
+        cameos = self._redacted_files_cameos(message, text)
+        tagged_page_bait = cameos and re.search(
             r"\b(?:pages?|appear|appears)\b", text, re.I,
         )
-        if not tagged_page_bait and not re.search(r"\b(?:leak|leaks|leaked|leaking|redacted)\b", text, re.I):
+        release_request = re.search(r"\b(?:leak|leaks|leaked|leaking|release|releases|released|releasing)\b", text, re.I)
+        if not tagged_page_bait and not release_request and not re.search(r"\bredacted\b", text, re.I):
             return None
         if not re.search(r"\b(?:records?|files?|dossiers?)\b", text, re.I):
             return None
-        if not re.search(r"\bepstein\b", text, re.I):
+        if not re.search(r"\bepstein\b", text, re.I) and not (cameos and release_request):
             return None
-        if re.search(r"\b(?:unredact|unredacted|real|actual|identify|names|address|phone|password)\b", text, re.I):
+        if re.search(r"\b(?:unredact|unredacted|real|actual|private|personal|medical|bank|financial|identify|names|address|phone|password)\b", text, re.I):
             return None
         if re.search(r"\b(?:don't|do not|stop|prevent|avoid|never)\b", text, re.I):
             return None

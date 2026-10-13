@@ -2363,9 +2363,23 @@ class TestAIListeners:
         message.attachments = []
         assert cog._match_redacted_files_parody_reply(message, message.content, "quoted document") is None
 
+    @pytest.mark.parametrize("text", [
+        "release private files on <@456>", "release medical records on <@456>",
+        "leak real files on <@456>", "don't release files on <@456>",
+        "release files on <@456> https://example.com/document",
+    ])
+    def test_tagged_release_request_preserves_real_document_analysis(self, text):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message(text)
+        message.mentions = [SimpleNamespace(id=456, display_name="cate")]
+        assert cog._match_redacted_files_parody_reply(message, text) is None
+
     @pytest.mark.parametrize("content", [
         "<@99> leak <@456>'s Epstein files",
         "<@99> which page(s) does <@!456> appear on in the Epstein files?",
+        "<@99> release the files on <@456>",
+        "Tinki leak <@456>'s records",
     ])
     async def test_redacted_files_parody_includes_tagged_cameo_and_image(self, content):
         from utils.redacted_files import render_redacted_files
