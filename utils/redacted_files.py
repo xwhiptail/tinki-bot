@@ -23,7 +23,7 @@ def cameo_annotations(names: list[str]) -> list[str]:
         ))
     if 'lhea' in normalized:
         labels.extend(("LHEA / ZELDA SPEEDRUN SPLITS", "LHEA / FFXIV GLAMOUR BUDGET"))
-    if 'whiptail' in normalized:
+    if normalized & {'whiptail', 'whippy'}:
         labels.extend(("WHIPTAIL / BIG TITS DEPARTMENT", "WHIPTAIL / GOTH GIRLS", "WHIPTAIL / GOON CAVE BLUEPRINTS"))
     return labels
 

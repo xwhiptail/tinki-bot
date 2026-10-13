@@ -20,6 +20,7 @@ Tagged cameos and document images: `test_redacted_files_parody_includes_tagged_c
 Personalized document content: `test_redacted_files_personalized_annotations` and `test_redacted_files_image_draws_tagged_names_and_annotations` cover Jun/Cate and Lhea's exact-name parody headings and verify names are actually drawn onto the PNG.
 The exact reply assertion and image draw assertions also cover the removal of explicit parody/fiction labels while preserving the gnome-agency jokes and redaction stamp.
 `test_redacted_files_sends_separate_documents_for_each_tagged_person` verifies one PNG per tagged person in a single Discord response. Personalized annotation coverage includes Whiptail's requested headings as well as Jun/Cate and Lhea.
+`test_redacted_files_personalized_annotations` also verifies the screenshot's Whippy display-name alias selects Whiptail's headings.
 
 | Behavior | Direct tests |
 | --- | --- |

@@ -400,7 +400,7 @@ Requests for erotic or spicy writing are deterministically deflected into a play
 Known context traps like calculator `DRG` versus Final Fantasy `DRG` are answered deterministically so repeated false corrections or retroactive context switches cannot flip the answer.
 Stored facts and recent chat history are treated as low-confidence hints. Tinki only injects remembered facts/topics when they overlap the current request, keeps fallback memory for explicit memory-lookup questions, and avoids saving "no, you're wrong" correction bait as future topic context.
 
-TINKILEAKS cameo annotations use exact display names (case-insensitive, with a trailing dot allowed): Jun/Cate get redacted Soapland, futa, porn-game, and big-butts headings; Lhea gets Zelda speedrun and FFXIV headings; Whiptail gets big-tits, goth-girls, and goon-cave headings. Other names receive generic redactions. These are fixed parody jokes, not factual profile entries.
+TINKILEAKS cameo annotations use exact display names (case-insensitive, with a trailing dot allowed): Jun/Cate get redacted Soapland, futa, porn-game, and big-butts headings; Lhea gets Zelda speedrun and FFXIV headings; Whiptail/Whippy get big-tits, goth-girls, and goon-cave headings. Other names receive generic redactions. These are fixed parody jokes, not factual profile entries.
 
 ### Channel historian
 

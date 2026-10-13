@@ -2429,6 +2429,7 @@ class TestAIListeners:
         ("cate", ["SOAPLAND ITINERARY", "FUTA FOLDER", "PORN-GAME BACKLOG", "BIG BUTTS DEPARTMENT"]),
         ("lhea.", ["ZELDA SPEEDRUN SPLITS", "FFXIV GLAMOUR BUDGET"]),
         ("Whiptail", ["BIG TITS DEPARTMENT", "GOTH GIRLS", "GOON CAVE BLUEPRINTS"]),
+        ("Whippy", ["BIG TITS DEPARTMENT", "GOTH GIRLS", "GOON CAVE BLUEPRINTS"]),
         ("other", []),
     ])
     def test_redacted_files_personalized_annotations(self, name, expected):
