@@ -32,6 +32,7 @@ from utils.current_awareness import build_current_awareness_context, build_curre
 from utils.letter_counter import maybe_count_letter_reply
 from utils.link_context import build_link_context
 from utils.openai_helpers import create_chat_completion, get_openai_client, gpt_wrap_fact
+from utils.redacted_files import cameo_annotations, clean_cameo_name, render_redacted_files
 from utils.troubleshooting_context import (
     ANSWER_WINDOW_SECONDS, SESSION_LIMIT, SESSION_SECONDS, TURN_LIMIT, TroubleshootingSession,
     build_troubleshooting_context, can_read, needs_troubleshooting_context,
@@ -900,7 +901,10 @@ class AI(commands.Cog):
         # Keep sourced document questions on the normal grounded analysis path.
         if reply_context or getattr(message, "attachments", None) or re.search(r"https?://", text, re.I):
             return None
-        if not re.search(r"\b(?:leak|leaks|leaked|leaking|redacted)\b", text, re.I):
+        tagged_page_bait = self._redacted_files_cameos(message, text) and re.search(
+            r"\b(?:pages?|appear|appears)\b", text, re.I,
+        )
+        if not tagged_page_bait and not re.search(r"\b(?:leak|leaks|leaked|leaking|redacted)\b", text, re.I):
             return None
         if not re.search(r"\b(?:records?|files?|dossiers?)\b", text, re.I):
             return None
@@ -911,6 +915,48 @@ class AI(commands.Cog):
         if re.search(r"\b(?:don't|do not|stop|prevent|avoid|never)\b", text, re.I):
             return None
         return REDACTED_FILES_PARODY_REPLY
+
+    def _redacted_files_cameos(self, message, text: str):
+        names = []
+        seen = set()
+        for member in getattr(message, "mentions", ()):
+            if member.id == self.bot.user.id or member.id in seen:
+                continue
+            if not re.search(rf"<@!?{member.id}>", text):
+                continue
+            seen.add(member.id)
+            names.append(clean_cameo_name(str(member.display_name)))
+            if len(names) == 3:
+                break
+        return names
+
+    async def _send_redacted_files_parody(self, message, text: str, reply: str):
+        names = self._redacted_files_cameos(message, text)
+        if names:
+            safe_names = [discord.utils.escape_mentions(discord.utils.escape_markdown(name)) for name in names]
+            annotations = cameo_annotations(names)
+            cameo_text = "Fictional Discord cameo: " + ", ".join(safe_names) + "\n"
+            cameo_text += "".join(f"{label}: [REDACTED]\n" for label in annotations)
+            reply = reply.replace(
+                "```\nPAGE 001", cameo_text + "```\nPAGE 001", 1,
+            )
+        content = f'{message.author.mention} {reply}'
+        try:
+            document = await asyncio.to_thread(render_redacted_files, names)
+        except Exception:
+            logger.exception("Could not render redacted-files parody")
+            await message.channel.send(content)
+            return
+        attachment = discord.File(document, filename="tinkileaks-parody.png")
+        try:
+            try:
+                await message.channel.send(content, file=attachment)
+            except discord.Forbidden:
+                # Channels without Attach Files can still enjoy the text gag.
+                await message.channel.send(content)
+        finally:
+            attachment.close()
+            document.close()
 
     def _match_tinki_self_status_reply(self, text: str):
         if TINKI_SELF_DEAD_PATTERN.search(text):
@@ -1086,7 +1132,7 @@ class AI(commands.Cog):
             return
         redacted_files_reply = self._match_redacted_files_parody_reply(message, text, reply_context)
         if redacted_files_reply:
-            await self._send_reply_chunks(message.channel, f'{message.author.mention} ', redacted_files_reply)
+            await self._send_redacted_files_parody(message, text, redacted_files_reply)
             # Fictional dossiers should not become remembered facts about members.
             return
         self_status_reply = self._match_tinki_self_status_reply(text)

@@ -2336,7 +2336,9 @@ class TestAIListeners:
             await cog.on_message(message)
         grounded_mock.assert_not_awaited()
         save_mock.assert_not_called()
-        message.channel.send.assert_awaited_once_with(
+        message.channel.send.assert_awaited_once()
+        assert message.channel.send.await_args.kwargs['file'].filename == "tinkileaks-parody.png"
+        assert message.channel.send.await_args.args[0] == (
             "<@123> **TINKILEAKS: THE REDACTED EPSTEIN FILES**\n"
             "*Parody. These are not real documents.*\n"
             "```\nPAGE 001: [REDACTED]\nPAGE 002: [REDACTED] [REDACTED]\n"
@@ -2361,6 +2363,93 @@ class TestAIListeners:
         assert cog._match_redacted_files_parody_reply(message, message.content) is None
         message.attachments = []
         assert cog._match_redacted_files_parody_reply(message, message.content, "quoted document") is None
+
+    @pytest.mark.parametrize("content", [
+        "<@99> leak <@456>'s Epstein files",
+        "<@99> which page(s) does <@!456> appear on in the Epstein files?",
+    ])
+    async def test_redacted_files_parody_includes_tagged_cameo_and_image(self, content):
+        from utils.redacted_files import render_redacted_files
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message(content)
+        message.mentions = [cog.bot.user, SimpleNamespace(id=456, display_name="cate")]
+        async def inspect_attachment(content, *, file):
+            assert "Fictional Discord cameo: cate" in content
+            assert "<@456>" not in content
+            with Image.open(file.fp) as image:
+                assert image.format == "PNG"
+                assert image.size == (1000, 1280)
+            return SimpleNamespace(id=888)
+        message.channel.send.side_effect = inspect_attachment
+        with patch.object(cog, "_generate_grounded_reply", new=AsyncMock()) as grounded_mock, \
+                patch("cogs.ai.render_redacted_files", wraps=render_redacted_files) as renderer:
+            await cog.on_message(message)
+        grounded_mock.assert_not_awaited()
+        renderer.assert_called_once_with(["cate"])
+        message.channel.send.assert_awaited_once()
+
+    def test_redacted_files_cameos_limit_sanitize_and_ignore_unmentioned_users(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> <@456> <@!457>")
+        message.mentions = [
+            cog.bot.user, SimpleNamespace(id=456, display_name="cate\nPAGE 99"),
+            SimpleNamespace(id=456, display_name="duplicate"),
+            SimpleNamespace(id=457, display_name="x" * 100),
+            SimpleNamespace(id=458, display_name="not in text"),
+        ]
+        assert cog._redacted_files_cameos(message, message.content) == ["cate PAGE 99", "x" * 48]
+        message.content = "<@456> <@457> <@458> <@459>"
+        message.mentions = [SimpleNamespace(id=uid, display_name=str(uid)) for uid in range(456, 460)]
+        assert cog._redacted_files_cameos(message, message.content) == ["456", "457", "458"]
+
+    @pytest.mark.parametrize("name, expected", [
+        ("Jun", ["SOAPLAND ITINERARY", "FUTA FOLDER", "PORN-GAME BACKLOG", "BIG BUTTS DEPARTMENT"]),
+        ("cate", ["SOAPLAND ITINERARY", "FUTA FOLDER", "PORN-GAME BACKLOG", "BIG BUTTS DEPARTMENT"]),
+        ("lhea.", ["ZELDA SPEEDRUN SPLITS", "FFXIV GLAMOUR BUDGET"]),
+        ("other", []),
+    ])
+    def test_redacted_files_personalized_annotations(self, name, expected):
+        from utils.redacted_files import cameo_annotations
+        assert [label.split(' / ', 1)[1] for label in cameo_annotations([name])] == expected
+
+    def test_redacted_files_image_draws_tagged_names_and_annotations(self):
+        from utils.redacted_files import render_redacted_files
+        from PIL import ImageDraw
+        original = ImageDraw.ImageDraw.text
+        drawn = []
+        def record_text(draw, position, text, *args, **kwargs):
+            drawn.append(text)
+            return original(draw, position, text, *args, **kwargs)
+        with patch.object(ImageDraw.ImageDraw, "text", record_text):
+            image = render_redacted_files(["Jun", "cate", "Lhea"])
+        assert all(name in drawn for name in ["Jun", "cate", "Lhea"])
+        assert "JUN/CATE / SOAPLAND ITINERARY" in drawn
+        assert "LHEA / ZELDA SPEEDRUN SPLITS" in drawn
+        assert "LHEA / FFXIV GLAMOUR BUDGET" in drawn
+        with Image.open(image) as preview:
+            assert preview.size == (1000, 1280)
+
+    async def test_redacted_files_parody_falls_back_when_attachments_forbidden(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> redacted Epstein files")
+        forbidden = discord.Forbidden(SimpleNamespace(status=403, reason="Forbidden"), "Missing Attach Files")
+        message.channel.send.side_effect = [forbidden, SimpleNamespace(id=888)]
+        await cog.on_message(message)
+        assert message.channel.send.await_count == 2
+        assert message.channel.send.await_args.kwargs == {}
+        assert "TINKILEAKS" in message.channel.send.await_args.args[0]
+
+    async def test_redacted_files_parody_falls_back_when_render_fails(self):
+        cog = make_ai_cog()
+        cog.bot.user = SimpleNamespace(id=99)
+        message = make_message("<@99> redacted Epstein files")
+        with patch("cogs.ai.render_redacted_files", side_effect=OSError("renderer unavailable")):
+            await cog.on_message(message)
+        message.channel.send.assert_awaited_once()
+        assert message.channel.send.await_args.kwargs == {}
 
     async def test_on_message_ignores_unaddressed_redacted_files_banter(self):
         cog = make_ai_cog()

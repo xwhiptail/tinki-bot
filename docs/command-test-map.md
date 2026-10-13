@@ -16,6 +16,8 @@ Shared smoke coverage: `test_all_registered_commands_have_smoke_cases_and_invoke
 ## AI Listeners
 
 Redacted-file banter coverage: `test_on_message_redacted_files_parody_before_ai_generation`, `test_redacted_files_parody_preserves_normal_analysis`, `test_redacted_files_parody_preserves_attachment_and_reply_context`, and `test_on_message_ignores_unaddressed_redacted_files_banter` cover the TINKILEAKS parody and its source/context boundaries.
+Tagged cameos and document images: `test_redacted_files_parody_includes_tagged_cameo_and_image`, `test_redacted_files_cameos_limit_sanitize_and_ignore_unmentioned_users`, `test_redacted_files_parody_falls_back_when_attachments_forbidden`, and `test_redacted_files_parody_falls_back_when_render_fails` cover targeted page questions, real PNG output, name sanitization, and text fallbacks.
+Personalized document content: `test_redacted_files_personalized_annotations` and `test_redacted_files_image_draws_tagged_names_and_annotations` cover Jun/Cate and Lhea's exact-name parody headings and verify names are actually drawn onto the PNG.
 
 | Behavior | Direct tests |
 | --- | --- |
