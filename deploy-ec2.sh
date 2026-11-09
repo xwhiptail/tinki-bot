@@ -79,7 +79,7 @@ REPO_FILES=(
   ".gitignore"
 )
 
-REPO_DIRS=("utils" "cogs" "tests" "scripts")
+REPO_DIRS=("utils" "cogs" "tests" "scripts" "media")
 
 remote_bash <<EOF
 set -e
@@ -111,7 +111,7 @@ fi
 
 remote_bash <<EOF
 mkdir -p $(printf "%q " "$REMOTE_REPO_DIR")
-mkdir -p $(printf "%q " "$REMOTE_REPO_DIR/utils" "$REMOTE_REPO_DIR/cogs" "$REMOTE_REPO_DIR/tests" "$REMOTE_REPO_DIR/assets" "$REMOTE_REPO_DIR/scripts")
+mkdir -p $(printf "%q " "$REMOTE_REPO_DIR/utils" "$REMOTE_REPO_DIR/cogs" "$REMOTE_REPO_DIR/tests" "$REMOTE_REPO_DIR/assets" "$REMOTE_REPO_DIR/scripts" "$REMOTE_REPO_DIR/media")
 EOF
 
 for file in "${REPO_FILES[@]}"; do

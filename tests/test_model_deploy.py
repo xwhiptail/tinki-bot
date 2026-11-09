@@ -1,10 +1,13 @@
 import base64
 import hashlib
 import importlib.util
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+posix_only = pytest.mark.skipif(sys.platform == "win32", reason="needs POSIX permissions/paths (runs on the EC2 host)")
 
 
 SPEC = importlib.util.spec_from_file_location(
@@ -47,6 +50,7 @@ def deployment(tmp_path):
     return repo, env_file, data, payload
 
 
+@posix_only
 def test_failed_production_tests_restore_code_env_and_remove_added_files(deployment, monkeypatch):
     repo, env_file, data, payload = deployment
     before = {path: path.read_bytes() for path in repo.rglob("*") if path.is_file()}
@@ -63,6 +67,7 @@ def test_failed_production_tests_restore_code_env_and_remove_added_files(deploym
     assert (backup / "tinki-bot.env").read_bytes() == env_before
 
 
+@posix_only
 @pytest.mark.parametrize("scope", ["models", "ai"])
 def test_success_changes_only_scoped_files_and_separate_marker(deployment, monkeypatch, scope):
     repo, env_file, data, payload = deployment
@@ -108,6 +113,7 @@ def test_live_code_drift_stops_before_any_write(deployment):
     assert not (repo.parent / "backup").exists()
 
 
+@posix_only
 def test_unverified_running_settings_restore_old_files_and_restart(deployment, monkeypatch):
     repo, env_file, _, payload = deployment
     before = (repo / "config.py").read_bytes(), env_file.read_bytes()

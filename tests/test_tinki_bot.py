@@ -23,6 +23,8 @@ from contextlib import ExitStack
 from types import SimpleNamespace
 
 import pytest
+
+posix_only = pytest.mark.skipif(sys.platform == "win32", reason="needs POSIX permissions/paths (runs on the EC2 host)")
 import discord
 from unittest.mock import AsyncMock, MagicMock, patch
 from PIL import Image
@@ -3642,7 +3644,8 @@ class TestAdminAWSCost:
         )
 
     def test_deploy_dirs_excludes_repo_only_branding_assets(self):
-        assert self.cog._deploy_dirs() == ["cogs", "utils", "tests", "scripts"]
+        assert self.cog._deploy_dirs() == ["cogs", "utils", "tests", "scripts", "media"]
+        assert "assets" not in self.cog._deploy_dirs()
 
     async def test_deploy_reports_check_without_aws_cost_message(self):
         ctx = make_ctx()
@@ -4665,6 +4668,29 @@ class TestUmaMediaAndTriggers:
     def test_67_trigger_ignores_urls_and_embedded_text(self, content):
         assert not self.cog._matches_67_trigger(content)
 
+    @pytest.mark.parametrize("content", ["自治67區", "新疆維吾爾自治67區 The Xinjiang Uyghur Autonomous Region", "我 67", "67岁"])
+    def test_pooh_67_trigger_matches_67_in_chinese_text(self, content):
+        assert self.cog._matches_pooh_67_trigger(content)
+
+    @pytest.mark.parametrize("content", ["67", "lol 67", "天安門 1967", "天安門 670", "https://x.com/中文67"])
+    def test_pooh_67_trigger_ignores_plain_67_and_other_numbers(self, content):
+        assert not self.cog._matches_pooh_67_trigger(content)
+
+    def test_pooh_67_gif_ships_in_deployed_media_dir(self):
+        assert config.POOH_67_GIF_PATH.is_file()
+        assert config.POOH_67_GIF_PATH.parent == config.BASE_DIR / "media"
+
+    async def test_pooh_67_trigger_posts_pooh_gif_instead_of_curren_chan(self):
+        message = make_message("新疆維吾爾自治67區 Winnie the Pooh")
+
+        with patch.object(self.cog, "_send_character_media", new=AsyncMock()) as media_mock:
+            await self.cog.on_message(message)
+
+        media_mock.assert_not_awaited()
+        message.channel.send.assert_awaited_once()
+        sent_file = message.channel.send.await_args.kwargs["file"]
+        assert sent_file.filename == "pooh-67.gif"
+
     async def test_67_trigger_ignores_other_numbers(self):
         message = make_message("670")
 
@@ -5592,6 +5618,7 @@ class TestNoMojibake:
 
 
 class TestRemoteCommonScript:
+    @posix_only
     def test_remote_copy_recursive_streams_tar_instead_of_scp(self, tmp_path):
         project_root = tmp_path / "project"
         scripts_dir = project_root / "scripts"
@@ -5803,6 +5830,7 @@ class TestWarningConfig:
 
 
 class TestRuntimeBootstrap:
+    @posix_only
     def test_venv_root_from_executable_preserves_virtualenv_path(self, tmp_path):
         venv_python = tmp_path / "myenv" / "bin" / "python"
         venv_python.parent.mkdir(parents=True)
@@ -5816,6 +5844,7 @@ class TestRuntimeBootstrap:
 
         assert read_requirement_spec(requirements) == "python-Levenshtein==0.26.1"
 
+    @posix_only
     def test_normalize_group_write_permissions_updates_tree(self, tmp_path):
         venv_root = tmp_path / "myenv"
         bin_dir = venv_root / "bin"
@@ -5843,6 +5872,7 @@ class TestRuntimeBootstrap:
         assert stat.S_IWGRP & package_file.stat().st_mode
         assert stat.S_IXGRP & script_file.stat().st_mode
 
+    @posix_only
     def test_ensure_group_writable_venv_skips_when_already_writable(self, tmp_path):
         venv_root = tmp_path / "myenv"
         site_packages = venv_root / "lib" / "python3.11" / "site-packages"
@@ -5854,6 +5884,7 @@ class TestRuntimeBootstrap:
 
         assert ensure_group_writable_venv(venv_root, site_packages) == 0
 
+    @posix_only
     def test_prepare_fuzzywuzzy_runtime_normalizes_repo_permissions(self, tmp_path, monkeypatch):
         repo_root = tmp_path / "repo"
         utils_dir = repo_root / "utils"

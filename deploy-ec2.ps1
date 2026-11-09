@@ -45,7 +45,7 @@ $repoFiles = @(
     ".gitignore"
 )
 
-$repoDirs = @("utils", "cogs", "tests", "scripts")
+$repoDirs = @("utils", "cogs", "tests", "scripts", "media")
 
 Invoke-RemoteBash -Config $config -Script @"
 set -e

@@ -18,7 +18,8 @@ Local workspace:
 - `utils/` - deterministic helpers, OpenAI wrappers, and self-tests
 - `tests/` - local pytest suite
 - `HANDOFF.md` - shared Codex/Claude resume file
-- `assets/branding/` - avatar, banner, and branding assets
+- `assets/branding/` - avatar, banner, and branding assets (repo-only, not deployed)
+- `media/` - runtime media the bot uploads (deployed, e.g. `pooh-67.gif`)
 - `deploy-ec2.ps1` - Windows deploy helper
 - `scripts/remote-common.ps1` - shared PowerShell helpers for PuTTY + remote bash
 - `scripts/Run-RemotePytest.ps1` - stable wrapper for host-side pytest

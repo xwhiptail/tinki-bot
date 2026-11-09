@@ -38,6 +38,9 @@ META_IMAGE_PATTERNS = (
 # number, or CJK run (\w is Unicode-aware, so "自治67區" and "abc67" don't match).
 UMA_67_PATTERN = re.compile(r'(?<!\w)6[ \t-]*7(?!\w)')
 # Stripped before matching so IDs/paths in links, mentions, and custom emoji can't trigger it.
+# "67" written inside Chinese text (e.g. "新疆維吾爾自治67區") gets the Pooh gif instead.
+_CJK = r'[㐀-䶿一-鿿豈-﫿]'
+POOH_67_PATTERN = re.compile(rf'{_CJK}\s*6[ \t-]*7(?!\d)|(?<!\d)6[ \t-]*7\s*{_CJK}')
 UMA_67_IGNORED_SPANS = re.compile(r'<[^<>\s]*>|\b(?:https?://|www\.)\S+|\b\S+\.(?:com|net|org|gg|io|tv|be|ly)\S*', re.IGNORECASE)
 UMA_REPULL_EMOJI = '♻️'
 UMA_REPULL_TIMEOUT = 30.0
@@ -175,6 +178,11 @@ class Uma(commands.Cog):
         cleaned = UMA_67_IGNORED_SPANS.sub(' ', content)
         return bool(UMA_67_PATTERN.search(cleaned))
 
+    @staticmethod
+    def _matches_pooh_67_trigger(content: str) -> bool:
+        cleaned = UMA_67_IGNORED_SPANS.sub(' ', content)
+        return bool(POOH_67_PATTERN.search(cleaned))
+
     def _character_profile_url(self, name: str) -> Optional[str]:
         slug = UMA_PROFILE_SLUGS.get(name)
         if not slug:
@@ -301,6 +309,9 @@ class Uma(commands.Cog):
         if message.author.bot:
             return
         if message.content.startswith(('!', '$')):
+            return
+        if self._matches_pooh_67_trigger(message.content):
+            await message.channel.send(file=discord.File(config.POOH_67_GIF_PATH, filename='pooh-67.gif'))
             return
         if not self._matches_67_trigger(message.content):
             return
