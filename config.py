@@ -149,6 +149,8 @@ UMA_CHARACTER_IMAGE_URLS = {
 UMA_67_TRIGGER_NAME = "Curren Chan"
 # Posted instead of the Curren Chan meme when "67" is written inside Chinese text.
 POOH_67_GIF_PATH = BASE_DIR / 'media' / 'pooh-67.gif'
+# Fallback if media/ hasn't been deployed yet; Discord unfurls this inline.
+POOH_67_GIF_URL = 'https://raw.githubusercontent.com/xwhiptail/tinki-bot/main/media/pooh-67.gif'
 
 SCORE_PATTERN = re.compile(r'^(?:[6-9][0-9]|1[0-9]{2}|200)$')
 

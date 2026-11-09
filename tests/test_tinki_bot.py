@@ -4691,6 +4691,14 @@ class TestUmaMediaAndTriggers:
         sent_file = message.channel.send.await_args.kwargs["file"]
         assert sent_file.filename == "pooh-67.gif"
 
+    async def test_pooh_67_falls_back_to_url_when_media_not_deployed(self, tmp_path):
+        message = make_message("新疆維吾爾自治67區")
+
+        with patch.object(config, "POOH_67_GIF_PATH", tmp_path / "missing.gif"):
+            await self.cog.on_message(message)
+
+        message.channel.send.assert_awaited_once_with(config.POOH_67_GIF_URL)
+
     async def test_67_trigger_ignores_other_numbers(self):
         message = make_message("670")
 

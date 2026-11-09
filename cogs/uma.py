@@ -304,6 +304,14 @@ class Uma(commands.Cog):
 
         await self.uma_gacha(ctx, count)
 
+    @staticmethod
+    async def _send_pooh_67(channel):
+        path = config.POOH_67_GIF_PATH
+        if path.is_file():
+            await channel.send(file=discord.File(path, filename='pooh-67.gif'))
+        else:
+            await channel.send(config.POOH_67_GIF_URL)
+
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot:
@@ -311,7 +319,7 @@ class Uma(commands.Cog):
         if message.content.startswith(('!', '$')):
             return
         if self._matches_pooh_67_trigger(message.content):
-            await message.channel.send(file=discord.File(config.POOH_67_GIF_PATH, filename='pooh-67.gif'))
+            await self._send_pooh_67(message.channel)
             return
         if not self._matches_67_trigger(message.content):
             return
