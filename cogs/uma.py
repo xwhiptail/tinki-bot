@@ -34,7 +34,11 @@ META_IMAGE_PATTERNS = (
     re.compile(r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']', re.IGNORECASE),
     re.compile(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']', re.IGNORECASE),
 )
-UMA_67_PATTERN = re.compile(r'(?<!\d)6(?:[\s\W_]*)7(?!\d)')
+# "67" must stand on its own: "67", "6 7", "6-7", "67!!!". Not inside a word,
+# number, or CJK run (\w is Unicode-aware, so "自治67區" and "abc67" don't match).
+UMA_67_PATTERN = re.compile(r'(?<!\w)6[ \t-]*7(?!\w)')
+# Stripped before matching so IDs/paths in links, mentions, and custom emoji can't trigger it.
+UMA_67_IGNORED_SPANS = re.compile(r'<[^<>\s]*>|\b(?:https?://|www\.)\S+|\b\S+\.(?:com|net|org|gg|io|tv|be|ly)\S*', re.IGNORECASE)
 UMA_REPULL_EMOJI = '♻️'
 UMA_REPULL_TIMEOUT = 30.0
 
@@ -168,7 +172,8 @@ class Uma(commands.Cog):
 
     @staticmethod
     def _matches_67_trigger(content: str) -> bool:
-        return bool(UMA_67_PATTERN.search(content))
+        cleaned = UMA_67_IGNORED_SPANS.sub(' ', content)
+        return bool(UMA_67_PATTERN.search(cleaned))
 
     def _character_profile_url(self, name: str) -> Optional[str]:
         slug = UMA_PROFILE_SLUGS.get(name)

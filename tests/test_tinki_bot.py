@@ -4645,6 +4645,26 @@ class TestUmaMediaAndTriggers:
 
         media_mock.assert_awaited_once_with(message.channel, config.UMA_67_TRIGGER_NAME)
 
+    @pytest.mark.parametrize("content", ["67", "67!!!", "6 7", "6-7", "lol 67", "SIX SEVEN 67 🤣", "(67)"])
+    def test_67_trigger_matches_standalone(self, content):
+        assert self.cog._matches_67_trigger(content)
+
+    @pytest.mark.parametrize("content", [
+        "670",
+        "1967",
+        "6.7",
+        "abc67def",
+        "https://tenor.com/view/some-gif-1976190916739538067",
+        "check this https://x.com/user/status/167",
+        "look www.example.com/page67 ok",
+        "youtube.com/watch?v=ab67cd",
+        "<@123456789012345678> hi",
+        "<:pog:6789> nice",
+        "新疆維吾爾自治67區 The Xinjiang Uyghur Autonomous Region",
+    ])
+    def test_67_trigger_ignores_urls_and_embedded_text(self, content):
+        assert not self.cog._matches_67_trigger(content)
+
     async def test_67_trigger_ignores_other_numbers(self):
         message = make_message("670")
 
