@@ -4971,6 +4971,39 @@ class TestBowlingMessageAndCommands:
 # ── spinny commands ───────────────────────────────────────────────────────────
 
 
+class TestDollarEmoteParsing:
+    @pytest.mark.parametrize("content,expected", [
+        ("$sus", "sus"),
+        ("$sus 3", "sus"),
+        ("$5head", "5head"),
+        ("$randomemote 2", "randomemote"),
+        ("$250 can", None),
+        ("$10k dac", None),
+        ("$10K", None),
+        ("$1,000 lol", None),
+        ("$4.99", None),
+        ("$1.5m", None),
+        ("$", None),
+        ("$ sus", None),
+        ("$$$", None),
+        ("$sus!", None),
+        ("hello $sus", None),
+    ])
+    def test_parse_dollar_emote_name(self, content, expected):
+        from cogs.emotes import parse_dollar_emote_name
+        assert parse_dollar_emote_name(content) == expected
+
+    @pytest.mark.parametrize("content", ["$250 can", "$10k dac", "$10k amp", "$"])
+    async def test_money_messages_do_not_trigger_emote_suggestions(self, content):
+        cog = make_emotes_cog()
+        message = make_message(content)
+        message.author.id = 999
+        message.guild = SimpleNamespace(emojis=[], stickers=[])
+        await cog.on_message(message)
+        message.channel.send.assert_not_awaited()
+        cog.bot.wait_for.assert_not_awaited()
+
+
 class TestEmoteBrowserHelpers:
     def setup_method(self):
         self.cog = make_emotes_cog()

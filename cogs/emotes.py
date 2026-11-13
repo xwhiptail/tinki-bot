@@ -3,6 +3,7 @@ import io
 import json
 import logging
 import random
+import re
 import time
 from dataclasses import dataclass
 
@@ -25,6 +26,25 @@ EMOTE_BROWSER_PAGE_SIZE = 10
 EMOTE_BROWSER_ANIMATED_MAX_BYTES = 7_500_000
 EMOTE_BROWSER_ANIMATED_MAX_FRAMES = 24
 EMOTE_BROWSER_ANIMATED_FALLBACK_NOTICE = "Animated preview unavailable; showing static grid."
+# Discord custom emoji names are 2-32 chars of letters, digits, and underscores.
+DOLLAR_EMOTE_NAME_PATTERN = re.compile(r"^\w{2,32}$", re.ASCII)
+# Money amounts like $250, $10k, $1,000, $4.99 should never trigger emote lookups.
+DOLLAR_AMOUNT_PATTERN = re.compile(r"^\d+(?:[.,]\d+)*[kmb]?$", re.IGNORECASE)
+
+
+def parse_dollar_emote_name(content):
+    """Return the emote name for a `$name` message, or None if it is not an emote command."""
+    if not content.startswith('$'):
+        return None
+    parts = content[1:].split()
+    if not parts or content[1].isspace():
+        return None
+    name = parts[0]
+    if DOLLAR_AMOUNT_PATTERN.match(name) or not DOLLAR_EMOTE_NAME_PATTERN.match(name):
+        return None
+    return name
+
+
 SEVENTV_GQL_ENDPOINT = "https://7tv.io/v3/gql"
 SEVENTV_SEARCH_QUERY = (
     "query SearchEmotes($query: String!, $page: Int, $sort: Sort, $limit: Int, $filter: EmoteSearchFilter) {\n"
@@ -595,9 +615,7 @@ class Emotes(commands.Cog):
                 await message.channel.send(f"Sticker '{STICKER_SPINNY}' not found.")
 
         # $ emote commands
-        if not content.startswith('$'):
-            return
-        if not content[1:].split()[0]:
+        if parse_dollar_emote_name(content) is None:
             return
 
         content_parts = content[1:].split(' ')
