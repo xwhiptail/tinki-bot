@@ -14,6 +14,9 @@ GIPHY_API_KEY = os.getenv('GIPHY')
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-6.1-sol')
 OPENAI_FAST_MODEL = os.getenv('OPENAI_FAST_MODEL', 'gpt-6-luna')
 AWS_COST_REGION = os.getenv('AWS_COST_REGION', 'us-east-1')
+# Muse notes mailbox (local JSON API on the bot host). The token is secret: never log it.
+MUSE_NOTES_URL = os.getenv('MUSE_NOTES_URL', '')
+MUSE_NOTES_TOKEN = os.getenv('MUSE_NOTES_TOKEN', '')
 GITHUB_REPO_URL = "https://github.com/xwhiptail/tinki-bot"
 
 # ── Trusted user IDs ─────────────────────────────────────────────────────────
@@ -37,6 +40,7 @@ CHANNEL_BOT_TEST   = os.getenv('CHANNEL_BOT_TEST',   'bot-test')
 CHANNEL_REMINDERS  = os.getenv('CHANNEL_REMINDERS',  'wat-doggo-only')
 CHANNEL_RANDOM_AI  = os.getenv('CHANNEL_RANDOM_AI',  'wat-doggo-only')
 CHANNEL_PINS       = os.getenv('CHANNEL_PINS',       'pins')
+CHANNEL_MUSE       = os.getenv('CHANNEL_MUSE',       'muse')
 STICKER_SPINNY     = os.getenv('STICKER_SPINNY',     'SPINNY')
 
 # ── Data files ────────────────────────────────────────────────────────────────
@@ -50,6 +54,7 @@ EXPLODE_FILE = str(DATA_DIR / 'explode.json')
 SPINNY_FILE = str(DATA_DIR / 'spinny.json')
 UMA_PITY_FILE        = str(DATA_DIR / 'uma_pity.json')
 GRINDING_STATE_FILE  = str(DATA_DIR / 'grinding_state.json')
+MUSE_BRIDGE_FILE     = str(DATA_DIR / 'muse_bridge.json')
 
 GREMLIN_SYSTEM_STYLE = (
     "You are Tinki, a cutesy gnome Hunter from Azeroth (World of Warcraft) who moonlights as a Discord bot, "

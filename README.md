@@ -434,7 +434,19 @@ Searches are limited to one per channel every 30 seconds and two at a time acros
 the bot. No new paid service or dependency is required; successful AI summaries
 use the existing OpenAI account.
 
-### Bowling score tracking
+### Muse notes bridge
+
+`#muse` mirrors the Muse <-> Claude Code notes mailbox that runs on the bot host
+(`muse-notes.service`, local JSON API). Set `MUSE_NOTES_URL` and `MUSE_NOTES_TOKEN`
+in `/etc/tinki-bot.env` (and `CHANNEL_MUSE` if the channel isn't named `muse`).
+Without them the cog loads but stays idle, and startup diagnostics say so.
+
+- Every 30 seconds new notes are posted to `#muse` as embeds labelled Merlin (Muse), Claude Code, or Matthew. Notes longer than one embed are split into parts.
+- The last mirrored note id is kept in `DATA_DIR/muse_bridge.json`. On the first run Tinki starts from the newest note and posts nothing, so there's no backfill flood.
+- Whiptail's plain messages in `#muse` (not `!` commands) are sent to the mailbox as Matthew and get a ✅, or ❌ with a short reply on failure. They aren't echoed back as embeds. Everyone else's messages in `#muse` are ignored.
+- Tinki's AI replies stay out of `#muse`.
+- Mailbox errors are logged without the URL (it contains the token), and polling backs off up to about 10 minutes.
+
 
 Commands: `!pb`, `!avg`, `!median`, `!all`, `!bowlinggraph`, `!bowlingdistgraph`, `!add`
 
@@ -544,6 +556,10 @@ For infrastructure cost control outside the bot runtime, use the repo maintenanc
 - `!deploy` - compare the recorded deployed commit to GitHub `main`, download that exact commit if newer, sync the modular repo snapshot, install dependencies, record success, and restart, admin only. A dependency-install failure leaves the previous commit marker intact so the same update can be retried.
 - `!runtests` - run command smoke tests with `✅`/`🚨` status output, admin only
 - `!testurls` - run URL rewrite self-tests with `✅`/`🚨` status output, admin only
+
+### Muse
+
+- `!muse [n]` - show the last n Muse notes (default 5, max 20), whiptail only
 
 ### Uma Musume
 

@@ -12,7 +12,7 @@ from typing import List, Set
 import discord
 from discord.ext import commands
 
-from config import AI_MEMORY_FILE, CHANNEL_RANDOM_AI, GREMLIN_SYSTEM_STYLE, OPENAI_FAST_MODEL, OPENAI_MODEL
+from config import AI_MEMORY_FILE, CHANNEL_MUSE, CHANNEL_RANDOM_AI, GREMLIN_SYSTEM_STYLE, OPENAI_FAST_MODEL, OPENAI_MODEL
 from utils.ai_brain import (
     build_memory_context,
     build_system_prompt,
@@ -1302,6 +1302,9 @@ class AI(commands.Cog):
     async def on_message(self, message):
         if message.author.bot:
             return
+        # #muse mirrors the Muse notes mailbox (cogs/muse.py); Tinki's AI stays out of it.
+        if getattr(message.channel, "name", None) == CHANNEL_MUSE:
+            return
 
         # Recognize explicit replies and short answers to an active troubleshooting question.
         session = self._troubleshooting_reply_session(message)
@@ -1365,7 +1368,7 @@ class AI(commands.Cog):
             return
 
         channel = self.bot.get_channel(payload.channel_id)
-        if not channel:
+        if not channel or getattr(channel, "name", None) == CHANNEL_MUSE:
             return
         try:
             message = await channel.fetch_message(payload.message_id)

@@ -233,6 +233,49 @@ def make_emotes_cog():
     return _wire_cog(cog)
 
 
+class FakeMuseClient:
+    def __init__(self, notes=None):
+        self.notes = list(notes or [])
+        self.posted = []
+        self.fail_fetch = False
+        self.fail_post = False
+        self.next_id = 1000
+
+    async def fetch_notes(self, after_id=0, limit=50):
+        from cogs.muse import MuseNotesError
+        if self.fail_fetch:
+            raise MuseNotesError("HTTP 503")
+        return [n for n in self.notes if n["id"] > after_id][:limit]
+
+    async def fetch_all_after(self, after_id=0):
+        return await self.fetch_notes(after_id, limit=10_000)
+
+    async def post_note(self, text):
+        from cogs.muse import MuseNotesError
+        if self.fail_post:
+            raise MuseNotesError("HTTP 400")
+        self.next_id += 1
+        note = {"id": self.next_id, "at": "2026-11-23T15:00:00+00:00", "sender": "matthew", "text": text}
+        self.notes.append(note)
+        self.posted.append(text)
+        return self.next_id
+
+
+def make_muse_note(note_id, sender="claude", text=None, at="2026-11-23T14:05:00+00:00"):
+    return {"id": note_id, "at": at, "sender": sender, "text": text if text is not None else f"note {note_id}"}
+
+
+def make_muse_cog(client=None, state_file=None):
+    from cogs.muse import Muse
+    import tempfile
+    if state_file is None:
+        state_file = os.path.join(tempfile.gettempdir(), "tinki-test-muse-bridge-unused.json")
+    bot = MagicMock()
+    bot.get_all_channels = MagicMock(return_value=[])
+    cog = Muse(bot, client=client, state_file=str(state_file))
+    return _wire_cog(cog)
+
+
 def make_reminders_cog():
     from cogs.reminders import Reminders
     return _wire_cog(Reminders(MagicMock()))
@@ -257,6 +300,7 @@ COMMAND_COG_FACTORIES = (
     make_admin_cog,
     make_bowling_cog,
     make_emotes_cog,
+    make_muse_cog,
     make_reminders_cog,
     make_historian_cog,
     make_tracking_cog,
@@ -314,6 +358,13 @@ def _build_command_smoke_cases(tmp_path, monkeypatch):
             else:
                 await cog.recap.callback(cog, ctx, "7")
         answer.assert_awaited_once()
+
+    async def smoke_muse(command_name):
+        client = FakeMuseClient([make_muse_note(i) for i in range(1, 6)])
+        cog = make_muse_cog(client=client, state_file=tmp_path / "muse_bridge.json")
+        ctx = make_smoke_ctx(author_name="whiptail")
+        with patch("cogs.muse.USER_WHIPTAIL_ID", None):
+            await cog.muse.callback(cog, ctx, "3")
 
     async def smoke_admin(command_name):
         cog = make_admin_cog()
@@ -573,6 +624,7 @@ def _build_command_smoke_cases(tmp_path, monkeypatch):
     return {
         "lore": lambda: smoke_historian("lore"),
         "recap": lambda: smoke_historian("recap"),
+        "muse": lambda: smoke_muse("muse"),
         "restart": lambda: smoke_admin("restart"),
         "deploy": lambda: smoke_admin("deploy"),
         "awscost": lambda: smoke_admin("awscost"),
@@ -4969,6 +5021,252 @@ class TestBowlingMessageAndCommands:
 
 
 # ── spinny commands ───────────────────────────────────────────────────────────
+
+
+def make_muse_channel_message(content, author_name="whiptail", author_bot=False):
+    from cogs.muse import CHANNEL_MUSE
+    message = make_message(content)
+    message.author.name = author_name
+    message.author.id = 1
+    message.author.bot = author_bot
+    message.guild = SimpleNamespace(id=1)
+    message.channel.name = CHANNEL_MUSE
+    message.add_reaction = AsyncMock()
+    message.reply = AsyncMock()
+    return message
+
+
+class TestMuseBridge:
+    @pytest.fixture(autouse=True)
+    def _owner_by_name(self, monkeypatch):
+        monkeypatch.setattr("cogs.muse.USER_WHIPTAIL_ID", None)
+
+    def _cog(self, tmp_path, notes=None, last_id=None):
+        state_file = tmp_path / "muse_bridge.json"
+        if last_id is not None:
+            state_file.write_text(json.dumps({"last_id": last_id}), encoding="utf-8")
+        client = FakeMuseClient(notes)
+        cog = make_muse_cog(client=client, state_file=state_file)
+        channel = MagicMock()
+        from cogs.muse import CHANNEL_MUSE
+        channel.name = CHANNEL_MUSE
+        channel.send = AsyncMock()
+        cog.bot.get_all_channels = MagicMock(return_value=[channel])
+        return cog, client, channel, state_file
+
+    def test_sender_labels(self):
+        from cogs.muse import sender_label
+        assert sender_label("muse") == "Merlin (Muse)"
+        assert sender_label("claude") == "Claude Code"
+        assert sender_label("matthew") == "Matthew"
+        assert sender_label("someone") == "Unknown sender"
+        assert sender_label(None) == "Unknown sender"
+
+    def test_split_note_text_respects_embed_limit(self):
+        from cogs.muse import split_note_text
+        assert split_note_text("short") == ["short"]
+        chunks = split_note_text("a" * 9000)
+        assert [len(c) for c in chunks] == [4096, 4096, 808]
+        assert "".join(chunks) == "a" * 9000
+        words = ("word " * 2000).strip()
+        word_chunks = split_note_text(words)
+        assert all(len(c) <= 4096 for c in word_chunks)
+        assert all(not c.startswith(" ") and not c.endswith(" ") for c in word_chunks)
+        assert " ".join(word_chunks) == words
+
+    def test_build_note_embeds_long_note_has_part_footers(self):
+        from cogs.muse import build_note_embeds
+        embeds = build_note_embeds(make_muse_note(5, sender="muse", text="b" * 5000))
+        assert len(embeds) == 2
+        assert embeds[0].author.name == "Merlin (Muse)"
+        assert embeds[0].footer.text == "Note #5 (part 1/2)"
+        assert embeds[1].footer.text == "Note #5 (part 2/2)"
+        assert embeds[0].timestamp.isoformat() == "2026-11-23T14:05:00+00:00"
+
+    async def test_first_run_sets_newest_id_without_backfill(self, tmp_path):
+        cog, client, channel, state_file = self._cog(tmp_path, [make_muse_note(i) for i in range(1, 4)])
+        assert cog.last_id is None
+        await cog.poll_once()
+        channel.send.assert_not_awaited()
+        assert cog.last_id == 3
+        assert json.loads(state_file.read_text(encoding="utf-8")) == {"last_id": 3}
+
+    async def test_first_run_with_empty_mailbox_starts_at_zero(self, tmp_path):
+        cog, client, channel, state_file = self._cog(tmp_path, [])
+        await cog.poll_once()
+        channel.send.assert_not_awaited()
+        assert cog.last_id == 0
+
+    async def test_poll_posts_new_notes_as_embeds_and_persists(self, tmp_path):
+        notes = [make_muse_note(1), make_muse_note(2, "muse", "hello from Merlin"), make_muse_note(3, "claude", "done")]
+        cog, client, channel, state_file = self._cog(tmp_path, notes, last_id=1)
+        await cog.poll_once()
+        embeds = [call.kwargs["embed"] for call in channel.send.await_args_list]
+        assert [(e.author.name, e.description, e.footer.text) for e in embeds] == [
+            ("Merlin (Muse)", "hello from Merlin", "Note #2"),
+            ("Claude Code", "done", "Note #3"),
+        ]
+        assert json.loads(state_file.read_text(encoding="utf-8")) == {"last_id": 3}
+
+    async def test_inbound_owner_message_posts_and_is_not_echoed(self, tmp_path):
+        cog, client, channel, _ = self._cog(tmp_path, [make_muse_note(1)], last_id=1)
+        message = make_muse_channel_message("test from discord")
+        await cog.on_message(message)
+        assert client.posted == ["test from discord"]
+        message.add_reaction.assert_awaited_once_with("\u2705")
+        message.reply.assert_not_awaited()
+        client.notes.append(make_muse_note(1002, "claude", "reply from PC"))
+        await cog.poll_once()
+        embeds = [call.kwargs["embed"] for call in channel.send.await_args_list]
+        assert [e.description for e in embeds] == ["reply from PC"]
+        assert cog.last_id == 1002
+
+    async def test_inbound_failure_reacts_and_replies(self, tmp_path):
+        cog, client, _, _ = self._cog(tmp_path, [], last_id=0)
+        client.fail_post = True
+        message = make_muse_channel_message("hello")
+        await cog.on_message(message)
+        message.add_reaction.assert_awaited_once_with("\u274c")
+        message.reply.assert_awaited_once_with("Couldn't send that to Muse. Try again in a bit.", mention_author=False)
+
+    async def test_inbound_too_long_is_rejected_before_post(self, tmp_path):
+        cog, client, _, _ = self._cog(tmp_path, [], last_id=0)
+        message = make_muse_channel_message("x" * 4001)
+        await cog.on_message(message)
+        assert client.posted == []
+        message.add_reaction.assert_awaited_once_with("\u274c")
+        message.reply.assert_awaited_once_with("Too long for Muse notes (max 4000 characters).", mention_author=False)
+
+    @pytest.mark.parametrize("content,author_name,author_bot,channel_name", [
+        ("hi", "cate", False, None),
+        ("!muse 3", "whiptail", False, None),
+        ("hi", "whiptail", True, None),
+        ("hi", "whiptail", False, "general"),
+        ("   ", "whiptail", False, None),
+    ])
+    async def test_inbound_ignores_non_bridge_messages(self, tmp_path, content, author_name, author_bot, channel_name):
+        cog, client, _, _ = self._cog(tmp_path, [], last_id=0)
+        message = make_muse_channel_message(content, author_name=author_name, author_bot=author_bot)
+        if channel_name:
+            message.channel.name = channel_name
+        await cog.on_message(message)
+        assert client.posted == []
+        message.add_reaction.assert_not_awaited()
+
+    async def test_fetch_errors_back_off_without_crashing(self, tmp_path):
+        cog, client, channel, _ = self._cog(tmp_path, [make_muse_note(2)], last_id=1)
+        client.fail_fetch = True
+        await cog.poll_once()
+        assert cog._skip_polls == 1
+        await cog.poll_once()
+        await cog.poll_once()
+        assert cog._skip_polls == 2
+        client.fail_fetch = False
+        cog._skip_polls = 0
+        await cog.poll_once()
+        assert channel.send.await_count == 1
+        assert cog._failures == 0
+
+    async def test_missing_channel_holds_notes(self, tmp_path):
+        cog, client, channel, _ = self._cog(tmp_path, [make_muse_note(2)], last_id=1)
+        cog.bot.get_all_channels = MagicMock(return_value=[])
+        await cog.poll_once()
+        assert cog.last_id == 1
+
+    async def test_muse_command_shows_latest_notes_compactly(self, tmp_path):
+        notes = [make_muse_note(i, "claude", f"note {i}") for i in range(1, 5)]
+        notes.append(make_muse_note(5, "muse", "a *bold*\nmulti-line note"))
+        cog, client, _, _ = self._cog(tmp_path, notes, last_id=5)
+        ctx = make_smoke_ctx(author_name="whiptail")
+        await cog.muse.callback(cog, ctx, "3")
+        ctx.send.assert_awaited_once()
+        assert ctx.send.await_args.args[0] == (
+            "`#3` <t:1795442700:f> **Claude Code:** note 3\n"
+            "`#4` <t:1795442700:f> **Claude Code:** note 4\n"
+            "`#5` <t:1795442700:f> **Merlin (Muse):** a \\*bold\\* multi-line note"
+        )
+
+    async def test_muse_command_clamps_count_and_is_owner_only(self, tmp_path):
+        cog, client, _, _ = self._cog(tmp_path, [make_muse_note(i) for i in range(1, 31)], last_id=30)
+        ctx = make_smoke_ctx(author_name="whiptail")
+        await cog.muse.callback(cog, ctx, "99")
+        assert ctx.send.await_args.args[0].count("\n") == 19
+        other = make_smoke_ctx(author_name="cate")
+        await cog.muse.callback(cog, other, "3")
+        other.send.assert_awaited_once_with("You do not have permission to use this command.")
+
+    async def test_unconfigured_cog_stays_idle(self, tmp_path):
+        cog = make_muse_cog(client=None, state_file=tmp_path / "muse_bridge.json")
+        assert cog.status_line() == "Muse bridge: idle (MUSE_NOTES_URL / MUSE_NOTES_TOKEN not set)"
+        await cog.poll_once()
+        message = make_muse_channel_message("hello")
+        await cog.on_message(message)
+        message.add_reaction.assert_not_awaited()
+        ctx = make_smoke_ctx(author_name="whiptail")
+        await cog.muse.callback(cog, ctx)
+        ctx.send.assert_awaited_once_with("Muse bridge is not configured (MUSE_NOTES_URL / MUSE_NOTES_TOKEN missing).")
+
+    async def test_http_client_builds_urls_and_hides_token_in_errors(self):
+        import aiohttp
+        from cogs.muse import MuseNotesClient, MuseNotesError
+        calls = []
+
+        def make_factory(status=200, payload=None, exc=None):
+            def factory(timeout=None):
+                session = _make_client_session_cm()
+
+                def request(method, url, **kwargs):
+                    calls.append((method, url, kwargs))
+                    if exc:
+                        raise exc
+                    resp = MagicMock()
+                    resp.status = status
+                    resp.json = AsyncMock(return_value=payload)
+                    cm = MagicMock()
+                    cm.__aenter__ = AsyncMock(return_value=resp)
+                    cm.__aexit__ = AsyncMock(return_value=None)
+                    return cm
+
+                session.request = request
+                return session
+            return factory
+
+        client = MuseNotesClient("http://127.0.0.1:8771/notes/", "s3cret",
+                                 session_factory=make_factory(payload={"ok": True, "notes": [{"id": 2}, {"id": 1}]}))
+        assert [n["id"] for n in await client.fetch_notes(after_id=7)] == [1, 2]
+        assert calls[-1] == ("GET", "http://127.0.0.1:8771/notes/s3cret/api/notes", {"params": {"limit": 50, "after_id": 7}})
+
+        client = MuseNotesClient("http://127.0.0.1:8771/notes", "s3cret",
+                                 session_factory=make_factory(payload={"ok": True, "id": 42}))
+        assert await client.post_note("hi") == 42
+        assert calls[-1][2] == {"json": {"sender": "matthew", "text": "hi"}}
+
+        for factory in (make_factory(status=404, payload={}),
+                        make_factory(exc=aiohttp.ClientConnectionError("http://127.0.0.1:8771/notes/s3cret/api"))):
+            client = MuseNotesClient("http://127.0.0.1:8771/notes", "s3cret", session_factory=factory)
+            with pytest.raises(MuseNotesError) as info:
+                await client.fetch_notes()
+            assert "s3cret" not in str(info.value)
+            assert "127.0.0.1" not in str(info.value)
+
+    async def test_ai_cog_ignores_muse_channel(self):
+        from cogs.muse import CHANNEL_MUSE
+        cog = make_ai_cog()
+        message = make_message("Tinki what do you think?")
+        message.channel.name = CHANNEL_MUSE
+        with patch.object(cog, "_handle_mention", new=AsyncMock()) as handle:
+            await cog.on_message(message)
+        handle.assert_not_awaited()
+        message.channel.send.assert_not_awaited()
+
+    def test_admin_startup_status_line_reports_muse_state(self, tmp_path):
+        admin = make_admin_cog()
+        admin.bot.cogs = {"Muse": make_muse_cog(client=None, state_file=tmp_path / "s.json")}
+        assert admin._muse_status_line() == "\u26a0\ufe0f Muse bridge: idle (MUSE_NOTES_URL / MUSE_NOTES_TOKEN not set)"
+        admin.bot.cogs = {"Muse": make_muse_cog(client=FakeMuseClient(), state_file=tmp_path / "s.json")}
+        assert admin._muse_status_line().startswith("\u2705 Muse bridge: polling every 30s into #")
+        admin.bot.cogs = {}
+        assert admin._muse_status_line() is None
 
 
 class TestDollarEmoteParsing:

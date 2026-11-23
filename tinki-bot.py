@@ -23,6 +23,7 @@ COGS = [
     'cogs.utility',
     'cogs.admin',
     'cogs.url_filter',
+    'cogs.muse',
 ]
 
 

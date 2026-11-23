@@ -87,6 +87,15 @@ checks that those partial reports reach the AI listener's generation step.
 Helper and cog coverage lives in `tests/test_channel_history.py`; listener routing
 and command registration/smoke coverage lives in `tests/test_tinki_bot.py`.
 
+## Muse Bridge
+
+| Behavior | Direct tests |
+| --- | --- |
+| `!muse [n]` | `test_muse_command_shows_latest_notes_compactly`, `test_muse_command_clamps_count_and_is_owner_only`, `test_unconfigured_cog_stays_idle`, shared command smoke test |
+| Mailbox -> `#muse` polling | `test_first_run_sets_newest_id_without_backfill`, `test_first_run_with_empty_mailbox_starts_at_zero`, `test_poll_posts_new_notes_as_embeds_and_persists`, `test_fetch_errors_back_off_without_crashing`, `test_missing_channel_holds_notes` |
+| `#muse` -> mailbox (Whiptail only) | `test_inbound_owner_message_posts_and_is_not_echoed`, `test_inbound_failure_reacts_and_replies`, `test_inbound_too_long_is_rejected_before_post`, `test_inbound_ignores_non_bridge_messages` |
+| Labels, splitting, HTTP client, AI exclusion, startup line | `test_sender_labels`, `test_split_note_text_respects_embed_limit`, `test_build_note_embeds_long_note_has_part_footers`, `test_http_client_builds_urls_and_hides_token_in_errors`, `test_ai_cog_ignores_muse_channel`, `test_admin_startup_status_line_reports_muse_state` |
+
 ## Admin
 
 | Command | Direct tests |

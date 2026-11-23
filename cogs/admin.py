@@ -31,6 +31,7 @@ log = logging.getLogger("discord.cogs.admin")
 
 TEST_PASS_EMOJI = "\u2705"
 TEST_FAIL_EMOJI = "\U0001f6a8"
+MUSE_IDLE_EMOJI = "\u26a0\ufe0f"
 DIAGNOSTICS_BUSY_MESSAGE = "Diagnostics already running. Try again in a minute."
 DIAGNOSTIC_STEP_TIMEOUT_SECONDS = 10
 PYTEST_TIMEOUT_SECONDS = 35
@@ -446,6 +447,9 @@ class Admin(commands.Cog):
             summary_lines.append(self._summary_line(section.summary_label, passed, total, section.suffix).rstrip())
         summary_lines.append(f"{TEST_PASS_EMOJI} OpenAI: {openai_balance}")
         summary_lines.append(f"{TEST_PASS_EMOJI} AWS cost: {aws_cost_summary}")
+        muse_status = self._muse_status_line()
+        if muse_status:
+            summary_lines.append(muse_status)
         summary = "\n".join(summary_lines) + "\n"
         if failures:
             summary += "\n" + "".join(f"{TEST_FAIL_EMOJI} {failure}\n" for failure in failures)
@@ -462,6 +466,8 @@ class Admin(commands.Cog):
                 lines.append(f"  {self._format_check_result(name, ok, reason)}\n")
         lines.append(f"\nOpenAI: {openai_balance}\n")
         lines.append(f"AWS cost: {aws_cost_summary}\n")
+        if muse_status:
+            lines.append(f"{muse_status}\n")
 
         buf = io.BytesIO("".join(lines).encode("utf-8"))
         try:
@@ -472,6 +478,13 @@ class Admin(commands.Cog):
             log.info("[startup tests] posted startup diagnostics without attachment to #%s", CHANNEL_BOT_TEST)
         except discord.HTTPException as e:
             log.error("[startup tests] failed to post startup diagnostics: %s: %s", type(e).__name__, e)
+
+    def _muse_status_line(self):
+        muse_cog = self.bot.cogs.get('Muse') if isinstance(getattr(self.bot, 'cogs', None), dict) else None
+        if muse_cog is None:
+            return None
+        emoji = TEST_PASS_EMOJI if muse_cog.configured else MUSE_IDLE_EMOJI
+        return f"{emoji} {muse_cog.status_line()}"
 
     async def _run_pytest_suite(self):
         repo_root = Path(__file__).resolve().parent.parent
