@@ -3552,6 +3552,11 @@ class TestInfraMonitoring:
 
 
 class TestAdminAWSCost:
+    @pytest.fixture(autouse=True)
+    def _owner_by_name(self, monkeypatch):
+        # Production sets USER_WHIPTAIL_ID; these tests identify the owner by name.
+        monkeypatch.setattr("cogs.admin.USER_WHIPTAIL_ID", None)
+
     def setup_method(self):
         self.cog = make_admin_cog()
 
@@ -5261,7 +5266,9 @@ class TestMuseBridge:
 
     def test_admin_startup_status_line_reports_muse_state(self, tmp_path):
         admin = make_admin_cog()
-        admin.bot.cogs = {"Muse": make_muse_cog(client=None, state_file=tmp_path / "s.json")}
+        from types import MappingProxyType
+        # discord.py exposes Bot.cogs as a read-only MappingProxyType, not a dict.
+        admin.bot.cogs = MappingProxyType({"Muse": make_muse_cog(client=None, state_file=tmp_path / "s.json")})
         assert admin._muse_status_line() == "\u26a0\ufe0f Muse bridge: idle (MUSE_NOTES_URL / MUSE_NOTES_TOKEN not set)"
         admin.bot.cogs = {"Muse": make_muse_cog(client=FakeMuseClient(), state_file=tmp_path / "s.json")}
         assert admin._muse_status_line().startswith("\u2705 Muse bridge: polling every 30s into #")

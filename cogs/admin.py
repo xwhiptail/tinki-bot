@@ -8,6 +8,7 @@ import shutil
 import sys
 import tempfile
 import zipfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -480,7 +481,8 @@ class Admin(commands.Cog):
             log.error("[startup tests] failed to post startup diagnostics: %s: %s", type(e).__name__, e)
 
     def _muse_status_line(self):
-        muse_cog = self.bot.cogs.get('Muse') if isinstance(getattr(self.bot, 'cogs', None), dict) else None
+        cogs = getattr(self.bot, 'cogs', None)
+        muse_cog = cogs.get('Muse') if isinstance(cogs, Mapping) else None
         if muse_cog is None:
             return None
         emoji = TEST_PASS_EMOJI if muse_cog.configured else MUSE_IDLE_EMOJI
