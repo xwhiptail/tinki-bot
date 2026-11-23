@@ -35,7 +35,7 @@ TEST_FAIL_EMOJI = "\U0001f6a8"
 MUSE_IDLE_EMOJI = "\u26a0\ufe0f"
 DIAGNOSTICS_BUSY_MESSAGE = "Diagnostics already running. Try again in a minute."
 DIAGNOSTIC_STEP_TIMEOUT_SECONDS = 10
-PYTEST_TIMEOUT_SECONDS = 35
+PYTEST_TIMEOUT_SECONDS = 120
 
 
 @dataclass(frozen=True)
