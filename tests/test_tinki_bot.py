@@ -3592,41 +3592,64 @@ class TestAdminAWSCost:
 
         assert result == "AWS cost check timed out after 5s."
 
-    async def test_run_pytest_suite_reports_success_summary(self):
+    @staticmethod
+    def _fake_pytest_proc(stdout=b"", stderr=b"", returncode=0, hang=False):
+        """A fake subprocess whose stdout/stderr are real StreamReaders."""
         proc = MagicMock()
-        proc.communicate = AsyncMock(return_value=(b"144 passed in 1.23s\n", b""))
-        proc.returncode = 0
+        proc.stdout, proc.stderr = asyncio.StreamReader(), asyncio.StreamReader()
+        proc.stdout.feed_data(stdout)
+        proc.stderr.feed_data(stderr)
+        done = asyncio.Event()
 
+        def finish():
+            proc.stdout.feed_eof()
+            proc.stderr.feed_eof()
+            done.set()
+
+        async def wait():
+            await done.wait()
+            return returncode
+
+        proc.wait = wait
+        proc.returncode = returncode
+        proc.kill = MagicMock(side_effect=finish)
+        if not hang:
+            finish()
+        return proc
+
+    async def test_run_pytest_suite_reports_success_summary(self):
+        proc = self._fake_pytest_proc(b"144 passed in 1.23s\n")
         with patch("cogs.admin.asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
             result = await self.cog._run_pytest_suite()
-
         assert result == [("pytest", True, "144 passed in 1.23s")]
 
     async def test_run_pytest_suite_reports_failure_summary(self):
-        proc = MagicMock()
-        proc.communicate = AsyncMock(return_value=(b"FAILED tests/test_tinki_bot.py::test_nope\n", b""))
-        proc.returncode = 1
-
+        proc = self._fake_pytest_proc(b"FAILED tests/test_tinki_bot.py::test_nope\n", returncode=1)
         with patch("cogs.admin.asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
             result = await self.cog._run_pytest_suite()
-
         assert result == [("pytest", False, "FAILED tests/test_tinki_bot.py::test_nope")]
 
-    async def test_run_pytest_suite_times_out_and_kills_process(self):
-        proc = MagicMock()
-        proc.communicate = AsyncMock(return_value=(b"", b""))
-        proc.kill = MagicMock()
-        proc.returncode = None
-        async def fake_wait_for(awaitable, timeout):
-            awaitable.close()
-            raise asyncio.TimeoutError()
-
-        with patch("cogs.admin.asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)), \
-             patch("cogs.admin.asyncio.wait_for", side_effect=fake_wait_for):
+    async def test_run_pytest_suite_strips_verbose_summary_decoration(self):
+        proc = self._fake_pytest_proc(
+            b"tests/test_a.py::test_one PASSED [100%]\n\n==== 648 passed, 70 warnings in 8.00s ====\n")
+        with patch("cogs.admin.asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)) as spawn:
             result = await self.cog._run_pytest_suite()
+        assert result == [("pytest", True, "648 passed, 70 warnings in 8.00s")]
+        assert spawn.await_args.kwargs["env"]["PYTHONUNBUFFERED"] == "1"
+        assert "faulthandler_timeout=60" in spawn.await_args.args
 
+    @pytest.mark.parametrize("partial,expected", [
+        (b"tests/test_a.py::test_one PASSED [ 10%]\ntests/test_b.py::test_stuck ", "in tests/test_b.py::test_stuck"),
+        (b"tests/test_a.py::test_one PASSED [ 10%]\n", "after tests/test_a.py::test_one"),
+        (b"", "before the first test started"),
+    ])
+    async def test_run_pytest_suite_timeout_kills_and_names_hanging_test(self, partial, expected):
+        proc = self._fake_pytest_proc(partial, b"Timeout (0:01:00)!\n", returncode=-9, hang=True)
+        with patch("cogs.admin.asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)), \
+             patch("cogs.admin.PYTEST_TIMEOUT_SECONDS", 0.05):
+            result = await self.cog._run_pytest_suite()
         proc.kill.assert_called_once_with()
-        assert result == [("pytest", False, "timed out after 120s")]
+        assert result == [("pytest", False, f"timed out after 0.05s {expected}")]
 
     async def test_fetch_json_with_retries_retries_then_succeeds(self):
         good_response = MagicMock()

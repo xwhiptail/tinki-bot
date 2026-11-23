@@ -36,6 +36,9 @@ MUSE_IDLE_EMOJI = "\u26a0\ufe0f"
 DIAGNOSTICS_BUSY_MESSAGE = "Diagnostics already running. Try again in a minute."
 DIAGNOSTIC_STEP_TIMEOUT_SECONDS = 10
 PYTEST_TIMEOUT_SECONDS = 120
+# A single test stuck this long gets its stack dumped to stderr (logged on timeout).
+PYTEST_FAULTHANDLER_SECONDS = 60
+PYTEST_RESULT_WORDS = (" PASSED", " FAILED", " ERROR", " SKIPPED", " XFAIL", " XPASS")
 
 
 @dataclass(frozen=True)
@@ -488,30 +491,67 @@ class Admin(commands.Cog):
         emoji = TEST_PASS_EMOJI if muse_cog.configured else MUSE_IDLE_EMOJI
         return f"{emoji} {muse_cog.status_line()}"
 
+    @staticmethod
+    def _pytest_hang_location(stdout_text):
+        """From verbose pytest output, name the test that was running when it was killed."""
+        for line in reversed(stdout_text.splitlines()):
+            line = line.strip()
+            if "::" not in line or line.startswith(("FAILED", "ERROR")):
+                continue
+            nodeid = line.split()[0]
+            finished = any(word in line for word in PYTEST_RESULT_WORDS)
+            return f"after {nodeid}" if finished else f"in {nodeid}"
+        return "before the first test started"
+
     async def _run_pytest_suite(self):
         repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        # Unbuffered so a killed run still shows how far it got.
+        env["PYTHONUNBUFFERED"] = "1"
         try:
             proc = await asyncio.create_subprocess_exec(
                 sys.executable,
                 "-m",
                 "pytest",
-                "-q",
+                "-v",
+                "-o", f"faulthandler_timeout={PYTEST_FAULTHANDLER_SECONDS}",
                 cwd=str(repo_root),
+                env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
         except Exception as e:
             return [("pytest", False, f"unable to start: {type(e).__name__}: {e}")]
 
+        # Read output as it arrives so a killed run still shows how far it got
+        # (cancelling communicate() would discard what it had already read).
+        out_buf, err_buf = bytearray(), bytearray()
+
+        async def _pump(stream, buf):
+            while True:
+                chunk = await stream.read(65536)
+                if not chunk:
+                    return
+                buf.extend(chunk)
+
+        readers = asyncio.ensure_future(asyncio.gather(_pump(proc.stdout, out_buf), _pump(proc.stderr, err_buf)))
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=PYTEST_TIMEOUT_SECONDS)
+            await asyncio.wait_for(asyncio.shield(readers), timeout=PYTEST_TIMEOUT_SECONDS)
+            await proc.wait()
+            stdout, stderr = bytes(out_buf), bytes(err_buf)
         except asyncio.TimeoutError:
             proc.kill()
             try:
-                await proc.communicate()
+                await asyncio.wait_for(readers, timeout=5)
+                await asyncio.wait_for(proc.wait(), timeout=5)
             except Exception:
-                pass
-            return [("pytest", False, f"timed out after {PYTEST_TIMEOUT_SECONDS}s")]
+                readers.cancel()
+            out_text = bytes(out_buf).decode("utf-8", errors="replace")
+            err_text = bytes(err_buf).decode("utf-8", errors="replace")
+            location = self._pytest_hang_location(out_text)
+            tail = "\n".join((out_text.strip().splitlines() + err_text.strip().splitlines())[-80:])
+            log.warning("[startup tests] pytest timed out %s; output tail:\n%s", location, tail)
+            return [("pytest", False, f"timed out after {PYTEST_TIMEOUT_SECONDS}s {location}")]
         output = "\n".join(
             part.strip()
             for part in (
@@ -521,12 +561,13 @@ class Admin(commands.Cog):
             if part.strip()
         )
 
-        if proc.returncode == 0:
-            summary = output.splitlines()[-1] if output else "passed"
-            return [("pytest", True, summary)]
+        def _last_line():
+            return output.splitlines()[-1].strip("= ") if output else ""
 
-        failure = output.splitlines()[-1] if output else f"exit code {proc.returncode}"
-        return [("pytest", False, failure)]
+        if proc.returncode == 0:
+            return [("pytest", True, _last_line() or "passed")]
+
+        return [("pytest", False, _last_line() or f"exit code {proc.returncode}")]
 
     async def _run_command_selftests(self, ctx=None):
         tests = [
